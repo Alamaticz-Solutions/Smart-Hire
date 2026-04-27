@@ -1,0 +1,12 @@
+.venv
+node_modules
+__pycache__
+*.pyc
+.git
+.env
+.vscode
+chroma_db/
+static/
+stats.db
+frontend/dist/
+frontend/node_modules/

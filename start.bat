@@ -3,9 +3,6 @@ echo ================================================
 echo  Hire AI - Starting Backend and Frontend
 echo ================================================
 
-:: Set NODE path
-set "PATH=%PATH%;C:\Program Files\nodejs"
-
 :: Check and install frontend modules if they don't exist
 if not exist "%~dp0frontend\node_modules\" (
     echo ================================================
@@ -26,21 +23,28 @@ if not exist "%~dp0.venv\" (
     pip install -r requirements.txt
 )
 
-:: Start FastAPI backend in its own window
+:: Stop any existing servers to avoid port conflicts
+echo Stopping any existing instances on port 8000 and 5173...
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr :8000') do taskkill /f /pid %%a >nul 2>&1
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr :5173') do taskkill /f /pid %%a >nul 2>&1
+
+:: Start FastAPI backend in its own window (Removed --reload to prevent crash on file upload)
 echo Starting FastAPI backend on port 8000...
-Start "Hire AI - Backend" /D "%~dp0" .\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --port 8000
+Start "Hire AI - Backend" /D "%~dp0" .\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
 
 :: Give backend 4 seconds to start
 ping -n 5 127.0.0.1 >nul
 
 :: Start React dev server in its own window
 echo Starting React frontend on port 5173...
-Start "Hire AI - Frontend" /D "%~dp0\frontend" cmd /c "set PATH=%PATH%;C:\Program Files\nodejs && npm run dev"
+Start "Hire AI - Frontend" /D "%~dp0\frontend" cmd /c "npm run dev"
 
 echo.
 echo ================================================
-echo  Backend:  http://localhost:8000
-echo  Frontend: http://localhost:5173
+for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr IPv4') do set "IP=%%a"
+set IP=%IP: =%
+echo  Backend:  http://localhost:8000 (or http://%IP%:8000)
+echo  Frontend: http://localhost:5173 (or http://%IP%:5173)
 echo  API Docs: http://localhost:8000/docs
 echo ================================================
 ping -n 6 127.0.0.1 >nul

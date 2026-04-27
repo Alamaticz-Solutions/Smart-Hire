@@ -4,6 +4,7 @@ import sqlite3
 import shutil
 import re
 import gc
+import threading
 from typing import Optional
 from datetime import datetime
 
@@ -53,14 +54,23 @@ app.mount("/static", StaticFiles(directory=UPLOAD_DIR), name="static")
 # ── Models (loaded once) ───────────────────────────────────────────────────────
 _embeddings = None
 _llm        = None
+_models_loading = False
+_model_lock = threading.Lock()
 
 def get_models():
-    global _embeddings, _llm
-    if _embeddings is None:
-        _embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    if _llm is None:
-        _llm = ChatGroq(temperature=0.1, model_name="llama-3.1-8b-instant", groq_api_key=GROQ_API_KEY)
+    global _embeddings, _llm, _models_loading
+    with _model_lock:
+        _models_loading = True
+        if _embeddings is None:
+            _embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        if _llm is None:
+            _llm = ChatGroq(temperature=0.1, model_name="llama-3.1-8b-instant", groq_api_key=GROQ_API_KEY)
+        _models_loading = False
     return _embeddings, _llm
+
+@app.on_event("startup")
+def load_models_in_background():
+    threading.Thread(target=get_models, daemon=True).start()
 
 # ── DB Helpers ─────────────────────────────────────────────────────────────────
 def init_db():
@@ -421,7 +431,15 @@ def _find_matching_rows(rows: list, names: list) -> list:
 
 @app.post("/api/chat")
 def chat(body: ChatRequest):
-    embeddings, llm = get_models()
+    global _embeddings, _llm, _models_loading
+    if _embeddings is None or _llm is None:
+        if _models_loading:
+            return {"type": "text", "answer": "⏳ Hire AI is currently warming up and downloading models. This may take a few minutes depending on your internet connection. Please try again shortly!"}
+        else:
+            threading.Thread(target=get_models, daemon=True).start()
+            return {"type": "text", "answer": "⏳ Hire AI is starting its engines... Please try again in a few seconds."}
+
+    embeddings, llm = _embeddings, _llm
     prompt  = body.message.strip()
     p_lower = prompt.lower()
 
@@ -553,4 +571,9 @@ def reset_all():
     except Exception:
         pass
     return {"status": "reset complete"}
+
+# ── Serve React Frontend ───────────────────────────────────────────────────────
+FRONTEND_DIST = os.path.join(BASE_DIR, "frontend", "dist")
+if os.path.exists(FRONTEND_DIST):
+    app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
 

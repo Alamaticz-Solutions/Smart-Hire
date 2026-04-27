@@ -175,6 +175,17 @@ export default function UploadPage() {
 
     useEffect(() => { load(); loadCols() }, [])
 
+    // Polling mechanism to auto-refresh the table when resumes are processing in the background
+    useEffect(() => {
+        const hasProcessing = candidates.some(c => c.full_name && c.full_name.includes('Processing'));
+        if (hasProcessing) {
+            const timer = setInterval(() => {
+                load();
+            }, 3000);
+            return () => clearInterval(timer);
+        }
+    }, [candidates]);
+
     const handleDeleteCol = async (col_key) => {
         if (!window.confirm('Delete this custom column?')) return
         try {
