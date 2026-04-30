@@ -10,8 +10,8 @@ RUN apt-get install -y nodejs
 WORKDIR /app
 
 # Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY backend/requirements.txt backend/
+RUN pip install --no-cache-dir -r backend/requirements.txt
 
 # Copy frontend package.json and install Node dependencies
 COPY frontend/package.json frontend/

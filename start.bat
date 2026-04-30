@@ -20,7 +20,7 @@ if not exist "%~dp0.venv\" (
     echo ================================================
     python -m venv .venv
     call "%~dp0.venv\Scripts\activate.bat"
-    pip install -r requirements.txt
+    pip install -r backend\requirements.txt
 )
 
 :: Stop any existing servers to avoid port conflicts

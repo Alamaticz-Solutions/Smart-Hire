@@ -29,7 +29,9 @@ from langchain_core.prompts import PromptTemplate
 
 # ── Config ────────────────────────────────────────────────────────────────────
 load_dotenv()
-BASE_DIR     = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(BASE_DIR)
+
 CHROMA_PATH  = os.path.join(BASE_DIR, "chroma_db")
 UPLOAD_DIR   = os.path.join(BASE_DIR, "static")
 STATS_DB     = os.path.join(BASE_DIR, "stats.db")
@@ -573,7 +575,7 @@ def reset_all():
     return {"status": "reset complete"}
 
 # ── Serve React Frontend ───────────────────────────────────────────────────────
-FRONTEND_DIST = os.path.join(BASE_DIR, "frontend", "dist")
+FRONTEND_DIST = os.path.join(PROJECT_ROOT, "frontend", "dist")
 if os.path.exists(FRONTEND_DIST):
     app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
 
