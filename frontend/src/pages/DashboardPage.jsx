@@ -238,7 +238,7 @@ export default function DashboardPage() {
                                         {columns.map(col => {
                                             if (col.col_key === 'full_name') {
                                                 return <td style={{ padding: '10px 12px', color: 'var(--gold)', fontWeight: 600, wordBreak: 'break-word', verticalAlign: 'top' }} key={col.col_key}>
-                                                    <a href={`/static/${c.filename}`} target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'none', borderBottom: '1px dashed transparent', transition: 'all 0.2s' }} onMouseEnter={e => e.currentTarget.style.borderBottomColor = 'var(--gold)'} onMouseLeave={e => e.currentTarget.style.borderBottomColor = 'transparent'} title={`Download ${c.filename}`}>
+                                                    <a href={`${import.meta.env.VITE_API_URL || 'https://resume-2-34ki.onrender.com'}/static/${c.filename}`} target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'none', borderBottom: '1px dashed transparent', transition: 'all 0.2s' }} onMouseEnter={e => e.currentTarget.style.borderBottomColor = 'var(--gold)'} onMouseLeave={e => e.currentTarget.style.borderBottomColor = 'transparent'} title={`Download ${c.filename}`}>
                                                         {c.full_name || '—'}
                                                     </a>
                                                 </td>

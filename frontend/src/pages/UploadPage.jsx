@@ -396,7 +396,7 @@ export default function UploadPage() {
                                                     }}>
                                                         {key === 'full_name' && row.filename ? (
                                                             <span
-                                                                onClick={() => setViewingPdf({ url: `/static/${row.filename}`, name: row.full_name })}
+                                                                onClick={() => setViewingPdf({ url: `${API_URL}/static/${row.filename}`, name: row.full_name })}
                                                                 style={{ color: 'inherit', textDecoration: 'none', borderBottom: '1px dashed transparent', transition: 'all 0.2s', cursor: 'pointer' }}
                                                                 onMouseEnter={e => e.currentTarget.style.borderBottomColor = 'var(--gold)'}
                                                                 onMouseLeave={e => e.currentTarget.style.borderBottomColor = 'transparent'}
