@@ -4,6 +4,8 @@ import axios from 'axios'
 import { Upload, Trash2, RefreshCw, X, Download } from 'lucide-react'
 import { exportToExcel, formatCandidatesForExcel } from '../utils/excelUtils'
 
+const API_URL = import.meta.env.VITE_API_URL || 'https://resume-2-34ki.onrender.com';
+
 /* ─── Single chip ─────────────────────────────────────────────────────────── */
 function Chip({ text }) {
     return (
@@ -166,8 +168,8 @@ export default function UploadPage() {
     const [viewingPdf, setViewingPdf] = useState(null)
 
     const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500) }
-    const load = () => axios.get('/api/candidates').then(r => setCandidates(r.data)).catch(() => { })
-    const loadCols = () => axios.get('/api/columns').then(r => {
+    const load = () => axios.get('https://resume-2-34ki.onrender.com/api/candidates').then(r => setCandidates(r.data)).catch(() => { })
+    const loadCols = () => axios.get('https://resume-2-34ki.onrender.com/api/columns').then(r => {
         const base = (r.data.base || []).map(c => ({ key: c.col_key, label: c.col_label, pct: BASE_WIDTHS[c.col_key] || '10%', col_key: c.col_key, col_label: c.col_label }))
         const custom = (r.data.custom || []).map(c => ({ key: c.col_key, label: c.col_label, pct: '10%', col_key: c.col_key, col_label: c.col_label, isCustom: true }))
         setCols([...base, ...custom, { key: '_del', label: '', pct: '4%' }])
@@ -199,7 +201,7 @@ export default function UploadPage() {
         if (!newColForm.label || !newColForm.desc) return showToast('Please fill all fields', 'error')
         try {
             const col_key = newColForm.label.replace(/[^a-zA-Z0-9_]/g, '').replace(/\s+/g, '_').toLowerCase()
-            await axios.post('/api/columns', { col_key, col_label: newColForm.label, description: newColForm.desc })
+            await axios.post('https://resume-2-34ki.onrender.com/api/columns', { col_key, col_label: newColForm.label, description: newColForm.desc })
             setShowAddCol(false)
             setNewColForm({ label: '', desc: '' })
             loadCols()
@@ -214,7 +216,7 @@ export default function UploadPage() {
             const fd = new FormData(); fd.append('file', files[i])
             setProgress(p => p.map((x, idx) => idx === i ? { ...x, status: 'processing', percent: 10 } : x))
             try {
-                await axios.post('/api/upload', fd, {
+                await axios.post('https://resume-2-34ki.onrender.com/api/upload', fd, {
                     onUploadProgress: ev => {
                         const pct = Math.round((ev.loaded / ev.total) * 70)
                         setProgress(p => p.map((x, idx) => idx === i ? { ...x, percent: 10 + pct } : x))
@@ -504,3 +506,4 @@ export default function UploadPage() {
         </div>
     )
 }
+

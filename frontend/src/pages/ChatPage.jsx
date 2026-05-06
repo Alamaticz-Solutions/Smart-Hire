@@ -157,7 +157,7 @@ export default function ChatPage() {
         setLoading(true)
 
         try {
-            const { data } = await axios.post('/api/chat', { message: content })
+            const { data } = await axios.post('https://resume-2-34ki.onrender.com/api/chat', { message: content })
             setMessages(prev => [
                 ...prev,
                 data.type === 'table'
@@ -228,3 +228,4 @@ export default function ChatPage() {
         </div>
     )
 }
+

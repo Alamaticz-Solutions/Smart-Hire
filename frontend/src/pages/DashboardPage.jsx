@@ -39,8 +39,8 @@ export default function DashboardPage() {
 
     useEffect(() => {
         Promise.all([
-            axios.get('/api/candidates'),
-            axios.get('/api/columns')
+            axios.get('https://resume-2-34ki.onrender.com/api/candidates'),
+            axios.get('https://resume-2-34ki.onrender.com/api/columns')
         ]).then(([candRes, colRes]) => {
             setCandidates(candRes.data)
             setColumns([...colRes.data.base, ...colRes.data.custom])
@@ -52,12 +52,12 @@ export default function DashboardPage() {
         if (!newColLabel || !newColDesc) return;
         setAddingCol(true);
         try {
-            const res = await axios.post('/api/columns', {
+            const res = await axios.post('https://resume-2-34ki.onrender.com/api/columns', {
                 col_key: newColLabel,
                 col_label: newColLabel,
                 description: newColDesc
             });
-            const cols = await axios.get('/api/columns');
+            const cols = await axios.get('https://resume-2-34ki.onrender.com/api/columns');
             setColumns([...cols.data.base, ...cols.data.custom]);
             setShowAddCol(false);
             setNewColLabel('');
@@ -313,3 +313,4 @@ export default function DashboardPage() {
         </div>
     )
 }
+
