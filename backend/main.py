@@ -300,24 +300,18 @@ JSON:"""
 
 
 def process_resume(safe_name: str, path: str):
-    _, llm = get_models()
-    embeddings, _ = get_models()
-
-    # Load document
     try:
+        _, llm = get_models()
+        embeddings, _ = get_models()
+
+        # Load document
         if safe_name.lower().endswith(".pdf"):
             loader = PyMuPDFLoader(path)
         else:
             loader = Docx2txtLoader(path)
         docs = loader.load()
         text = "\n".join([d.page_content for d in docs])
-    except Exception as e:
-        data = {"filename": safe_name, "full_name": f"Error loading file: {safe_name}"}
-        log_candidate(data)
-        return
 
-    # LLM extraction
-    try:
         # Fetch custom columns for the prompt
         conn = sqlite3.connect(STATS_DB, timeout=30.0)
         cur = conn.cursor()
@@ -346,8 +340,10 @@ def process_resume(safe_name: str, path: str):
         data['filename'] = safe_name
         log_candidate(data)
     except Exception as e:
-        data = {"filename": safe_name, "full_name": f"Processing Error: {safe_name}"}
+        error_msg = str(e)[:100]
+        data = {"filename": safe_name, "full_name": f"Processing Error: {error_msg}"}
         log_candidate(data)
+        return
 
     # Add to ChromaDB
     try:
@@ -356,8 +352,10 @@ def process_resume(safe_name: str, path: str):
         splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
         chunks   = splitter.split_documents(docs)
         Chroma.from_documents(chunks, embeddings, persist_directory=CHROMA_PATH)
-    except Exception:
+    except Exception as e:
         pass
+
+
 
 
 @app.post("/api/upload")

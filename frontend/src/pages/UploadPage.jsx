@@ -168,8 +168,8 @@ export default function UploadPage() {
     const [viewingPdf, setViewingPdf] = useState(null)
 
     const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500) }
-    const load = () => axios.get('https://resume-2-34ki.onrender.com/api/candidates').then(r => setCandidates(r.data)).catch(() => { })
-    const loadCols = () => axios.get('https://resume-2-34ki.onrender.com/api/columns').then(r => {
+    const load = () => axios.get(`${API_URL}/api/candidates`).then(r => setCandidates(r.data)).catch(() => { })
+    const loadCols = () => axios.get(`${API_URL}/api/columns`).then(r => {
         const base = (r.data.base || []).map(c => ({ key: c.col_key, label: c.col_label, pct: BASE_WIDTHS[c.col_key] || '10%', col_key: c.col_key, col_label: c.col_label }))
         const custom = (r.data.custom || []).map(c => ({ key: c.col_key, label: c.col_label, pct: '10%', col_key: c.col_key, col_label: c.col_label, isCustom: true }))
         setCols([...base, ...custom, { key: '_del', label: '', pct: '4%' }])
@@ -191,7 +191,7 @@ export default function UploadPage() {
     const handleDeleteCol = async (col_key) => {
         if (!window.confirm('Delete this custom column?')) return
         try {
-            await axios.delete(`/api/columns/${col_key}`)
+            await axios.delete(`${API_URL}/api/columns/${col_key}`)
             showToast('Column deleted')
             loadCols()
         } catch (e) { showToast(e.response?.data?.detail || 'Delete failed', 'error') }
@@ -201,7 +201,7 @@ export default function UploadPage() {
         if (!newColForm.label || !newColForm.desc) return showToast('Please fill all fields', 'error')
         try {
             const col_key = newColForm.label.replace(/[^a-zA-Z0-9_]/g, '').replace(/\s+/g, '_').toLowerCase()
-            await axios.post('https://resume-2-34ki.onrender.com/api/columns', { col_key, col_label: newColForm.label, description: newColForm.desc })
+            await axios.post(`${API_URL}/api/columns`, { col_key, col_label: newColForm.label, description: newColForm.desc })
             setShowAddCol(false)
             setNewColForm({ label: '', desc: '' })
             loadCols()
@@ -216,7 +216,7 @@ export default function UploadPage() {
             const fd = new FormData(); fd.append('file', files[i])
             setProgress(p => p.map((x, idx) => idx === i ? { ...x, status: 'processing', percent: 10 } : x))
             try {
-                await axios.post('https://resume-2-34ki.onrender.com/api/upload', fd, {
+                await axios.post(`${API_URL}/api/upload`, fd, {
                     onUploadProgress: ev => {
                         const pct = Math.round((ev.loaded / ev.total) * 70)
                         setProgress(p => p.map((x, idx) => idx === i ? { ...x, percent: 10 + pct } : x))
@@ -240,7 +240,7 @@ export default function UploadPage() {
     const saveEdit = async (ri) => {
         const c = candidates[ri]; if (!c?.id) { setEditCell(null); return }
         try {
-            await axios.put(`/api/candidates/${c.id}`, { [editCell.col]: editVal })
+            await axios.put(`${API_URL}/api/candidates/${c.id}`, { [editCell.col]: editVal })
             setCandidates(prev => prev.map((row, i) => i === ri ? { ...row, [editCell.col]: editVal } : row))
             showToast('Saved!')
         } catch { showToast('Save failed', 'error') }
@@ -248,7 +248,7 @@ export default function UploadPage() {
     }
     const del = async (id) => {
         if (!window.confirm('Delete this candidate?')) return
-        try { await axios.delete(`/api/candidates/${id}`); setCandidates(p => p.filter(c => c.id !== id)); showToast('Deleted') }
+        try { await axios.delete(`${API_URL}/api/candidates/${id}`); setCandidates(p => p.filter(c => c.id !== id)); showToast('Deleted') }
         catch { showToast('Delete failed', 'error') }
     }
 
