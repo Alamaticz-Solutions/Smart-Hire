@@ -58,6 +58,7 @@ _embeddings = None
 _llm        = None
 _models_loading = False
 _model_lock = threading.Lock()
+_processing_lock = threading.Lock()
 
 def get_models():
     global _embeddings, _llm, _models_loading
@@ -299,7 +300,7 @@ Resume Text:
 JSON:"""
 
 
-def process_resume(safe_name: str, path: str):
+def process_resume_logic(safe_name: str, path: str):
     try:
         _, llm = get_models()
         embeddings, _ = get_models()
@@ -325,7 +326,24 @@ def process_resume(safe_name: str, path: str):
                 custom_fields_str += f',\n  "{col_key}": "<{desc}>"'
                 
         prompt_str = EXTRACT_PROMPT.format(text=text[:7000], custom_fields=custom_fields_str)
-        resp = llm.invoke([HumanMessage(content=prompt_str)])
+        
+        # Add a simple retry mechanism for rate limits
+        max_retries = 3
+        resp = None
+        for attempt in range(max_retries):
+            try:
+                resp = llm.invoke([HumanMessage(content=prompt_str)])
+                break
+            except Exception as api_err:
+                if "429" in str(api_err) and attempt < max_retries - 1:
+                    import time
+                    time.sleep(3) # Wait 3 seconds before retrying
+                    continue
+                raise api_err
+                
+        if resp is None:
+            raise Exception("Failed to get response from AI model")
+
         raw  = resp.content.strip()
 
         if "```json" in raw:
@@ -355,7 +373,11 @@ def process_resume(safe_name: str, path: str):
     except Exception as e:
         pass
 
-
+def process_resume(safe_name: str, path: str):
+    # Use a lock to ensure only one resume is processed at a time
+    # This prevents Render memory crashes (OOM), Groq Rate Limits, and SQLite database locks
+    with _processing_lock:
+        process_resume_logic(safe_name, path)
 
 
 @app.post("/api/upload")
