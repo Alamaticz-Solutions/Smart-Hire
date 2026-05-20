@@ -12,7 +12,8 @@ from datetime import datetime
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -105,12 +106,50 @@ def init_db():
             description TEXT
         )
     ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS job_candidates (
+            job_id INTEGER,
+            candidate_id INTEGER,
+            ai_reason TEXT,
+            status TEXT DEFAULT 'matched',
+            PRIMARY KEY (job_id, candidate_id),
+            FOREIGN KEY (job_id) REFERENCES jobs(id),
+            FOREIGN KEY (candidate_id) REFERENCES candidate_metadata(id)
+        )
+    ''')
+
     # Migration: add missing columns
     cur.execute("PRAGMA table_info(candidate_metadata)")
     existing = [c[1] for c in cur.fetchall()]
-    for col in ['current_organization', 'email', 'phone', 'linkedin']:
+    new_cols = {
+        'cdh_exp': 'REAL DEFAULT 0.0',
+        'expected_ctc': 'TEXT',
+        'percentage_hike': 'TEXT',
+        'candidate_interview_status': 'TEXT',
+        'availability_in_days': 'INTEGER',
+        'current_location': 'TEXT',
+        'pref_locations': 'TEXT',
+        'current_client': 'TEXT',
+        'domain': 'TEXT',
+        'tier': 'TEXT',
+        'certification_version': 'TEXT',
+        'current_organization': 'TEXT',
+        'email': 'TEXT',
+        'phone': 'TEXT',
+        'linkedin': 'TEXT',
+        'is_qualified': 'INTEGER DEFAULT 0'
+    }
+    for col, dtype in new_cols.items():
         if col not in existing:
-            cur.execute(f"ALTER TABLE candidate_metadata ADD COLUMN {col} TEXT")
+            cur.execute(f"ALTER TABLE candidate_metadata ADD COLUMN {col} {dtype}")
     conn.commit()
     conn.close()
 
@@ -139,13 +178,16 @@ def log_candidate(data: dict):
     
     cur.execute("DELETE FROM candidate_metadata WHERE filename = ?", (data.get('filename', ''),))
     
+    new_id = None
     if cols:
         cur.execute(
             f"INSERT INTO candidate_metadata ({','.join(cols)}) VALUES ({','.join(['?']*len(cols))})",
             vals
         )
+        new_id = cur.lastrowid
     conn.commit()
     conn.close()
+    return new_id
 
 init_db()
 
@@ -209,14 +251,25 @@ def get_columns():
         {"col_key": "full_name", "col_label": "Name"},
         {"col_key": "total_experience", "col_label": "Total Exp"},
         {"col_key": "pega_experience", "col_label": "Pega Exp"},
-        {"col_key": "skills", "col_label": "Skills"},
-        {"col_key": "certifications", "col_label": "Certifications"},
-        {"col_key": "ctc", "col_label": "CTC"},
+        {"col_key": "cdh_exp", "col_label": "CDH Exp"},
+        {"col_key": "ctc", "col_label": "Current CTC"},
+        {"col_key": "expected_ctc", "col_label": "Exp CTC"},
+        {"col_key": "percentage_hike", "col_label": "Percentage Hike"},
+        {"col_key": "candidate_interview_status", "col_label": "Candidate Interview Status"},
+        {"col_key": "availability_in_days", "col_label": "Availability in Days"},
         {"col_key": "notice_period", "col_label": "Notice Period"},
-        {"col_key": "current_organization", "col_label": "Organization"},
+        {"col_key": "phone", "col_label": "Phone No"},
         {"col_key": "email", "col_label": "Email"},
-        {"col_key": "phone", "col_label": "Phone"},
-        {"col_key": "linkedin", "col_label": "LinkedIn"}
+        {"col_key": "linkedin", "col_label": "LinkedIn"},
+        {"col_key": "current_location", "col_label": "Current Location"},
+        {"col_key": "pref_locations", "col_label": "Pref Locations"},
+        {"col_key": "current_organization", "col_label": "Current Employment"},
+        {"col_key": "current_client", "col_label": "Current Client"},
+        {"col_key": "domain", "col_label": "Domain"},
+        {"col_key": "tier", "col_label": "Tier (Tier1 Tier2 Tier3)"},
+        {"col_key": "certification_version", "col_label": "Certification Version"},
+        {"col_key": "skills", "col_label": "Skills"},
+        {"col_key": "certifications", "col_label": "Certifications"}
     ]
     return {"base": base_cols, "custom": customs}
 
@@ -246,6 +299,23 @@ async def update_candidate(candidate_id: int, request: Request):
     allowed_cols = [c[1] for c in cur.fetchall()]
     updates = {k: v for k, v in body.items() if k in allowed_cols and k != 'id' and v is not None}
     
+    # Server-side validation for numeric edits
+    for int_col in ['notice_period', 'availability_in_days']:
+        if int_col in updates and updates[int_col] != "":
+            try:
+                updates[int_col] = int(float(updates[int_col]))
+            except ValueError:
+                conn.close()
+                return JSONResponse(status_code=400, content={"detail": f"{int_col} must be an integer"})
+            
+    for exp_col in ['total_experience', 'pega_experience', 'cdh_exp']:
+        if exp_col in updates and updates[exp_col] != "":
+            try:
+                updates[exp_col] = float(updates[exp_col])
+            except ValueError:
+                conn.close()
+                return JSONResponse(status_code=400, content={"detail": f"{exp_col} must be a number"})
+
     if not updates:
         conn.close()
         return {"status": "no changes"}
@@ -262,6 +332,7 @@ async def update_candidate(candidate_id: int, request: Request):
 def delete_candidate(candidate_id: int):
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur  = conn.cursor()
+    cur.execute("DELETE FROM job_candidates WHERE candidate_id=?", (candidate_id,))
     cur.execute("DELETE FROM candidate_metadata WHERE id=?", (candidate_id,))
     conn.commit()
     conn.close()
@@ -269,30 +340,42 @@ def delete_candidate(candidate_id: int):
 
 # ── Upload & Extract ────────────────────────────────────────────────────────────
 EXTRACT_PROMPT = """You are an expert resume parser. Extract EVERY piece of information from the resume below.
-Be thorough — search all sections: Summary, Experience, Skills, Education, Certifications, Contact.
+Be extremely thorough — search all sections: Summary, Experience, Skills, Education, Certifications, Contact, Headers, Footers.
+
+Map the extracted data according to the database keys and their corresponding column headings/labels.
 
 Return ONLY a valid JSON object with these exact keys (no extra text, no markdown, just raw JSON):
 
 {{
-  "full_name": "<Full name from top of resume>",
-  "total_experience": <number — total years of professional work experience. Calculate from date ranges if not stated explicitly. Use 0 if fresher>,
-  "pega_experience": <number — years of Pega PRPC/BPM experience specifically. Use 0 if none>,
-  "skills": "<All technical skills comma-separated. Be exhaustive — include programming languages, frameworks, tools, databases, cloud, methodologies>",
-  "certifications": "<All certifications and courses comma-separated. Include issuer if mentioned. Empty string if none>",
-  "ctc": "<Current CTC or expected CTC as stated. Include currency and frequency, e.g. '12 LPA', '₹15,00,000 per annum'. Empty if not found>",
-  "notice_period": "<Notice period as stated, e.g. 'Immediate', '30 days', '60 days', '3 months'. Empty if not found>",
-  "current_organization": "<Current or most recent employer name>",
-  "email": "<Email address>",
-  "phone": "<Phone number with country code if available>",
-  "linkedin": "<Full LinkedIn profile URL if found, else empty string>"{custom_fields}
+  "full_name": "<Full name from top of resume. Matching column heading: 'Name'>",
+  "total_experience": <number — total years of professional work experience. Calculate if needed. 0 if fresher. Matching column heading: 'Total Exp'>,
+  "pega_experience": <number — years of Pega PRPC/BPM experience specifically. 0 if none. Matching column heading: 'Pega Exp'>,
+  "cdh_exp": <number — years of Pega Customer Decision Hub (CDH) experience specifically. 0 if none. Matching column heading: 'CDH Exp'>,
+  "ctc": "<Current CTC / current salary / current package. E.g. '8 LPA', '10.5 Lacs', '900000'. Look for salary, CTC, package, LPA, Lakhs. Empty if not found. Matching column heading: 'Current CTC'>",
+  "expected_ctc": "<Expected CTC / expected salary / expected package. E.g. '12 LPA', '15 Lacs'. Look for expected CTC, ECTC, expected salary, expected package, expectation. Empty if not found. Matching column heading: 'Exp CTC'>",
+  "percentage_hike": "<Expected percentage hike. Calculate if both current and expected CTC are present, else empty. Matching column heading: 'Percentage Hike'>",
+  "candidate_interview_status": "<Default to empty string '' unless resume has recruiter notes on status. Matching column heading: 'Candidate Interview Status'>",
+  "availability_in_days": <number — integer representing days until available. e.g. for 'immediate' use 0, '1 month' use 30. Return null if not found. Matching column heading: 'Availability in Days'>,
+  "notice_period": "<Notice period in integer DAYS ONLY. E.g. for 'Immediate' return 0. For '1 month' return 30. ONLY output digits, no text. Matching column heading: 'Notice Period'>",
+  "phone": "<Phone number with country code. Include only digits and + sign. Matching column heading: 'Phone No'>",
+  "email": "<Email address. Matching column heading: 'Email'>",
+  "linkedin": "<Full LinkedIn profile URL if found, else empty string. Matching column heading: 'LinkedIn'>",
+  "current_location": "<Current city/location. Matching column heading: 'Current Location'>",
+  "pref_locations": "<Preferred locations to work. Matching column heading: 'Pref Locations'>",
+  "current_organization": "<Current or most recent employer name. Matching column heading: 'Current Employment'>",
+  "current_client": "<Current client working for, if mentioned. Otherwise empty. Matching column heading: 'Current Client'>",
+  "domain": "<Domain of expertise, e.g. Banking, Telecom, Healthcare. Extract from recent projects. Matching column heading: 'Domain'>",
+  "tier": "<Tier1, Tier2, or Tier3 based on their college/university or companies. Guess if possible, or empty. Matching column heading: 'Tier (Tier1 Tier2 Tier3)'>",
+  "certification_version": "<Version of Pega certifications, e.g. 8.6, 8.8. Empty if not found. Matching column heading: 'Certification Version'>",
+  "skills": "<All technical skills comma-separated. Matching column heading: 'Skills'>",
+  "certifications": "<All certifications and courses comma-separated. Matching column heading: 'Certifications'>"{custom_fields}
 }}
 
 Rules:
-- total_experience: if the resume says '4 years', use 4. If it shows date ranges like 'Jan 2020 - Present (2024)', calculate the total.
-- pega_experience: count only Pega PRPC/BPM/Platform work specifically.
-- skills: list every technology mentioned — tools, languages, frameworks, databases, cloud services, etc.
-- certifications: include Pega certifications (CSA, CSSA, CPRSA, CPDC), IT certs, and online courses.
-- If a field is truly not present anywhere in the resume, use an empty string "" (not null, not N/A).
+- cdh_exp, pega_experience, total_experience: Must be purely numerical floats or 0.
+- notice_period: Must be strictly an integer (0, 15, 30, 60). No strings.
+- availability_in_days: Integer number of days.
+- If a field is not found, use an empty string "" (or null for numbers). Do not invent data.
 
 Resume Text:
 {text}
@@ -316,14 +399,18 @@ def process_resume_logic(safe_name: str, path: str):
         # Fetch custom columns for the prompt
         conn = sqlite3.connect(STATS_DB, timeout=30.0)
         cur = conn.cursor()
-        cur.execute("SELECT col_key, description FROM custom_columns")
+        cur.execute("SELECT col_key, col_label, description FROM custom_columns")
         custom_cols = cur.fetchall()
         conn.close()
         
         custom_fields_str = ""
         if custom_cols:
-            for col_key, desc in custom_cols:
-                custom_fields_str += f',\n  "{col_key}": "<{desc}>"'
+            for col_key, col_label, desc in custom_cols:
+                # Include the exact column heading / label and description to make extraction precise
+                desc_str = f"Extract data corresponding to column heading '{col_label}'"
+                if desc:
+                    desc_str += f" ({desc})"
+                custom_fields_str += f',\n  "{col_key}": "<{desc_str}>"'
                 
         prompt_str = EXTRACT_PROMPT.format(text=text[:7000], custom_fields=custom_fields_str)
         
@@ -355,8 +442,47 @@ def process_resume_logic(safe_name: str, path: str):
             raw = raw[start:end+1]
 
         data = json.loads(raw)
+
+        # -- Start Data Validation & Normalization --
+        import re
+        
+        # Phone: Keep only digits and +
+        if 'phone' in data and data['phone']:
+            data['phone'] = re.sub(r'[^\d+]', '', str(data['phone']))
+            
+        # Email: Basic validation
+        if 'email' in data and data['email']:
+            if '@' not in str(data['email']):
+                data['email'] = ""
+                
+        # Experience: Force float
+        for exp_field in ['total_experience', 'pega_experience', 'cdh_exp']:
+            if exp_field in data and data[exp_field] not in [None, ""]:
+                try:
+                    match = re.search(r'\d+(\.\d+)?', str(data[exp_field]))
+                    data[exp_field] = float(match.group()) if match else 0.0
+                except Exception:
+                    data[exp_field] = 0.0
+                    
+        # Integer fields
+        for num_field in ['notice_period', 'availability_in_days']:
+            if num_field in data and data[num_field] not in [None, ""]:
+                np_str = str(data[num_field]).lower()
+                if 'immediate' in np_str:
+                    data[num_field] = 0
+                else:
+                    try:
+                        match = re.search(r'\d+', np_str)
+                        val = int(match.group()) if match else ""
+                        if match and 'month' in np_str:
+                            val = val * 30
+                        data[num_field] = val
+                    except Exception:
+                        data[num_field] = ""
+        # -- End Data Validation & Normalization --
+
         data['filename'] = safe_name
-        log_candidate(data)
+        candidate_id = log_candidate(data)
     except Exception as e:
         error_msg = str(e)[:100]
         data = {"filename": safe_name, "full_name": f"Processing Error: {error_msg}"}
@@ -372,6 +498,86 @@ def process_resume_logic(safe_name: str, path: str):
         Chroma.from_documents(chunks, embeddings, persist_directory=CHROMA_PATH)
     except Exception as e:
         pass
+
+    # Automatically match this candidate to all active JDs in the database
+    if candidate_id:
+        try:
+            # Query all jobs (JDs)
+            conn = sqlite3.connect(STATS_DB, timeout=30.0)
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            cur.execute("SELECT id, title, description FROM jobs")
+            jobs = [dict(row) for row in cur.fetchall()]
+            conn.close()
+
+            if jobs:
+                # Format JDs for the LLM
+                jds_str_list = []
+                for job in jobs:
+                    jds_str_list.append(f"JD ID: {job['id']}\nTitle: {job['title']}\nDescription: {job['description']}\n---")
+                formatted_jds = "\n".join(jds_str_list)
+
+                prompt = f"""You are an expert technical recruiter. Evaluate candidate "{data.get('full_name', 'Candidate')}" against the following Job Descriptions "pin to pin".
+
+Candidate Details:
+- Skills: {data.get('skills', '')}
+- Experience: {data.get('total_experience', 0)} years (Pega Experience: {data.get('pega_experience', 0)} years, CDH Experience: {data.get('cdh_exp', 0)} years)
+- Certifications: {data.get('certifications', '')}
+
+Job Descriptions:
+{formatted_jds}
+
+Rules for evaluation:
+1. Numeric Experience Matching: If a Job Description asks for "X+ years of experience", a candidate matches if their experience is greater than or equal to X.
+   - For example: if Job Description requires "1+ years of experience in pega", then candidates with 3.0 years, 4.0 years, or 4.8 years of Pega experience all match perfectly because 3.0 >= 1.0, 4.0 >= 1.0, and 4.8 >= 1.0.
+2. Certification Abbreviations:
+   - CSSA is equivalent to any of: "PEGA Certified Senior System Architect", "Pega Certified Senior System Architect", "Certified Pega Senior System Architect", "Senior System Architect", or "CSSA".
+   - CSA is equivalent to any of: "PEGA Certified System Architect", "Pega Certified System Architect", "Certified Pega System Architect", "System Architect", or "CSA".
+   - LSA is equivalent to any of: "PEGA Certified Lead System Architect", "Pega Certified Lead System Architect", "Certified Pega Lead System Architect", "Lead System Architect", or "LSA".
+3. Do not invent requirements. If the Job Description only mentions Pega experience, do NOT reject candidates for lacking CSSA or other unrelated certifications.
+
+For each Job Description, decide if the candidate is a good match based on the rules.
+Respond with a JSON list of objects for matches only:
+[
+  {{"job_id": {chr(123)}job_id{chr(125)}, "reason": "<1-sentence explanation of fit based on specific experience and skills>"}}
+]
+If there are no matches, return an empty list [].
+Return ONLY the JSON block, no markdown, no other text."""
+
+                resp = llm.invoke([HumanMessage(content=prompt)])
+                raw = resp.content.strip()
+                if "```json" in raw:
+                    raw = raw.split("```json")[1].split("```")[0].strip()
+                elif "```" in raw:
+                    raw = raw.split("```")[1].split("```")[0].strip()
+                start, end = raw.find('['), raw.rfind(']')
+                if start != -1 and end != -1:
+                    raw = raw[start:end+1]
+                
+                matches = json.loads(raw)
+                if matches:
+                    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+                    cur = conn.cursor()
+                    matched_any = False
+                    for match in matches:
+                        job_id = match.get("job_id")
+                        reason = match.get("reason", "Matched during resume upload.")
+                        if job_id:
+                            cur.execute("""
+                                INSERT INTO job_candidates (job_id, candidate_id, ai_reason, status) 
+                                VALUES (?, ?, ?, 'matched')
+                                ON CONFLICT(job_id, candidate_id) DO UPDATE SET ai_reason = excluded.ai_reason
+                            """, (job_id, candidate_id, reason))
+                            matched_any = True
+                    
+                    if matched_any:
+                        # Automatically mark candidate as qualified
+                        cur.execute("UPDATE candidate_metadata SET is_qualified = 1 WHERE id = ?", (candidate_id,))
+                    
+                    conn.commit()
+                    conn.close()
+        except Exception as match_err:
+            print(f"Error auto-matching uploaded resume: {match_err}")
 
 def process_resume(safe_name: str, path: str):
     # Use a lock to ensure only one resume is processed at a time
@@ -580,6 +786,363 @@ Answer:""")
         return {"type": "text", "answer": f"Search error: {e}"}
 
 
+# ── JD Matching ────────────────────────────────────────────────────────────────
+class JDMatchRequest(BaseModel):
+    job_description: str
+
+@app.post("/api/match-jd")
+def match_jd(req: JDMatchRequest):
+    jd = req.job_description.strip()
+    if not jd:
+        raise HTTPException(status_code=400, detail="Empty Job Description")
+    
+    if not os.path.exists(CHROMA_PATH):
+        return {"matches": []}
+
+    embeddings, llm = get_models()
+    db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings)
+    
+    try:
+        docs = db.similarity_search(jd, k=15)
+    except Exception:
+        return {"matches": []}
+    
+    matched_sources = set()
+    for d in docs:
+        if 'source' in d.metadata:
+            matched_sources.add(d.metadata['source'])
+            
+    if not matched_sources:
+        return {"matches": []}
+
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    placeholders = ",".join("?" * len(matched_sources))
+    cur.execute(f"SELECT * FROM candidate_metadata WHERE filename IN ({placeholders})", list(matched_sources))
+    db_rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+
+    if not db_rows:
+        return {"matches": []}
+
+    candidate_lines = []
+    for r in db_rows:
+        candidate_lines.append(
+            f"Name: {r.get('full_name')} | "
+            f"Total Experience: {r.get('total_experience')} yrs | "
+            f"Pega Experience: {r.get('pega_experience')} yrs | "
+            f"CDH Experience: {r.get('cdh_exp')} yrs | "
+            f"Skills: {r.get('skills')} | "
+            f"Certifications: {r.get('certifications')}"
+        )
+    
+    prompt = f"""You are an expert technical recruiter. Evaluate the following candidates against the Job Description "pin to pin".
+
+Job Description:
+{jd[:2000]}
+
+Candidates to evaluate:
+{chr(10).join(candidate_lines)}
+
+Rules for evaluation:
+1. Numeric Experience Matching: If a Job Description asks for "X+ years of experience", a candidate matches if their experience is greater than or equal to X.
+   - For example: if Job Description requires "1+ years of experience in pega", then candidates with 3.0 years, 4.0 years, or 4.8 years of Pega experience all match perfectly because 3.0 >= 1.0, 4.0 >= 1.0, and 4.8 >= 1.0.
+2. Certification Abbreviations:
+   - CSSA is equivalent to any of: "PEGA Certified Senior System Architect", "Pega Certified Senior System Architect", "Certified Pega Senior System Architect", "Senior System Architect", or "CSSA".
+   - CSA is equivalent to any of: "PEGA Certified System Architect", "Pega Certified System Architect", "Certified Pega System Architect", "System Architect", or "CSA".
+   - LSA is equivalent to any of: "PEGA Certified Lead System Architect", "Pega Certified Lead System Architect", "Certified Pega Lead System Architect", "Lead System Architect", or "LSA".
+3. Do not invent requirements. If the Job Description only mentions Pega experience, do NOT reject candidates for lacking CSSA or other unrelated certifications.
+
+For EACH candidate, decide if they match based on the rules. If they match, provide a 1-sentence explanation of why they are a good fit.
+Format your response exactly as a JSON list of objects:
+[
+  {{
+    "name": "Candidate Name",
+    "reason": "1-sentence explanation of why they fit based on their specific experience and skills"
+  }}
+]
+Return ONLY the raw JSON block, no markdown, no other text."""
+
+    try:
+        resp = llm.invoke([HumanMessage(content=prompt)])
+        raw = resp.content.strip()
+        if "```json" in raw:
+            raw = raw.split("```json")[1].split("```")[0].strip()
+        elif "```" in raw:
+            raw = raw.split("```")[1].split("```")[0].strip()
+        
+        start, end = raw.find('['), raw.rfind(']')
+        if start != -1 and end != -1:
+            raw = raw[start:end+1]
+        
+        ai_reasons = json.loads(raw)
+        reason_map = {str(item.get("name", "")).strip().lower(): item.get("reason", "") for item in ai_reasons}
+    except Exception:
+        reason_map = {}
+
+    matches = []
+    for r in db_rows:
+        name = str(r.get('full_name', '')).strip().lower()
+        reason = reason_map.get(name, "Matched based on resume content similarity.")
+        if reason == "Matched based on resume content similarity.":
+            for k, v in reason_map.items():
+                if k in name or name in k:
+                    reason = v
+                    break
+        r['ai_reason'] = reason
+        matches.append(r)
+        
+    return {"matches": matches}
+
+
+# ── Jobs & JDs ─────────────────────────────────────────────────────────────────
+class JobCreate(BaseModel):
+    title: str
+    description: str
+
+class JobStatusUpdate(BaseModel):
+    status: Optional[str] = None
+    ai_reason: Optional[str] = None
+
+@app.get("/api/jobs")
+def get_jobs():
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM jobs ORDER BY created_at DESC")
+    jobs = [dict(row) for row in cur.fetchall()]
+    # Get candidate counts
+    for job in jobs:
+        cur.execute("SELECT status, COUNT(*) as cnt FROM job_candidates WHERE job_id = ? GROUP BY status", (job['id'],))
+        counts = {r['status']: r['cnt'] for r in cur.fetchall()}
+        job['matched_count'] = counts.get('matched', 0)
+        job['selected_count'] = counts.get('selected', 0)
+    conn.close()
+    return jobs
+
+def run_match_candidates_background(job_id: int):
+    try:
+        match_candidates_for_job(job_id)
+    except Exception as e:
+        print(f"Error matching candidates in background for job {job_id}: {e}")
+
+@app.post("/api/jobs")
+def create_job(job: JobCreate):
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    cur.execute("INSERT INTO jobs (title, description) VALUES (?, ?)", (job.title, job.description))
+    job_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    
+    # Run the perfect matcher synchronously so matches are populated immediately
+    try:
+        match_candidates_for_job(job_id)
+    except Exception as e:
+        print(f"Error matching candidates for job {job_id}: {e}")
+        
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
+    updated_job = dict(cur.fetchone())
+    
+    # Get candidate counts
+    cur.execute("SELECT status, COUNT(*) as cnt FROM job_candidates WHERE job_id = ? GROUP BY status", (job_id,))
+    counts = {r['status']: r['cnt'] for r in cur.fetchall()}
+    updated_job['matched_count'] = counts.get('matched', 0)
+    updated_job['selected_count'] = counts.get('selected', 0)
+    conn.close()
+    
+    return updated_job
+
+@app.put("/api/jobs/{job_id}")
+def update_job(job_id: int, job: JobCreate):
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    cur.execute("UPDATE jobs SET title = ?, description = ? WHERE id = ?", (job.title, job.description, job_id))
+    if cur.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+    conn.commit()
+    conn.close()
+    
+    # Re-trigger candidate matching for the updated job description!
+    try:
+        match_candidates_for_job(job_id)
+    except Exception as e:
+        print(f"Error matching candidates for job {job_id}: {e}")
+        
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
+    updated_job = dict(cur.fetchone())
+    
+    # Get candidate counts
+    cur.execute("SELECT status, COUNT(*) as cnt FROM job_candidates WHERE job_id = ? GROUP BY status", (job_id,))
+    counts = {r['status']: r['cnt'] for r in cur.fetchall()}
+    updated_job['matched_count'] = counts.get('matched', 0)
+    updated_job['selected_count'] = counts.get('selected', 0)
+    conn.close()
+    
+    return updated_job
+
+@app.delete("/api/jobs/{job_id}")
+def delete_job(job_id: int):
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    cur.execute("DELETE FROM job_candidates WHERE job_id = ?", (job_id,))
+    cur.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+    conn.commit()
+    conn.close()
+    return {"message": "Job deleted"}
+
+@app.get("/api/jobs/{job_id}/candidates")
+def get_job_candidates(job_id: int):
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT c.*, jc.ai_reason, jc.status as job_status
+        FROM candidate_metadata c
+        JOIN job_candidates jc ON c.id = jc.candidate_id
+        WHERE jc.job_id = ?
+    """, (job_id,))
+    candidates = [dict(row) for row in cur.fetchall()]
+    conn.close()
+    return candidates
+
+@app.put("/api/jobs/{job_id}/candidates/{candidate_id}")
+def update_job_candidate_status(job_id: int, candidate_id: int, update: JobStatusUpdate):
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    
+    if update.status is not None:
+        if update.status not in ["matched", "selected"]:
+            conn.close()
+            raise HTTPException(status_code=400, detail="Invalid status")
+        cur.execute("UPDATE job_candidates SET status = ? WHERE job_id = ? AND candidate_id = ?", (update.status, job_id, candidate_id))
+        
+    if update.ai_reason is not None:
+        cur.execute("UPDATE job_candidates SET ai_reason = ? WHERE job_id = ? AND candidate_id = ?", (update.ai_reason, job_id, candidate_id))
+        
+    conn.commit()
+    conn.close()
+    return {"message": "Status updated"}
+
+@app.delete("/api/jobs/{job_id}/candidates/{candidate_id}")
+def delete_job_candidate(job_id: int, candidate_id: int):
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    cur.execute("DELETE FROM job_candidates WHERE job_id = ? AND candidate_id = ?", (job_id, candidate_id))
+    conn.commit()
+    conn.close()
+    return {"message": "Candidate removed from job"}
+
+@app.post("/api/jobs/{job_id}/match")
+def match_candidates_for_job(job_id: int):
+    # This endpoint finds matching candidates for a job and saves them to job_candidates
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT description FROM jobs WHERE id = ?", (job_id,))
+    job = cur.fetchone()
+    if not job:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    jd = job['description']
+    
+    # Query all candidates directly from the database so that no candidate is missed by semantic chunking search
+    cur.execute("SELECT * FROM candidate_metadata")
+    db_rows = [dict(r) for r in cur.fetchall()]
+
+    if not db_rows:
+        conn.close()
+        return {"message": "No candidates found in DB"}
+
+    candidate_lines = []
+    for r in db_rows:
+        candidate_lines.append(
+            f"Name: {r.get('full_name')} | "
+            f"Total Experience: {r.get('total_experience')} yrs | "
+            f"Pega Experience: {r.get('pega_experience')} yrs | "
+            f"CDH Experience: {r.get('cdh_exp')} yrs | "
+            f"Skills: {r.get('skills')} | "
+            f"Certifications: {r.get('certifications')}"
+        )
+    
+    emb, llm = get_models()
+    
+    prompt = f"""You are an expert technical recruiter. Evaluate these candidates against the Job Description "pin to pin".
+
+Job Description:
+{jd[:2000]}
+
+Candidates to evaluate:
+{chr(10).join(candidate_lines)}
+
+Rules for evaluation:
+1. Numeric Experience Matching: If a Job Description asks for "X+ years of experience", a candidate matches if their experience is greater than or equal to X.
+   - For example: if Job Description requires "1+ years of experience in pega", then candidates with 3.0 years, 4.0 years, or 4.8 years of Pega experience all match perfectly because 3.0 >= 1.0, 4.0 >= 1.0, and 4.8 >= 1.0.
+2. Certification Abbreviations:
+   - CSSA is equivalent to any of: "PEGA Certified Senior System Architect", "Pega Certified Senior System Architect", "Certified Pega Senior System Architect", "Senior System Architect", or "CSSA".
+   - CSA is equivalent to any of: "PEGA Certified System Architect", "Pega Certified System Architect", "Certified Pega System Architect", "System Architect", or "CSA".
+   - LSA is equivalent to any of: "PEGA Certified Lead System Architect", "Pega Certified Lead System Architect", "Certified Pega Lead System Architect", "Lead System Architect", or "LSA".
+3. Do not invent requirements. If the Job Description only mentions Pega experience, do NOT reject candidates for lacking CSSA or other unrelated certifications.
+
+Format your response exactly as a JSON list of objects for matching candidates only:
+[
+  {{
+    "name": "Candidate Name",
+    "reason": "1-sentence explanation of why they fit based on their specific experience and skills"
+  }}
+]
+Return ONLY the raw JSON block, no markdown, no other text."""
+
+    try:
+        resp = llm.invoke([HumanMessage(content=prompt)])
+        raw = resp.content.strip()
+        if "```json" in raw: raw = raw.split("```json")[1].split("```")[0].strip()
+        elif "```" in raw: raw = raw.split("```")[1].split("```")[0].strip()
+        start, end = raw.find('['), raw.rfind(']')
+        if start != -1 and end != -1: raw = raw[start:end+1]
+        ai_reasons = json.loads(raw)
+        reason_map = {str(item.get("name", "")).strip().lower(): item.get("reason", "") for item in ai_reasons}
+    except Exception:
+        reason_map = {}
+
+    # Clear old automatic matches for this job that haven't been selected
+    cur.execute("DELETE FROM job_candidates WHERE job_id = ? AND status = 'matched'", (job_id,))
+
+    matches_added = 0
+    for r in db_rows:
+        name = str(r.get('full_name', '')).strip().lower()
+        reason = None
+        for k, v in reason_map.items():
+            if k in name or name in k:
+                reason = v
+                break
+        
+        if reason:
+            # Upsert into job_candidates
+            cur.execute("""
+                INSERT INTO job_candidates (job_id, candidate_id, ai_reason, status) 
+                VALUES (?, ?, ?, 'matched')
+                ON CONFLICT(job_id, candidate_id) DO UPDATE SET ai_reason = excluded.ai_reason
+            """, (job_id, r['id'], reason))
+            
+            # Also mark candidate as qualified
+            cur.execute("UPDATE candidate_metadata SET is_qualified = 1 WHERE id = ?", (r['id'],))
+            matches_added += 1
+
+    conn.commit()
+    conn.close()
+    return {"message": f"Successfully matched and added {matches_added} candidates to job"}
+
+
 # ── Reset ──────────────────────────────────────────────────────────────────────
 @app.post("/api/reset")
 def reset_all():
@@ -598,4 +1161,13 @@ def reset_all():
 FRONTEND_DIST = os.path.join(PROJECT_ROOT, "frontend", "dist")
 if os.path.exists(FRONTEND_DIST):
     app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
+
+@app.exception_handler(StarletteHTTPException)
+async def catch_all_spa_routes(request: Request, exc: StarletteHTTPException):
+    # If a 404 occurs and it's not an API call, serve the React index.html for client-side routing
+    if exc.status_code == 404 and not request.url.path.startswith("/api/"):
+        index_file = os.path.join(FRONTEND_DIST, "index.html")
+        if os.path.exists(index_file):
+            return FileResponse(index_file)
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 

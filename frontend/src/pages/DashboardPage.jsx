@@ -4,7 +4,7 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
     ResponsiveContainer, Cell
 } from 'recharts'
-import { Users, Clock, Download, Plus } from 'lucide-react'
+import { Users, Clock, Download, Plus, Trash2, FileText } from 'lucide-react'
 import { exportToExcel, formatCandidatesForExcel } from '../utils/excelUtils'
 
 function SkillBadges({ skills }) {
@@ -14,7 +14,7 @@ function SkillBadges({ skills }) {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
             {list.map((s, i) => (
                 <span key={i} style={{
-                    background: 'rgba(33,158,188,0.12)', border: '1px solid rgba(33,158,188,0.25)',
+                    background: 'rgba(var(--sky-rgb), 0.12)', border: '1px solid rgba(var(--sky-rgb), 0.25)',
                     borderRadius: 5, padding: '1px 7px', fontSize: '0.73rem',
                     color: 'var(--sky-dim)', whiteSpace: 'nowrap', lineHeight: '1.6',
                 }}>{s}</span>
@@ -39,8 +39,8 @@ export default function DashboardPage() {
 
     useEffect(() => {
         Promise.all([
-            axios.get('https://resume-2-34ki.onrender.com/api/candidates'),
-            axios.get('https://resume-2-34ki.onrender.com/api/columns')
+            axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/candidates`),
+            axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/columns`)
         ]).then(([candRes, colRes]) => {
             setCandidates(candRes.data)
             setColumns([...colRes.data.base, ...colRes.data.custom])
@@ -52,12 +52,12 @@ export default function DashboardPage() {
         if (!newColLabel || !newColDesc) return;
         setAddingCol(true);
         try {
-            const res = await axios.post('https://resume-2-34ki.onrender.com/api/columns', {
+            const res = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/columns`, {
                 col_key: newColLabel,
                 col_label: newColLabel,
                 description: newColDesc
             });
-            const cols = await axios.get('https://resume-2-34ki.onrender.com/api/columns');
+            const cols = await axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/columns`);
             setColumns([...cols.data.base, ...cols.data.custom]);
             setShowAddCol(false);
             setNewColLabel('');
@@ -69,13 +69,26 @@ export default function DashboardPage() {
         }
     }
 
+    const handleDeleteCandidate = async (id, name) => {
+        if (!window.confirm(`Are you sure you want to delete ${name || 'this candidate'}?`)) return;
+        try {
+            await axios.delete(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/candidates/${id}`);
+            setCandidates(prev => prev.filter(c => c.id !== id));
+        } catch (e) {
+            alert('Failed to delete candidate: ' + (e.response?.data?.detail || e.message));
+        }
+    }
+
     const totalCandidates = candidates.length
-    const immediate = candidates.filter(c =>
-        (c.notice_period || '').toLowerCase().includes('immediate')
-    ).length
+    const isImmediate = (val) => {
+        if (val === 0 || val === '0') return true;
+        return String(val || '').toLowerCase().includes('immediate');
+    };
+
+    const immediate = candidates.filter(c => isImmediate(c.notice_period)).length
 
     const filteredCandidates = filterType === 'immediate'
-        ? candidates.filter(c => (c.notice_period || '').toLowerCase().includes('immediate'))
+        ? candidates.filter(c => isImmediate(c.notice_period))
         : candidates
 
     const handleKpiClick = (type) => {
@@ -84,14 +97,16 @@ export default function DashboardPage() {
     }
 
     const expChartData = candidates.map(c => ({
-        name: (c.full_name || c.filename || '?').split(' ')[0],
+        name: c.full_name || c.filename || '?',
         'Total Exp': +c.total_experience || 0,
         'Pega Exp': +c.pega_experience || 0,
     }))
 
     const noticeCounts = {}
     candidates.forEach(c => {
-        const k = (c.notice_period || '').trim()
+        let k = String(c.notice_period ?? '').trim()
+        if (k === '0') k = 'Immediate'
+        else if (k !== '' && !isNaN(k)) k = `${k} days`
         if (k) noticeCounts[k] = (noticeCounts[k] || 0) + 1
     })
     const noticeData = Object.entries(noticeCounts).map(([name, value]) => ({ name, value }))
@@ -100,7 +115,7 @@ export default function DashboardPage() {
         if (!active || !payload?.length) return null
         return (
             <div style={{
-                background: 'rgba(1,22,39,0.95)', border: '1px solid rgba(255,183,3,0.3)',
+                background: 'rgba(var(--navy-dark-rgb), 0.95)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
                 borderRadius: 10, padding: '10px 14px', fontSize: '0.84rem'
             }}>
                 <p style={{ color: 'var(--gold)', marginBottom: 6, fontWeight: 700 }}>{label}</p>
@@ -134,7 +149,7 @@ export default function DashboardPage() {
                     >
                         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
                             <div style={{
-                                width: 42, height: 42, background: 'rgba(255,183,3,0.12)',
+                                width: 42, height: 42, background: 'rgba(var(--gold-rgb), 0.12)',
                                 borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center'
                             }}>
                                 <Icon size={20} color="var(--gold)" />
@@ -180,8 +195,8 @@ export default function DashboardPage() {
                                     <XAxis dataKey="name" tick={{ fill: '#8ECAE6', fontSize: 12 }} angle={-30} textAnchor="end" />
                                     <YAxis tick={{ fill: '#8ECAE6', fontSize: 12 }} allowDecimals={false} />
                                     <Tooltip contentStyle={{
-                                        background: 'rgba(1,22,39,0.95)',
-                                        border: '1px solid rgba(255,183,3,0.3)', borderRadius: 10, color: '#fff'
+                                        background: 'rgba(var(--navy-dark-rgb), 0.95)',
+                                        border: '1px solid rgba(var(--gold-rgb), 0.3)', borderRadius: 10, color: '#fff'
                                     }} />
                                     <Bar dataKey="value" radius={[6, 6, 0, 0]}>
                                         {noticeData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
@@ -214,9 +229,9 @@ export default function DashboardPage() {
                                 </button>
                             </div>
                         </div>
-                        <table style={{ minWidth: '1000px', width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                        <table style={{ minWidth: '2600px', width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                             <thead>
-                                <tr style={{ background: 'rgba(2,48,71,0.9)' }}>
+                                <tr style={{ background: 'rgba(var(--navy-rgb), 0.9)' }}>
                                     {columns.map(h => (
                                         <th key={h.col_key} style={{
                                             padding: '11px 12px', textAlign: 'left',
@@ -227,18 +242,41 @@ export default function DashboardPage() {
                                             {h.col_label}
                                         </th>
                                     ))}
+                                    <th style={{
+                                        padding: '11px 12px', textAlign: 'center',
+                                        fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.78rem',
+                                        color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.04rem',
+                                        borderBottom: '1px solid var(--border)'
+                                    }}>
+                                        Actions
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {filteredCandidates.map((c, i) => (
                                     <tr key={i} style={{
-                                        borderBottom: '1px solid rgba(33,158,188,0.1)',
-                                        background: i % 2 === 0 ? 'rgba(2,48,71,0.2)' : 'transparent'
+                                        borderBottom: '1px solid rgba(var(--sky-rgb), 0.1)',
+                                        background: i % 2 === 0 ? 'rgba(var(--navy-rgb), 0.2)' : 'transparent'
                                     }}>
                                         {columns.map(col => {
                                             if (col.col_key === 'full_name') {
-                                                return <td style={{ padding: '10px 12px', color: 'var(--gold)', fontWeight: 600, wordBreak: 'break-word', verticalAlign: 'top' }} key={col.col_key}>
-                                                    <a href={`${import.meta.env.VITE_API_URL || 'https://resume-2-34ki.onrender.com'}/static/${c.filename}`} target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'none', borderBottom: '1px dashed transparent', transition: 'all 0.2s' }} onMouseEnter={e => e.currentTarget.style.borderBottomColor = 'var(--gold)'} onMouseLeave={e => e.currentTarget.style.borderBottomColor = 'transparent'} title={`Download ${c.filename}`}>
+                                                return <td style={{ padding: '10px 12px', verticalAlign: 'top', minWidth: '180px' }} key={col.col_key}>
+                                                    <a 
+                                                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/static/${c.filename}`} 
+                                                        target="_blank" 
+                                                        rel="noreferrer" 
+                                                        style={{ 
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '6px',
+                                                            color: 'var(--gold)', 
+                                                            textDecoration: 'underline', 
+                                                            fontWeight: 700,
+                                                            transition: 'color 0.2s' 
+                                                        }} 
+                                                        title={`Download ${c.filename}`}
+                                                    >
+                                                        <FileText size={14} style={{ flexShrink: 0, color: 'var(--gold)' }} />
                                                         {c.full_name || '—'}
                                                     </a>
                                                 </td>
@@ -248,14 +286,16 @@ export default function DashboardPage() {
                                                     <SkillBadges skills={c.skills} />
                                                 </td>
                                             }
-                                            if (col.col_key === 'notice_period') {
+                                            if (col.col_key === 'notice_period' || col.col_key === 'availability_in_days') {
+                                                const val = c[col.col_key];
+                                                const displayVal = val === 0 || val === '0' ? 'Immediate' : (val !== null && val !== '' && !isNaN(val) ? `${val} days` : (val || '—'));
                                                 return <td key={col.col_key} style={{ padding: '10px 12px', verticalAlign: 'top' }}>
-                                                    <span className={`badge ${(c.notice_period || '').toLowerCase().includes('immediate') ? 'badge-green' : 'badge-sky'}`}>
-                                                        {c.notice_period || '—'}
+                                                    <span className={`badge ${isImmediate(val) ? 'badge-green' : 'badge-sky'}`}>
+                                                        {displayVal}
                                                     </span>
                                                 </td>
                                             }
-                                            if (col.col_key === 'total_experience' || col.col_key === 'pega_experience') {
+                                            if (col.col_key === 'total_experience' || col.col_key === 'pega_experience' || col.col_key === 'cdh_exp') {
                                                 return <td key={col.col_key} style={{ padding: '10px 12px', textAlign: 'center', verticalAlign: 'top' }}>
                                                     {c[col.col_key] ? `${c[col.col_key]} yrs` : '—'}
                                                 </td>
@@ -264,6 +304,16 @@ export default function DashboardPage() {
                                                 {c[col.col_key] || '—'}
                                             </td>
                                         })}
+                                        <td style={{ padding: '10px 12px', textAlign: 'center', verticalAlign: 'top' }}>
+                                            <button
+                                                className="btn btn-danger"
+                                                style={{ padding: '6px 10px', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.75rem' }}
+                                                onClick={() => handleDeleteCandidate(c.id, c.full_name)}
+                                                title="Delete Candidate"
+                                            >
+                                                <Trash2 size={14} /> Delete
+                                            </button>
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -288,7 +338,7 @@ export default function DashboardPage() {
                                 value={newColLabel} 
                                 onChange={e => setNewColLabel(e.target.value)} 
                                 placeholder="e.g. Github Profile" 
-                                style={{ width: '100%', padding: '10px', background: 'rgba(1,22,39,0.8)', border: '1px solid var(--border)', color: '#fff', borderRadius: 6 }}
+                                style={{ width: '100%', padding: '10px', background: 'rgba(var(--navy-dark-rgb), 0.8)', border: '1px solid var(--border)', color: '#fff', borderRadius: 6 }}
                             />
                         </div>
                         <div style={{ marginBottom: '1.5rem' }}>
@@ -298,7 +348,7 @@ export default function DashboardPage() {
                                 onChange={e => setNewColDesc(e.target.value)} 
                                 placeholder="e.g. Extract the candidate's Github URL. Leave empty if none." 
                                 rows={3}
-                                style={{ width: '100%', padding: '10px', background: 'rgba(1,22,39,0.8)', border: '1px solid var(--border)', color: '#fff', borderRadius: 6, resize: 'vertical' }}
+                                style={{ width: '100%', padding: '10px', background: 'rgba(var(--navy-dark-rgb), 0.8)', border: '1px solid var(--border)', color: '#fff', borderRadius: 6, resize: 'vertical' }}
                             />
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>

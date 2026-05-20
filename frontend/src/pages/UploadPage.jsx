@@ -1,16 +1,16 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useDropzone } from 'react-dropzone'
 import axios from 'axios'
-import { Upload, Trash2, RefreshCw, X, Download } from 'lucide-react'
+import { UploadCloud, Trash2, CheckCircle, FileText, Search, Plus, Filter, Loader, RefreshCw, Download, Upload, X, Check, Eye } from 'lucide-react'
 import { exportToExcel, formatCandidatesForExcel } from '../utils/excelUtils'
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://resume-2-34ki.onrender.com';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 /* ─── Single chip ─────────────────────────────────────────────────────────── */
 function Chip({ text }) {
     return (
         <span style={{
-            background: 'rgba(33,158,188,0.12)', border: '1px solid rgba(33,158,188,0.25)',
+            background: 'rgba(var(--sky-rgb), 0.12)', border: '1px solid rgba(var(--sky-rgb), 0.25)',
             borderRadius: 5, padding: '2px 7px', fontSize: '0.73rem',
             color: 'var(--sky-dim)', whiteSpace: 'nowrap', lineHeight: '1.7',
             display: 'inline-block', maxWidth: '100%', overflow: 'hidden',
@@ -22,35 +22,14 @@ function Chip({ text }) {
 /* ─── Collapsible popup cell ──────────────────────────────────────────────── */
 function ExpandableCell({ value, onEdit }) {
     const [open, setOpen] = useState(false)
-    const [pos, setPos] = useState({ top: 0, left: 0 })
     const btnRef = useRef(null)
 
     const items = value ? String(value).split(',').map(s => s.trim()).filter(Boolean) : []
 
     const openPopup = (e) => {
         e.stopPropagation()
-        const rect = (btnRef.current || e.currentTarget).getBoundingClientRect()
-        const POPUP_H = 230  // estimated popup height
-        const POPUP_W = 310  // popup width
-
-        // If not enough space below → show above the button
-        const top = (rect.bottom + POPUP_H + 6 > window.innerHeight)
-            ? rect.top - POPUP_H - 6
-            : rect.bottom + 6
-
-        // Clamp left so popup doesn't go off the right edge
-        const left = Math.min(rect.left, window.innerWidth - POPUP_W - 10)
-
-        setPos({ top, left })
         setOpen(true)
     }
-
-    useEffect(() => {
-        if (!open) return
-        const close = () => setOpen(false)
-        document.addEventListener('click', close)
-        return () => document.removeEventListener('click', close)
-    }, [open])
 
     if (items.length === 0) return <span style={{ opacity: 0.35 }}>—</span>
 
@@ -59,7 +38,7 @@ function ExpandableCell({ value, onEdit }) {
             {/* Always inside the td — compact single row */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, overflow: 'hidden' }}>
                 <span style={{
-                    background: 'rgba(33,158,188,0.12)', border: '1px solid rgba(33,158,188,0.25)',
+                    background: 'rgba(var(--sky-rgb), 0.12)', border: '1px solid rgba(var(--sky-rgb), 0.25)',
                     borderRadius: 5, padding: '2px 7px', fontSize: '0.73rem',
                     color: 'var(--sky-dim)', whiteSpace: 'nowrap', overflow: 'hidden',
                     textOverflow: 'ellipsis', lineHeight: '1.7', maxWidth: 'calc(100% - 64px)',
@@ -70,7 +49,7 @@ function ExpandableCell({ value, onEdit }) {
                     <span ref={btnRef}
                         onClick={openPopup}
                         style={{
-                            background: 'rgba(255,183,3,0.13)', border: '1px solid rgba(255,183,3,0.35)',
+                            background: 'rgba(var(--gold-rgb), 0.13)', border: '1px solid rgba(var(--gold-rgb), 0.35)',
                             borderRadius: 5, padding: '2px 7px', fontSize: '0.7rem',
                             color: 'var(--gold)', cursor: 'pointer', whiteSpace: 'nowrap',
                             lineHeight: '1.7', fontFamily: 'var(--fh)', fontWeight: 700,
@@ -81,48 +60,58 @@ function ExpandableCell({ value, onEdit }) {
                 )}
             </div>
 
-            {/* Popup — fixed to viewport, never inside table layout */}
+            {/* Centered Modal Popup */}
             {open && (
-                <div
-                    onClick={e => e.stopPropagation()}
+                <div 
+                    onClick={() => setOpen(false)}
                     style={{
-                        position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999,
-                        background: 'rgba(1,22,39,0.98)', border: '1px solid rgba(33,158,188,0.4)',
-                        borderRadius: 12, padding: '14px 16px', width: 310,
-                        boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
-                    }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                        <span style={{
-                            fontSize: '0.74rem', color: 'var(--gold)', fontFamily: 'var(--fh)',
-                            fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05rem'
+                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                        background: 'rgba(0, 0, 0, 0.45)', zIndex: 99999,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        backdropFilter: 'blur(2px)'
+                    }}
+                >
+                    <div
+                        onClick={e => e.stopPropagation()}
+                        style={{
+                            position: 'relative',
+                            background: 'var(--card-bg)', border: '1px solid var(--border)',
+                            borderRadius: 12, padding: '16px 20px', width: 340, maxWidth: '90%',
+                            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.45)',
                         }}>
-                            All ({items.length})
-                        </span>
-                        <button onClick={() => setOpen(false)}
-                            style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: 2 }}>
-                            <X size={14} />
-                        </button>
-                    </div>
-
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 200, overflowY: 'auto' }}>
-                        {items.map((s, i) => <Chip key={i} text={s} />)}
-                    </div>
-
-                    <div style={{
-                        marginTop: 10, borderTop: '1px solid rgba(33,158,188,0.1)',
-                        paddingTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                    }}>
-                        <span style={{ fontSize: '0.7rem', color: 'rgba(142,202,230,0.4)' }}>
-                            Double-click cell to edit full text
-                        </span>
-                        <button onClick={() => { setOpen(false); onEdit() }}
-                            style={{
-                                background: 'rgba(255,183,3,0.1)', border: '1px solid rgba(255,183,3,0.3)',
-                                borderRadius: 6, color: 'var(--gold)', fontSize: '0.72rem', cursor: 'pointer',
-                                padding: '3px 10px', fontFamily: 'var(--fh)', fontWeight: 700
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                            <span style={{
+                                fontSize: '0.78rem', color: 'var(--gold)', fontFamily: 'var(--fh)',
+                                fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05rem'
                             }}>
-                            ✏ Edit
-                        </button>
+                                All ({items.length})
+                            </span>
+                            <button onClick={() => setOpen(false)}
+                                style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center' }}>
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 200, overflowY: 'auto' }}>
+                            {items.map((s, i) => <Chip key={i} text={s} />)}
+                        </div>
+
+                        <div style={{
+                            marginTop: 12, borderTop: '1px solid var(--border)',
+                            paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                        }}>
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)', opacity: 0.7 }}>
+                                Double-click cell to edit full text
+                            </span>
+                            <button onClick={() => { setOpen(false); onEdit() }}
+                                style={{
+                                    background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
+                                    borderRadius: 6, color: 'var(--gold)', fontSize: '0.75rem', cursor: 'pointer',
+                                    padding: '4px 12px', fontFamily: 'var(--fh)', fontWeight: 700
+                                }}>
+                                ✏ Edit
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -132,9 +121,13 @@ function ExpandableCell({ value, onEdit }) {
 
 /* ─── Column config ───────────────────────────────────────────────────────── */
 const BASE_WIDTHS = {
-    full_name: '12%', total_experience: '7%', pega_experience: '7%',
-    skills: '13%', certifications: '12%', ctc: '6%', notice_period: '7%',
-    current_organization: '11%', email: '13%', phone: '8%', linkedin: '8%'
+    full_name: '150px', total_experience: '90px', pega_experience: '90px',
+    cdh_exp: '90px', ctc: '100px', expected_ctc: '100px', percentage_hike: '90px',
+    candidate_interview_status: '130px', availability_in_days: '100px', notice_period: '90px',
+    phone: '130px', email: '180px', linkedin: '120px', current_location: '120px',
+    pref_locations: '120px', current_organization: '150px', current_client: '150px',
+    domain: '120px', tier: '90px', certification_version: '100px',
+    skills: '200px', certifications: '180px'
 }
 
 const TH = {
@@ -142,7 +135,7 @@ const TH = {
     textAlign: 'left',
     fontFamily: 'var(--fh)', fontWeight: 800, fontSize: '0.73rem',
     color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.05rem',
-    borderBottom: '2px solid var(--border)', background: 'rgba(2,48,71,0.97)',
+    borderBottom: '2px solid var(--border)', background: 'rgba(var(--navy-rgb), 0.97)',
     /* prevent th text from overflowing into next header */
     overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
 }
@@ -150,7 +143,7 @@ const TH = {
 const TD_BASE = {
     padding: '10px 10px',
     verticalAlign: 'top',
-    borderBottom: '1px solid rgba(33,158,188,0.07)',
+    borderBottom: '1px solid rgba(var(--sky-rgb), 0.07)',
     /* ALL cells clip — nothing bleeds into adjacent column */
     overflow: 'hidden',
 }
@@ -164,15 +157,97 @@ export default function UploadPage() {
     const [editVal, setEditVal] = useState('')
     const [cols, setCols] = useState([])
     const [showAddCol, setShowAddCol] = useState(false)
-    const [newColForm, setNewColForm] = useState({ label: '', desc: '' })
     const [viewingPdf, setViewingPdf] = useState(null)
+    const [showFilter, setShowFilter] = useState(false)
+    const [filters, setFilters] = useState({ minTotalExp: '', minPegaExp: '', certs: [] })
+    const [customFilters, setCustomFilters] = useState([])
+    const [columnFilters, setColumnFilters] = useState({})
+    const [activeTab, setActiveTab] = useState('all') // 'all' or 'qualified'
+    const [newColForm, setNewColForm] = useState({ label: '', desc: '' })
+    
+    const [showColVisibility, setShowColVisibility] = useState(false)
+    const [hiddenColumnKeys, setHiddenColumnKeys] = useState([])
+
+    const toggleColumnVisibility = (key) => {
+        setHiddenColumnKeys(prev => 
+            prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+        )
+    }
+
+    const handleShowAllColumns = () => {
+        setHiddenColumnKeys([])
+    }
+
+    const handleHideAllColumns = () => {
+        setHiddenColumnKeys(cols.filter(c => c.key !== '_actions' && c.key !== 'full_name').map(c => c.key))
+    }
+
+    useEffect(() => {
+        if (!showColVisibility) return;
+        const clickAway = () => setShowColVisibility(false);
+        const timer = setTimeout(() => {
+            document.addEventListener('click', clickAway);
+        }, 10);
+        return () => {
+            clearTimeout(timer);
+            document.removeEventListener('click', clickAway);
+        };
+    }, [showColVisibility]);
+
+    const activeCols = cols.filter(c => c.key === '_actions' || !hiddenColumnKeys.includes(c.key))
+
+    const PEGA_CERTS = ['CSA', 'CSSA', 'LSA', 'CPDC']
+
+    const toggleCert = (cert) => {
+        setFilters(prev => ({
+            ...prev,
+            certs: prev.certs.includes(cert) 
+                ? prev.certs.filter(c => c !== cert) 
+                : [...prev.certs, cert]
+        }))
+    }
+
+    const filteredCandidates = candidates.filter(candidate => {
+        // Tab Filtering
+        if (activeTab === 'qualified' && candidate.is_qualified !== 1) return false;
+
+        const tExp = parseFloat(candidate.total_experience) || 0;
+        const pExp = parseFloat(candidate.pega_experience) || 0;
+        
+        if (filters.minTotalExp !== '' && tExp < parseFloat(filters.minTotalExp)) return false;
+        if (filters.minPegaExp !== '' && pExp < parseFloat(filters.minPegaExp)) return false;
+        
+        if (filters.certs.length > 0) {
+            const cStr = (candidate.certifications || '').toLowerCase();
+            const hasCerts = filters.certs.some(cert => cStr.includes(cert.toLowerCase()));
+            if (!hasCerts) return false;
+        }
+        
+        // Custom Filters
+        for (const cf of customFilters) {
+            if (cf.col && cf.val) {
+                const cVal = String(candidate[cf.col] || '').toLowerCase();
+                if (!cVal.includes(cf.val.toLowerCase())) return false;
+            }
+        }
+
+        // Inline Column Filters
+        for (const [colKey, filterVal] of Object.entries(columnFilters)) {
+            if (filterVal) {
+                const cVal = String(candidate[colKey] || '').toLowerCase();
+                if (!cVal.includes(filterVal.toLowerCase())) return false;
+            }
+        }
+        
+        return true;
+    });
 
     const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500) }
     const load = () => axios.get(`${API_URL}/api/candidates`).then(r => setCandidates(r.data)).catch(() => { })
     const loadCols = () => axios.get(`${API_URL}/api/columns`).then(r => {
         const base = (r.data.base || []).map(c => ({ key: c.col_key, label: c.col_label, pct: BASE_WIDTHS[c.col_key] || '10%', col_key: c.col_key, col_label: c.col_label }))
         const custom = (r.data.custom || []).map(c => ({ key: c.col_key, label: c.col_label, pct: '10%', col_key: c.col_key, col_label: c.col_label, isCustom: true }))
-        setCols([...base, ...custom, { key: '_del', label: '', pct: '4%' }])
+        setCols([...base, ...custom, { key: '_actions', label: 'Actions', pct: '6%' }])
     }).catch(() => { })
 
     useEffect(() => { load(); loadCols() }, [])
@@ -239,11 +314,28 @@ export default function UploadPage() {
     const startEdit = (ri, col, val) => { setEditCell({ row: ri, col }); setEditVal(String(val || '')) }
     const saveEdit = async (ri) => {
         const c = candidates[ri]; if (!c?.id) { setEditCell(null); return }
+        
+        let finalVal = editVal;
+        if (editCell.col === 'notice_period' || editCell.col === 'availability_in_days') {
+            if (finalVal !== '' && isNaN(finalVal)) {
+                showToast(`${editCell.col} must be a number`, 'error');
+                return;
+            }
+            finalVal = finalVal !== '' ? parseInt(finalVal, 10) : '';
+        }
+        if (editCell.col === 'total_experience' || editCell.col === 'pega_experience' || editCell.col === 'cdh_exp') {
+            if (finalVal !== '' && isNaN(finalVal)) {
+                showToast('Experience must be a number', 'error');
+                return;
+            }
+            finalVal = finalVal !== '' ? parseFloat(finalVal) : '';
+        }
+
         try {
-            await axios.put(`${API_URL}/api/candidates/${c.id}`, { [editCell.col]: editVal })
-            setCandidates(prev => prev.map((row, i) => i === ri ? { ...row, [editCell.col]: editVal } : row))
+            await axios.put(`${API_URL}/api/candidates/${c.id}`, { [editCell.col]: finalVal })
+            setCandidates(prev => prev.map((row, i) => i === ri ? { ...row, [editCell.col]: finalVal } : row))
             showToast('Saved!')
-        } catch { showToast('Save failed', 'error') }
+        } catch (e) { showToast(e.response?.data?.detail || 'Save failed', 'error') }
         setEditCell(null)
     }
     const del = async (id) => {
@@ -257,13 +349,16 @@ export default function UploadPage() {
 
             {/* Drop Zone */}
             <div className="card">
-                <div className="card-title"><Upload size={17} /> Upload Resumes</div>
-                <div {...getRootProps()} className={`dropzone${isDragActive ? ' active' : ''}`}>
+                <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem', fontWeight: 600, color: 'var(--sky)' }}>
+                    <Upload size={18} /> Upload Resumes
+                </div>
+                <div {...getRootProps()} className={`dropzone${isDragActive ? ' active' : ''}`} style={{ textAlign: 'center', padding: '2rem', border: '2px dashed var(--border)', borderRadius: '8px', background: isDragActive ? 'rgba(var(--sky-rgb), 0.1)' : 'var(--input-bg)', cursor: 'pointer', transition: 'all 0.2s' }}>
                     <input {...getInputProps()} />
-                    <div className="dropzone-icon">📄</div>
-                    <div className="dropzone-text">
-                        {isDragActive ? <strong>Drop here…</strong>
-                            : <><strong>Drag & drop</strong> PDF / DOCX resumes, or click to browse</>}
+                    <div style={{ marginBottom: '1rem' }}>
+                        <UploadCloud size={40} className="icon" style={{ color: 'var(--sky)', filter: 'drop-shadow(0 0 10px rgba(var(--sky-rgb), 0.5))' }} />
+                    </div>
+                    <div className="dropzone-text" style={{ color: 'var(--text-dim)' }}>
+                        {isDragActive ? <strong>Drop here…</strong> : <><strong>Drag & drop</strong> PDF / DOCX resumes, or click to browse</>}
                     </div>
                 </div>
                 {progress.length > 0 && (
@@ -284,17 +379,103 @@ export default function UploadPage() {
             </div>
 
             {/* Table */}
-            <div className="card" style={{ flex: 1 }}>
-                <div className="section-header">
-                    <div className="section-title">👥 Candidate Details</div>
-                    <div style={{ display: 'flex', gap: 10 }}>
-                        <button className="btn btn-secondary" onClick={() => setShowAddCol(true)} style={{ gap: 6, color: 'var(--gold)', borderColor: 'rgba(255,183,3,0.3)' }}>
+            <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <div className="section-header" style={{ borderBottom: '1px solid rgba(var(--sky-rgb), 0.2)', paddingBottom: '1rem', marginBottom: '1rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        <div className="section-title">👥 Candidate Details</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', alignSelf: 'flex-start', marginTop: '10px' }}>
+                        <button className="btn btn-secondary" onClick={() => setShowFilter(true)} style={{ gap: 6, color: 'var(--sky)', borderColor: 'rgba(var(--sky-rgb), 0.3)' }}>
+                            <Filter size={14} /> Filter
+                        </button>
+                        
+                        {/* Columns Selector Popover */}
+                        <div style={{ position: 'relative' }}>
+                            <button 
+                                className="btn btn-secondary" 
+                                onClick={() => setShowColVisibility(!showColVisibility)} 
+                                style={{ gap: 6, color: 'var(--text)', borderColor: 'var(--border)' }}
+                            >
+                                <Eye size={14} /> Columns
+                            </button>
+                            
+                            {showColVisibility && (
+                                <div 
+                                    onClick={e => e.stopPropagation()}
+                                    style={{
+                                        position: 'absolute', top: '100%', left: 0, marginTop: '8px', zIndex: 100,
+                                        background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '10px',
+                                        boxShadow: '0 10px 25px rgba(0,0,0,0.35)', padding: '12px', width: '250px',
+                                        display: 'flex', flexDirection: 'column', gap: '10px'
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                                        <span style={{ fontWeight: 'bold', fontSize: '0.85rem', color: 'var(--gold)' }}>Visible Columns</span>
+                                        <button 
+                                            onClick={() => setShowColVisibility(false)} 
+                                            style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: 0 }}
+                                            title="Close Column Settings"
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                    </div>
+                                    
+                                    <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
+                                        <button 
+                                            onClick={handleShowAllColumns}
+                                            style={{ 
+                                                flex: 1, padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px',
+                                                border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', cursor: 'pointer' 
+                                            }}
+                                        >
+                                            Show All
+                                        </button>
+                                        <button 
+                                            onClick={handleHideAllColumns}
+                                            style={{ 
+                                                flex: 1, padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px',
+                                                border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', cursor: 'pointer' 
+                                            }}
+                                        >
+                                            Hide All
+                                        </button>
+                                    </div>
+                                    
+                                    <div style={{ maxHeight: '250px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        {cols.filter(c => c.key !== '_actions').map(c => {
+                                            const isChecked = !hiddenColumnKeys.includes(c.key);
+                                            return (
+                                                <label 
+                                                    key={c.key} 
+                                                    style={{ 
+                                                        display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', 
+                                                        color: isChecked ? 'var(--text)' : 'var(--text-dim)', cursor: 'pointer',
+                                                        padding: '4px 6px', borderRadius: '4px', transition: 'all 0.15s',
+                                                        background: isChecked ? 'transparent' : 'rgba(var(--sky-rgb), 0.02)'
+                                                    }}
+                                                >
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={isChecked}
+                                                        onChange={() => toggleColumnVisibility(c.key)}
+                                                        style={{ cursor: 'pointer' }}
+                                                    />
+                                                    <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{c.label}</span>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <button className="btn btn-secondary" onClick={() => setShowAddCol(true)} style={{ gap: 6, color: 'var(--gold)', borderColor: 'rgba(var(--gold-rgb), 0.3)' }}>
                             <span style={{ fontWeight: 900 }}>+</span> Add Column
                         </button>
                         <button
                             className="btn btn-secondary"
                             style={{ gap: 6 }}
-                            onClick={() => exportToExcel(formatCandidatesForExcel(candidates, cols.filter(c => c.key !== '_del')), 'all_candidates_details.xlsx')}
+                            onClick={() => exportToExcel(formatCandidatesForExcel(filteredCandidates, activeCols.filter(c => c.key !== '_actions')), 'all_candidates_details.xlsx')}
                         >
                             <Download size={14} /> Download Excel
                         </button>
@@ -312,50 +493,179 @@ export default function UploadPage() {
                 ) : (
                     <>
                         <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid var(--border)' }}>
-                            <table style={{ width: '100%', minWidth: Math.max(860, cols.length * 80), tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
+                            <table style={{ width: '100%', minWidth: Math.max(2600, activeCols.length * 100), tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
                                 <colgroup>
-                                    {cols.map(c => <col key={c.key} style={{ width: c.pct }} />)}
+                                    {activeCols.map(c => <col key={c.key} style={{ width: c.pct }} />)}
                                 </colgroup>
                                 <thead>
                                     <tr>
-                                        {cols.map(c => (
-                                            <th key={c.key} style={TH} title={c.label}>
-                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.label}</span>
-                                                    {c.isCustom && (
-                                                        <button
-                                                            onClick={() => handleDeleteCol(c.key)}
-                                                            style={{ background: 'none', border: 'none', color: '#ef233c', cursor: 'pointer', padding: 0, marginLeft: 5, display: 'flex' }}
-                                                            title="Delete Column"
-                                                        >
-                                                            <Trash2 size={12} />
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </th>
-                                        ))}
+                                        {activeCols.map(c => {
+                                            const isActions = c.key === '_actions';
+                                            return (
+                                                <th 
+                                                    key={c.key} 
+                                                    style={{ 
+                                                        ...TH, 
+                                                        position: isActions ? 'sticky' : undefined, 
+                                                        right: isActions ? 0 : undefined, 
+                                                        zIndex: isActions ? 11 : undefined,
+                                                        background: isActions ? 'var(--table-header-bg)' : TH.background,
+                                                        boxShadow: isActions ? '-3px 0 6px rgba(0,0,0,0.15)' : undefined
+                                                    }} 
+                                                    title={c.label}
+                                                >
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.label}</span>
+                                                        {c.isCustom && (
+                                                            <button
+                                                                onClick={() => handleDeleteCol(c.key)}
+                                                                style={{ background: 'none', border: 'none', color: '#ef233c', cursor: 'pointer', padding: 0, marginLeft: 5, display: 'flex' }}
+                                                                title="Delete Column"
+                                                            >
+                                                                <Trash2 size={12} />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </th>
+                                            );
+                                        })}
+                                    </tr>
+                                    <tr style={{ background: 'rgba(var(--navy-dark-rgb), 0.5)' }}>
+                                        {activeCols.map(c => {
+                                            const isActions = c.key === '_actions';
+                                            if (isActions) {
+                                                const hasAnyFilter = Object.values(columnFilters).some(v => v);
+                                                return (
+                                                    <th
+                                                        key="filter-_actions"
+                                                        style={{
+                                                            padding: '6px 10px',
+                                                            borderBottom: '2px solid var(--border)',
+                                                            position: 'sticky',
+                                                            right: 0,
+                                                            zIndex: 11,
+                                                            background: 'rgba(var(--navy-dark-rgb), 0.95)',
+                                                            boxShadow: '-3px 0 6px rgba(0,0,0,0.15)',
+                                                            textAlign: 'center'
+                                                        }}
+                                                    >
+                                                        {hasAnyFilter && (
+                                                            <button
+                                                                onClick={() => setColumnFilters({})}
+                                                                style={{
+                                                                    background: 'rgba(239, 35, 60, 0.15)',
+                                                                    border: '1px solid #ef233c',
+                                                                    borderRadius: '4px',
+                                                                    color: '#ef233c',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: '0.7rem',
+                                                                    fontWeight: 'bold',
+                                                                    padding: '4px 8px',
+                                                                    width: '100%',
+                                                                    transition: 'all 0.2s',
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center',
+                                                                    gap: '4px'
+                                                                }}
+                                                                title="Clear all column filters"
+                                                            >
+                                                                <X size={10} /> Clear
+                                                            </button>
+                                                        )}
+                                                    </th>
+                                                );
+                                            }
+
+                                            return (
+                                                <th
+                                                    key={`filter-${c.key}`}
+                                                    style={{
+                                                        padding: '6px 10px',
+                                                        borderBottom: '2px solid var(--border)',
+                                                        background: 'rgba(var(--navy-rgb), 0.97)',
+                                                    }}
+                                                >
+                                                    <input
+                                                        type="text"
+                                                        value={columnFilters[c.key] || ''}
+                                                        onChange={e => setColumnFilters(prev => ({
+                                                            ...prev,
+                                                            [c.key]: e.target.value
+                                                        }))}
+                                                        placeholder="Search..."
+                                                        style={{
+                                                            width: '100%',
+                                                            padding: '5px 8px',
+                                                            borderRadius: '5px',
+                                                            border: '1px solid var(--border)',
+                                                            background: 'var(--input-bg)',
+                                                            color: 'var(--text)',
+                                                            fontSize: '0.75rem',
+                                                            outline: 'none',
+                                                            transition: 'all 0.2s'
+                                                        }}
+                                                        onFocus={e => {
+                                                            e.target.style.border = '1px solid var(--gold)';
+                                                            e.target.style.boxShadow = '0 0 4px rgba(var(--gold-rgb), 0.3)';
+                                                        }}
+                                                        onBlur={e => {
+                                                            e.target.style.border = '1px solid rgba(var(--sky-rgb), 0.25)';
+                                                            e.target.style.boxShadow = 'none';
+                                                        }}
+                                                    />
+                                                </th>
+                                            );
+                                        })}
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {candidates.map((row, ri) => (
+                                    {filteredCandidates.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={activeCols.length} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-dim)' }}>
+                                                <div style={{ fontSize: '2rem', marginBottom: 8 }}>🔍</div>
+                                                <p style={{ margin: 0 }}>No candidates match the applied filters.</p>
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        filteredCandidates.map((row, ri) => (
                                         <tr key={row.id || ri}
-                                            style={{ background: ri % 2 === 0 ? 'rgba(2,48,71,0.25)' : 'transparent', transition: 'background 0.15s' }}
-                                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(33,158,188,0.07)'}
-                                            onMouseLeave={e => e.currentTarget.style.background = ri % 2 === 0 ? 'rgba(2,48,71,0.25)' : 'transparent'}
+                                            style={{ background: ri % 2 === 0 ? 'rgba(var(--navy-rgb), 0.25)' : 'transparent', transition: 'background 0.15s' }}
+                                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.07)'}
+                                            onMouseLeave={e => e.currentTarget.style.background = ri % 2 === 0 ? 'rgba(var(--navy-rgb), 0.25)' : 'transparent'}
                                         >
-                                            {cols.map(({ key }) => {
-                                                /* ── Delete button ── */
-                                                if (key === '_del') return (
-                                                    <td key={key} style={{ ...TD_BASE, textAlign: 'center' }}>
-                                                        <button className="btn btn-danger" style={{ padding: '4px 7px' }} onClick={() => del(row.id)}>
-                                                            <Trash2 size={12} />
-                                                        </button>
+                                            {activeCols.map(({ key }) => {
+                                                /* ── Actions column ── */
+                                                if (key === '_actions') return (
+                                                    <td 
+                                                        key={key} 
+                                                        style={{ 
+                                                            ...TD_BASE, 
+                                                            textAlign: 'center',
+                                                            position: 'sticky',
+                                                            right: 0,
+                                                            zIndex: 10,
+                                                            background: ri % 2 === 0 ? 'var(--input-bg)' : 'var(--card-bg)',
+                                                            boxShadow: '-3px 0 6px rgba(0,0,0,0.15)',
+                                                            overflow: 'visible'
+                                                        }}
+                                                    >
+                                                        <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+                                                            <button 
+                                                                className="btn btn-danger" 
+                                                                style={{ padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.75rem' }} 
+                                                                onClick={() => del(row.id)} 
+                                                                title="Delete Candidate"
+                                                            >
+                                                                <Trash2 size={14} /> Delete
+                                                            </button>
+                                                        </div>
                                                     </td>
                                                 )
 
                                                 const isEditing = editCell?.row === ri && editCell?.col === key
                                                 const val = row[key] ?? ''
-                                                const isExp = key === 'total_experience' || key === 'pega_experience'
+                                                const isExp = key === 'total_experience' || key === 'pega_experience' || key === 'cdh_exp'
                                                 const isExpandable = key === 'skills' || key === 'certifications'
 
                                                 /* ── Inline edit mode ── */
@@ -366,8 +676,8 @@ export default function UploadPage() {
                                                             onBlur={() => saveEdit(ri)}
                                                             onKeyDown={e => { if (e.key === 'Enter') saveEdit(ri); if (e.key === 'Escape') setEditCell(null) }}
                                                             style={{
-                                                                background: 'rgba(255,183,3,0.1)', border: '1px solid var(--gold)',
-                                                                borderRadius: 6, padding: '4px 8px', color: '#fff', width: '100%',
+                                                                background: 'var(--input-bg)', border: '1px solid var(--gold)',
+                                                                borderRadius: 6, padding: '4px 8px', color: 'var(--text)', width: '100%',
                                                                 fontFamily: 'var(--fb)', fontSize: '0.82rem', outline: 'none'
                                                             }}
                                                         />
@@ -382,7 +692,14 @@ export default function UploadPage() {
                                                 )
 
                                                 /* ── Regular cells ── */
-                                                const display = isExp ? (val !== '' && val != null ? `${val} yrs` : '—') : (val || '—')
+                                                let display;
+                                                if (isExp) {
+                                                    display = (val !== '' && val != null ? `${val} yrs` : '—');
+                                                } else if (key === 'notice_period' || key === 'availability_in_days') {
+                                                    display = (val === 0 || val === '0') ? 'Immediate' : (val !== null && val !== '' && !isNaN(val) ? `${val} days` : (val || '—'));
+                                                } else {
+                                                    display = (val !== '' && val != null ? val : '—');
+                                                }
                                                 return (
                                                     <td key={key} onDoubleClick={() => startEdit(ri, key, val)} style={{
                                                         ...TD_BASE,
@@ -397,11 +714,19 @@ export default function UploadPage() {
                                                         {key === 'full_name' && row.filename ? (
                                                             <span
                                                                 onClick={() => setViewingPdf({ url: `${API_URL}/static/${row.filename}`, name: row.full_name })}
-                                                                style={{ color: 'inherit', textDecoration: 'none', borderBottom: '1px dashed transparent', transition: 'all 0.2s', cursor: 'pointer' }}
-                                                                onMouseEnter={e => e.currentTarget.style.borderBottomColor = 'var(--gold)'}
-                                                                onMouseLeave={e => e.currentTarget.style.borderBottomColor = 'transparent'}
+                                                                style={{
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '6px',
+                                                                    color: 'var(--gold)',
+                                                                    textDecoration: 'underline',
+                                                                    cursor: 'pointer',
+                                                                    fontWeight: 700,
+                                                                    transition: 'color 0.2s'
+                                                                }}
                                                                 title={`View ${row.filename}`}
                                                             >
+                                                                <FileText size={14} style={{ flexShrink: 0, color: 'var(--gold)' }} />
                                                                 {String(display)}
                                                             </span>
                                                         ) : String(display)}
@@ -409,11 +734,11 @@ export default function UploadPage() {
                                                 )
                                             })}
                                         </tr>
-                                    ))}
+                                    )))}
                                 </tbody>
                             </table>
                         </div>
-                        <p style={{ marginTop: '0.6rem', fontSize: '0.75rem', color: 'rgba(142,202,230,0.38)' }}>
+                        <p style={{ marginTop: '0.6rem', fontSize: '0.75rem', color: 'rgba(var(--sky-dim-rgb), 0.38)' }}>
                             💡 Click <strong style={{ color: 'var(--gold)' }}>+N</strong> to expand Skills / Certs · Double-click any cell to edit
                         </p>
                     </>
@@ -435,29 +760,134 @@ export default function UploadPage() {
                     <div className="card" style={{ width: 400, maxWidth: '90%' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 15 }}>
                             <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)' }}>Add Custom Column</h3>
-                            <button onClick={() => setShowAddCol(false)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}><X size={18} /></button>
+                            <button onClick={() => setShowAddCol(false)} style={{ background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><X size={18} /></button>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
                             <div>
-                                <label style={{ display: 'block', marginBottom: 5, fontSize: '0.8rem', color: 'var(--sky-dim)' }}>Column Name / Label</label>
+                                <label style={{ display: 'block', marginBottom: 5, fontSize: '0.8rem', color: 'var(--text-dim)' }}>Column Name / Label</label>
                                 <input
                                     autoFocus
                                     value={newColForm.label} onChange={e => setNewColForm(p => ({ ...p, label: e.target.value }))}
                                     placeholder="e.g. Current Location"
-                                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'rgba(1,22,39,0.5)', color: '#fff', outline: 'none' }}
+                                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
                                 />
                             </div>
                             <div>
-                                <label style={{ display: 'block', marginBottom: 5, fontSize: '0.8rem', color: 'var(--sky-dim)' }}>Description / AI Instructions</label>
+                                <label style={{ display: 'block', marginBottom: 5, fontSize: '0.8rem', color: 'var(--text-dim)' }}>Description / AI Instructions</label>
                                 <textarea
                                     value={newColForm.desc} onChange={e => setNewColForm(p => ({ ...p, desc: e.target.value }))}
                                     placeholder="e.g. City and State where candidate is located"
-                                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'rgba(1,22,39,0.5)', color: '#fff', minHeight: 80, resize: 'vertical', outline: 'none' }}
+                                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', minHeight: 80, resize: 'vertical', outline: 'none' }}
                                 />
                             </div>
                             <button className="btn" onClick={handleAddCol} style={{ background: 'var(--gradient-gold)', color: '#000', fontWeight: 'bold' }}>
                                 Create Column
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Filter Modal */}
+            {showFilter && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(0,0,0,0.7)', zIndex: 99999,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                    <div className="card" style={{ width: 400, maxWidth: '90%' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 15 }}>
+                            <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)' }}>Filter Candidates</h3>
+                            <button onClick={() => setShowFilter(false)} style={{ background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><X size={18} /></button>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: 5, fontSize: '0.8rem', color: 'var(--text-dim)' }}>Min. Total Experience (Years)</label>
+                                <input
+                                    type="number"
+                                    value={filters.minTotalExp} onChange={e => setFilters(p => ({ ...p, minTotalExp: e.target.value }))}
+                                    placeholder="e.g. 5"
+                                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                                />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: 5, fontSize: '0.8rem', color: 'var(--text-dim)' }}>Min. Pega Experience (Years)</label>
+                                <input
+                                    type="number"
+                                    value={filters.minPegaExp} onChange={e => setFilters(p => ({ ...p, minPegaExp: e.target.value }))}
+                                    placeholder="e.g. 3"
+                                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                                />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: 8, fontSize: '0.8rem', color: 'var(--text-dim)' }}>Pega Certifications</label>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                    {PEGA_CERTS.map(cert => (
+                                        <button 
+                                            key={cert} 
+                                            onClick={() => toggleCert(cert)}
+                                            style={{ 
+                                                display: 'flex', alignItems: 'center', gap: 6, 
+                                                background: filters.certs.includes(cert) ? 'rgba(var(--gold-rgb), 0.15)' : 'var(--input-bg)', 
+                                                border: `1px solid ${filters.certs.includes(cert) ? 'var(--gold)' : 'var(--border)'}`, 
+                                                color: filters.certs.includes(cert) ? 'var(--gold)' : 'var(--text)', 
+                                                padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem',
+                                                transition: 'all 0.2s'
+                                            }}>
+                                            {filters.certs.includes(cert) && <Check size={12} />}
+                                            {cert}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 5 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                    <label style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-dim)' }}>Additional Filters</label>
+                                    <button 
+                                        onClick={() => setCustomFilters(p => [...p, {col: cols.find(c => c.key !== '_del')?.key || '', val: ''}])} 
+                                        style={{ background: 'none', border: 'none', color: 'var(--gold)', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'var(--fb)' }}>
+                                        + Add Filter
+                                    </button>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '150px', overflowY: 'auto' }}>
+                                    {customFilters.map((cf, i) => (
+                                        <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                            <select 
+                                                value={cf.col} 
+                                                onChange={e => { const newF = [...customFilters]; newF[i].col = e.target.value; setCustomFilters(newF); }} 
+                                                style={{ flex: 1, padding: '6px', borderRadius: '4px', background: 'var(--input-bg)', color: 'var(--text)', border: '1px solid var(--border)', outline: 'none', fontSize: '0.75rem', minWidth: '100px' }}>
+                                                {cols.filter(c => c.key !== '_del').map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+                                            </select>
+                                            <input 
+                                                value={cf.val} 
+                                                onChange={e => { const newF = [...customFilters]; newF[i].val = e.target.value; setCustomFilters(newF); }} 
+                                                placeholder="e.g. Hyderabad" 
+                                                style={{ flex: 1, padding: '6px', borderRadius: '4px', background: 'var(--input-bg)', color: 'var(--text)', border: '1px solid var(--border)', outline: 'none', fontSize: '0.75rem', minWidth: '100px' }} 
+                                            />
+                                            <button 
+                                                onClick={() => setCustomFilters(p => p.filter((_, idx) => idx !== i))} 
+                                                style={{ background: 'none', border: 'none', color: '#ef233c', cursor: 'pointer', padding: '0 4px', display: 'flex' }}>
+                                                <X size={14}/>
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {customFilters.length === 0 && (
+                                        <div style={{ fontSize: '0.75rem', color: 'rgba(var(--sky-dim-rgb), 0.4)', fontStyle: 'italic' }}>
+                                            No additional filters applied.
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+                                <button className="btn btn-secondary" onClick={() => { setFilters({ minTotalExp: '', minPegaExp: '', certs: [] }); setCustomFilters([]); setColumnFilters({}); }} style={{ flex: 1, borderColor: 'var(--border)' }}>
+                                    Clear All
+                                </button>
+                                <button className="btn" onClick={() => setShowFilter(false)} style={{ flex: 1, background: '#ffb703', color: '#011627', fontWeight: '900', border: 'none' }}>
+                                    Apply Filter
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -479,18 +909,18 @@ export default function UploadPage() {
                     }}>
                         <div style={{ 
                             display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
-                            padding: '16px 24px', background: 'rgba(2,48,71,0.98)', borderBottom: '1px solid var(--border)' 
+                            padding: '16px 24px', background: 'rgba(var(--navy-rgb), 0.98)', borderBottom: '1px solid var(--border)' 
                         }}>
                             <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', display: 'flex', alignItems: 'center', gap: 10, fontSize: '1.05rem' }}>
                                 <span style={{fontSize: '1.2rem', opacity: 0.8}}>📄</span> {viewingPdf.name}
                             </h3>
                             <button onClick={() => setViewingPdf(null)} style={{ 
-                                background: 'rgba(255,183,3,0.1)', border: '1px solid rgba(255,183,3,0.3)', 
+                                background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)', 
                                 color: 'var(--gold)', cursor: 'pointer', padding: 6, borderRadius: '8px', 
                                 display: 'flex', transition: 'all 0.2s' 
                             }}
-                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,183,3,0.2)'}
-                            onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,183,3,0.1)'}
+                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.2)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.1)'}
                             >
                                 <X size={18} />
                             </button>

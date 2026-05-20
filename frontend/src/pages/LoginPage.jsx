@@ -146,7 +146,7 @@ export default function LoginPage({ onLogin }) {
             {/* Footer */}
             <div style={{
                 position: 'fixed', bottom: '1.2rem', left: 0, right: 0, textAlign: 'center',
-                color: 'rgba(142,202,230,0.6)', fontSize: '0.77rem'
+                color: 'rgba(var(--sky-dim-rgb), 0.6)', fontSize: '0.77rem'
             }}>
                 © 2025 Alamaticz Solutions · Innovation • Excellence • Reliability
             </div>

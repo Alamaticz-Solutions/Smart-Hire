@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
+import JobsPage from './pages/JobsPage'
 import UploadPage from './pages/UploadPage'
 import ChatPage from './pages/ChatPage'
 import Layout from './components/Layout'
@@ -13,6 +14,17 @@ export default function App() {
         } catch { return null }
     })
 
+    const [theme, setTheme] = useState(() => {
+        return localStorage.getItem('hire_ai_theme') || 'light'
+    })
+
+    useEffect(() => {
+        document.documentElement.setAttribute('data-theme', theme)
+        localStorage.setItem('hire_ai_theme', theme)
+    }, [theme])
+
+    const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark')
+
     const login = (u) => { setUser(u); sessionStorage.setItem('hire_ai_user', JSON.stringify(u)) }
     const logout = () => { setUser(null); sessionStorage.removeItem('hire_ai_user') }
 
@@ -20,8 +32,9 @@ export default function App() {
         <BrowserRouter>
             <Routes>
                 <Route path="/login" element={user ? <Navigate to="/" /> : <LoginPage onLogin={login} />} />
-                <Route element={user ? <Layout user={user} onLogout={logout} /> : <Navigate to="/login" />}>
+                <Route element={user ? <Layout user={user} onLogout={logout} theme={theme} toggleTheme={toggleTheme} /> : <Navigate to="/login" />}>
                     <Route path="/" element={<DashboardPage />} />
+                    <Route path="/jobs" element={<JobsPage />} />
                     <Route path="/upload" element={<UploadPage />} />
                     <Route path="/chat" element={<ChatPage />} />
                 </Route>

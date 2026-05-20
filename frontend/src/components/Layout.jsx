@@ -1,10 +1,11 @@
 import { Outlet, NavLink } from 'react-router-dom'
-import { LayoutDashboard, Upload, MessageSquare, LogOut } from 'lucide-react'
+import { LayoutDashboard, Upload, MessageSquare, LogOut, Sun, Moon, Briefcase } from 'lucide-react'
 import alamaticzLogo from '../assets/alamaticz-logo.jpg'
 
-export default function Layout({ user, onLogout }) {
+export default function Layout({ user, onLogout, theme, toggleTheme }) {
     const navItems = [
         { to: '/', label: 'Dashboard', Icon: LayoutDashboard },
+        { to: '/jobs', label: 'Job Description', Icon: Briefcase },
         { to: '/upload', label: 'Upload Resume', Icon: Upload },
         { to: '/chat', label: 'Chat with Hire', Icon: MessageSquare },
     ]
@@ -49,11 +50,23 @@ export default function Layout({ user, onLogout }) {
             <div className="main-content">
                 <header className="topbar">
                     <span className="topbar-title">Alamaticz Solutions</span>
-                    <div className="profile-chip">
-                        <div className="profile-avatar">
-                            {(user?.name?.[0] || 'H').toUpperCase()}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                        <button 
+                            onClick={toggleTheme} 
+                            style={{ 
+                                background: 'rgba(var(--gold-rgb), 0.15)', border: '1px solid var(--border-gold)', borderRadius: '50%', width: '36px', height: '36px', cursor: 'pointer', 
+                                color: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' 
+                            }}
+                            title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} mode`}
+                        >
+                            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+                        </button>
+                        <div className="profile-chip">
+                            <div className="profile-avatar">
+                                {(user?.name?.[0] || 'H').toUpperCase()}
+                            </div>
+                            <span className="profile-name">{user?.name || 'HR User'}</span>
                         </div>
-                        <span className="profile-name">{user?.name || 'HR User'}</span>
                     </div>
                 </header>
 

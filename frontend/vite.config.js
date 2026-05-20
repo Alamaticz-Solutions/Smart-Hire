@@ -8,11 +8,11 @@ export default defineConfig({
         port: 5173,
         proxy: {
             '/api': {
-                target: 'https://resume-2-34ki.onrender.com',
+                target: 'http://127.0.0.1:8000',
                 changeOrigin: true,
             },
             '/static': {
-                target: 'https://resume-2-34ki.onrender.com',
+                target: 'http://127.0.0.1:8000',
                 changeOrigin: true,
             },
         },

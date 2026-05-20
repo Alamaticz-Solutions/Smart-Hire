@@ -18,7 +18,7 @@ function SkillBadges({ value }) {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
             {list.map((s, i) => (
                 <span key={i} style={{
-                    background: 'rgba(33,158,188,0.15)', border: '1px solid rgba(33,158,188,0.3)',
+                    background: 'rgba(var(--sky-rgb), 0.15)', border: '1px solid rgba(var(--sky-rgb), 0.3)',
                     borderRadius: 5, padding: '1px 6px', fontSize: '0.72rem',
                     color: 'var(--sky-dim)', whiteSpace: 'nowrap', lineHeight: '1.6',
                 }}>{s}</span>
@@ -54,7 +54,7 @@ function CandidateTable({ rows }) {
                     <tr>
                         {COL_CONFIG.map(c => (
                             <th key={c.key} style={{
-                                background: 'rgba(2,48,71,0.95)', padding: '9px 10px', textAlign: 'left',
+                                background: 'rgba(var(--navy-rgb), 0.95)', padding: '9px 10px', textAlign: 'left',
                                 fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.74rem',
                                 color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.04rem',
                                 borderBottom: '1px solid var(--border)',
@@ -64,14 +64,14 @@ function CandidateTable({ rows }) {
                 </thead>
                 <tbody>
                     {rows.map((row, i) => (
-                        <tr key={i} style={{ background: i % 2 === 0 ? 'rgba(2,48,71,0.3)' : 'transparent' }}>
+                        <tr key={i} style={{ background: i % 2 === 0 ? 'rgba(var(--navy-rgb), 0.3)' : 'transparent' }}>
                             {COL_CONFIG.map(({ key }) => {
                                 const val = row[key]
                                 const isExp = key === 'total_experience' || key === 'pega_experience'
                                 return (
                                     <td key={key} style={{
                                         padding: '9px 10px',
-                                        borderBottom: '1px solid rgba(33,158,188,0.08)',
+                                        borderBottom: '1px solid rgba(var(--sky-rgb), 0.08)',
                                         verticalAlign: 'top',
                                         color: key === 'name' ? 'var(--gold)' : key === 'email' ? 'var(--sky-dim)' : 'var(--text)',
                                         fontWeight: key === 'name' ? 600 : undefined,
@@ -157,7 +157,7 @@ export default function ChatPage() {
         setLoading(true)
 
         try {
-            const { data } = await axios.post('https://resume-2-34ki.onrender.com/api/chat', { message: content })
+            const { data } = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/chat`, { message: content })
             setMessages(prev => [
                 ...prev,
                 data.type === 'table'
@@ -220,7 +220,7 @@ export default function ChatPage() {
                             {loading ? <div className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} /> : <Send size={17} />}
                         </button>
                     </div>
-                    <p style={{ textAlign: 'center', fontSize: '0.73rem', color: 'rgba(142,202,230,0.4)', marginTop: '0.5rem' }}>
+                    <p style={{ textAlign: 'center', fontSize: '0.73rem', color: 'rgba(var(--sky-dim-rgb), 0.4)', marginTop: '0.5rem' }}>
                         Hire AI may make mistakes — always verify important candidate information.
                     </p>
                 </div>
