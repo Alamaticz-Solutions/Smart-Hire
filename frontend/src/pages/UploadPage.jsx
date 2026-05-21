@@ -123,7 +123,7 @@ function ExpandableCell({ value, onEdit }) {
 const BASE_WIDTHS = {
     full_name: '150px', total_experience: '90px', pega_experience: '90px',
     cdh_exp: '90px', ctc: '100px', expected_ctc: '100px', percentage_hike: '90px',
-    candidate_interview_status: '130px', availability_in_days: '100px', notice_period: '90px',
+    candidate_interview_status: '130px', candidate_status: '130px', availability_in_days: '100px', notice_period: '90px',
     phone: '130px', email: '180px', linkedin: '120px', current_location: '120px',
     pref_locations: '120px', current_organization: '150px', current_client: '150px',
     domain: '120px', tier: '90px', certification_version: '100px',
@@ -162,11 +162,12 @@ export default function UploadPage() {
     const [filters, setFilters] = useState({ minTotalExp: '', minPegaExp: '', certs: [] })
     const [customFilters, setCustomFilters] = useState([])
     const [columnFilters, setColumnFilters] = useState({})
-    const [activeTab, setActiveTab] = useState('all') // 'all' or 'qualified'
+     const [activeTab, setActiveTab] = useState('all') // 'all' or 'qualified'
     const [newColForm, setNewColForm] = useState({ label: '', desc: '' })
     
     const [showColVisibility, setShowColVisibility] = useState(false)
     const [hiddenColumnKeys, setHiddenColumnKeys] = useState([])
+    const [reorderCol, setReorderCol] = useState(null)
 
     const toggleColumnVisibility = (key) => {
         setHiddenColumnKeys(prev => 
@@ -181,6 +182,38 @@ export default function UploadPage() {
     const handleHideAllColumns = () => {
         setHiddenColumnKeys(cols.filter(c => c.key !== '_actions' && c.key !== 'full_name').map(c => c.key))
     }
+
+    const handleReorder = (targetPos, afterColKey) => {
+        if (!reorderCol) return
+        const filtered = cols.filter(c => c.key !== reorderCol.key)
+        let newCols = []
+        if (targetPos === 'front') {
+            newCols = [reorderCol, ...filtered]
+        } else if (targetPos === 'last') {
+            const nonActions = filtered.filter(c => c.key !== '_actions')
+            const actions = filtered.filter(c => c.key === '_actions')
+            newCols = [...nonActions, reorderCol, ...actions]
+        } else if (targetPos === 'after' && afterColKey) {
+            const index = filtered.findIndex(c => c.key === afterColKey)
+            if (index !== -1) {
+                newCols = [
+                    ...filtered.slice(0, index + 1),
+                    reorderCol,
+                    ...filtered.slice(index + 1)
+                ]
+            } else {
+                newCols = [...filtered]
+            }
+        }
+        setCols(newCols)
+        setReorderCol(null)
+    }
+
+    useEffect(() => {
+        if (cols.length > 0) {
+            localStorage.setItem('hire_ai_col_order', JSON.stringify(cols.map(c => c.key).filter(k => k !== '_actions')))
+        }
+    }, [cols])
 
     useEffect(() => {
         if (!showColVisibility) return;
@@ -245,9 +278,34 @@ export default function UploadPage() {
     const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500) }
     const load = () => axios.get(`${API_URL}/api/candidates`).then(r => setCandidates(r.data)).catch(() => { })
     const loadCols = () => axios.get(`${API_URL}/api/columns`).then(r => {
-        const base = (r.data.base || []).map(c => ({ key: c.col_key, label: c.col_label, pct: BASE_WIDTHS[c.col_key] || '10%', col_key: c.col_key, col_label: c.col_label }))
-        const custom = (r.data.custom || []).map(c => ({ key: c.col_key, label: c.col_label, pct: '10%', col_key: c.col_key, col_label: c.col_label, isCustom: true }))
-        setCols([...base, ...custom, { key: '_actions', label: 'Actions', pct: '6%' }])
+        const base = (r.data.base || []).map(c => ({ key: c.col_key, label: c.col_label, pct: BASE_WIDTHS[c.col_key] || '120px', col_key: c.col_key, col_label: c.col_label }))
+        const custom = (r.data.custom || []).map(c => ({ key: c.col_key, label: c.col_label, pct: '120px', col_key: c.col_key, col_label: c.col_label, isCustom: true }))
+        const allLoaded = [...base, ...custom, { key: '_actions', label: 'Actions', pct: '100px' }]
+        
+        const savedOrder = localStorage.getItem('hire_ai_col_order')
+        if (savedOrder) {
+            try {
+                const keys = JSON.parse(savedOrder).filter(k => k !== '_actions')
+                const ordered = []
+                keys.forEach(k => {
+                    const found = allLoaded.find(c => c.key === k)
+                    if (found) ordered.push(found)
+                })
+                allLoaded.forEach(c => {
+                    if (!ordered.find(o => o.key === c.key)) {
+                        if (c.key === '_actions') return
+                        ordered.push(c)
+                    }
+                })
+                const actionsCol = allLoaded.find(c => c.key === '_actions')
+                if (actionsCol) {
+                    ordered.push(actionsCol)
+                }
+                setCols(ordered)
+                return
+            } catch (e) { }
+        }
+        setCols(allLoaded)
     }).catch(() => { })
 
     useEffect(() => { load(); loadCols() }, [])
@@ -342,6 +400,19 @@ export default function UploadPage() {
         if (!window.confirm('Delete this candidate?')) return
         try { await axios.delete(`${API_URL}/api/candidates/${id}`); setCandidates(p => p.filter(c => c.id !== id)); showToast('Deleted') }
         catch { showToast('Delete failed', 'error') }
+    }
+
+    const getTableWidth = () => {
+        let total = 0
+        activeCols.forEach(c => {
+            const w = c.pct
+            if (w && typeof w === 'string' && w.endsWith('px')) {
+                total += parseInt(w, 10)
+            } else {
+                total += 120
+            }
+        })
+        return total
     }
 
     return (
@@ -493,7 +564,7 @@ export default function UploadPage() {
                 ) : (
                     <>
                         <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid var(--border)' }}>
-                            <table style={{ width: '100%', minWidth: Math.max(2600, activeCols.length * 100), tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
+                            <table style={{ width: getTableWidth(), tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
                                 <colgroup>
                                     {activeCols.map(c => <col key={c.key} style={{ width: c.pct }} />)}
                                 </colgroup>
@@ -510,9 +581,11 @@ export default function UploadPage() {
                                                         right: isActions ? 0 : undefined, 
                                                         zIndex: isActions ? 11 : undefined,
                                                         background: isActions ? 'var(--table-header-bg)' : TH.background,
-                                                        boxShadow: isActions ? '-3px 0 6px rgba(0,0,0,0.15)' : undefined
+                                                        boxShadow: isActions ? '-3px 0 6px rgba(0,0,0,0.15)' : undefined,
+                                                        cursor: isActions ? 'default' : 'pointer'
                                                     }} 
-                                                    title={c.label}
+                                                    title={isActions ? c.label : `${c.label} (Double-click to move)`}
+                                                    onDoubleClick={() => !isActions && setReorderCol(c)}
                                                 >
                                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                                                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.label}</span>
@@ -669,20 +742,59 @@ export default function UploadPage() {
                                                 const isExpandable = key === 'skills' || key === 'certifications'
 
                                                 /* ── Inline edit mode ── */
-                                                if (isEditing) return (
-                                                    <td key={key} style={TD_BASE}>
-                                                        <input autoFocus value={editVal}
-                                                            onChange={e => setEditVal(e.target.value)}
-                                                            onBlur={() => saveEdit(ri)}
-                                                            onKeyDown={e => { if (e.key === 'Enter') saveEdit(ri); if (e.key === 'Escape') setEditCell(null) }}
-                                                            style={{
-                                                                background: 'var(--input-bg)', border: '1px solid var(--gold)',
-                                                                borderRadius: 6, padding: '4px 8px', color: 'var(--text)', width: '100%',
-                                                                fontFamily: 'var(--fb)', fontSize: '0.82rem', outline: 'none'
-                                                            }}
-                                                        />
-                                                    </td>
-                                                )
+                                                if (isEditing) {
+                                                     if (key === 'candidate_status') {
+                                                         const statusOptions = ['New', 'In-Review', 'Available', 'Selected', 'Rejected', 'Engaged', 'Offered', 'Hired'];
+                                                         return (
+                                                             <td key={key} style={TD_BASE}>
+                                                                 <select
+                                                                     autoFocus
+                                                                     value={editVal || 'New'}
+                                                                     onChange={async (e) => {
+                                                                         const newVal = e.target.value;
+                                                                         setEditVal(newVal);
+                                                                         try {
+                                                                             await axios.put(`${API_URL}/api/candidates/${row.id}`, { candidate_status: newVal });
+                                                                             setCandidates(prev => prev.map((r, i) => i === ri ? { ...r, candidate_status: newVal } : r));
+                                                                             showToast('Saved!');
+                                                                         } catch (err) {
+                                                                             showToast(err.response?.data?.detail || 'Save failed', 'error');
+                                                                         }
+                                                                         setEditCell(null);
+                                                                     }}
+                                                                     onBlur={() => setEditCell(null)}
+                                                                     onKeyDown={e => { if (e.key === 'Escape') setEditCell(null); }}
+                                                                     style={{
+                                                                         background: 'var(--input-bg)', border: '1px solid var(--gold)',
+                                                                         borderRadius: 6, padding: '4px 8px', color: 'var(--text)', width: '100%',
+                                                                         fontFamily: 'var(--fb)', fontSize: '0.82rem', outline: 'none'
+                                                                     }}
+                                                                 >
+                                                                     {statusOptions.map(opt => (
+                                                                         <option key={opt} value={opt} style={{ background: 'var(--card-bg)', color: 'var(--text)' }}>
+                                                                             {opt}
+                                                                         </option>
+                                                                     ))}
+                                                                 </select>
+                                                             </td>
+                                                         );
+                                                     }
+                                                     
+                                                     return (
+                                                         <td key={key} style={TD_BASE}>
+                                                             <input autoFocus value={editVal}
+                                                                 onChange={e => setEditVal(e.target.value)}
+                                                                 onBlur={() => saveEdit(ri)}
+                                                                 onKeyDown={e => { if (e.key === 'Enter') saveEdit(ri); if (e.key === 'Escape') setEditCell(null) }}
+                                                                 style={{
+                                                                     background: 'var(--input-bg)', border: '1px solid var(--gold)',
+                                                                     borderRadius: 6, padding: '4px 8px', color: 'var(--text)', width: '100%',
+                                                                     fontFamily: 'var(--fb)', fontSize: '0.82rem', outline: 'none'
+                                                                 }}
+                                                             />
+                                                         </td>
+                                                     );
+                                                 }
 
                                                 /* ── Expandable (skills / certs) — td stays overflow:hidden ── */
                                                 if (isExpandable) return (
@@ -693,7 +805,40 @@ export default function UploadPage() {
 
                                                 /* ── Regular cells ── */
                                                 let display;
-                                                if (isExp) {
+                                                if (key === 'candidate_status') {
+                                                     const s = String(val || 'New').trim();
+                                                     let color = '#38bdf8';
+                                                     let bg = 'rgba(56, 189, 248, 0.12)';
+                                                     let border = '1px solid rgba(56, 189, 248, 0.25)';
+                                                     
+                                                     const lowerS = s.toLowerCase();
+                                                     if (lowerS === 'in-review') {
+                                                         color = '#fbbf24'; bg = 'rgba(251, 191, 36, 0.12)'; border = '1px solid rgba(251, 191, 36, 0.25)';
+                                                     } else if (lowerS === 'available') {
+                                                         color = '#34d399'; bg = 'rgba(52, 211, 153, 0.12)'; border = '1px solid rgba(52, 211, 153, 0.25)';
+                                                     } else if (lowerS === 'selected') {
+                                                         color = '#2dd4bf'; bg = 'rgba(45, 212, 191, 0.12)'; border = '1px solid rgba(45, 212, 191, 0.25)';
+                                                     } else if (lowerS === 'rejected') {
+                                                         color = '#f87171'; bg = 'rgba(248, 113, 113, 0.12)'; border = '1px solid rgba(248, 113, 113, 0.25)';
+                                                     } else if (lowerS === 'engaged') {
+                                                         color = '#c084fc'; bg = 'rgba(192, 132, 252, 0.12)'; border = '1px solid rgba(192, 132, 252, 0.25)';
+                                                     } else if (lowerS === 'offered') {
+                                                         color = '#f43f5e'; bg = 'rgba(244, 63, 94, 0.12)'; border = '1px solid rgba(244, 63, 94, 0.25)';
+                                                     } else if (lowerS === 'hired') {
+                                                         color = '#4ade80'; bg = 'rgba(74, 222, 128, 0.15)'; border = '1px solid rgba(74, 222, 128, 0.35)';
+                                                     }
+                                                     
+                                                     display = (
+                                                         <span style={{
+                                                             background: bg, color: color, border: border,
+                                                             borderRadius: 5, padding: '2px 8px', fontSize: '0.73rem',
+                                                             fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-block',
+                                                             textTransform: 'capitalize'
+                                                         }}>
+                                                             {s}
+                                                         </span>
+                                                     );
+                                                 } else if (isExp) {
                                                     display = (val !== '' && val != null ? `${val} yrs` : '—');
                                                 } else if (key === 'notice_period' || key === 'availability_in_days') {
                                                     display = (val === 0 || val === '0') ? 'Immediate' : (val !== null && val !== '' && !isNaN(val) ? `${val} days` : (val || '—'));
@@ -701,7 +846,12 @@ export default function UploadPage() {
                                                     display = (val !== '' && val != null ? val : '—');
                                                 }
                                                 return (
-                                                    <td key={key} onDoubleClick={() => startEdit(ri, key, val)} style={{
+                                                    <td key={key} onClick={() => {
+                                                             if (key === 'candidate_status') startEdit(ri, key, val);
+                                                         }}
+                                                         onDoubleClick={() => {
+                                                             if (key !== 'candidate_status') startEdit(ri, key, val);
+                                                         }} style={{
                                                         ...TD_BASE,
                                                         color: key === 'full_name' ? 'var(--gold)' : key === 'email' ? 'var(--sky-dim)' : 'var(--text)',
                                                         fontWeight: key === 'full_name' ? 700 : undefined,
@@ -709,7 +859,7 @@ export default function UploadPage() {
                                                         whiteSpace: key === 'full_name' || key === 'current_organization' || key === 'email'
                                                             ? 'normal' : 'nowrap',
                                                         wordBreak: key === 'email' ? 'break-all' : undefined,
-                                                        cursor: 'text',
+                                                        cursor: key === 'candidate_status' ? 'pointer' : 'text',
                                                     }}>
                                                         {key === 'full_name' && row.filename ? (
                                                             <span
@@ -727,9 +877,9 @@ export default function UploadPage() {
                                                                 title={`View ${row.filename}`}
                                                             >
                                                                 <FileText size={14} style={{ flexShrink: 0, color: 'var(--gold)' }} />
-                                                                {String(display)}
+                                                                {display}
                                                             </span>
-                                                        ) : String(display)}
+                                                        ) : display}
                                                     </td>
                                                 )
                                             })}
@@ -888,6 +1038,80 @@ export default function UploadPage() {
                                     Apply Filter
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Column Reordering Modal */}
+            {reorderCol && (
+                <div 
+                    onClick={() => setReorderCol(null)}
+                    style={{
+                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                        background: 'rgba(0, 0, 0, 0.45)', zIndex: 99999,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        backdropFilter: 'blur(2px)'
+                    }}
+                >
+                    <div
+                        onClick={e => e.stopPropagation()}
+                        style={{
+                            background: 'var(--card-bg)', border: '1px solid var(--border)',
+                            borderRadius: 12, padding: '20px', width: 360, maxWidth: '90%',
+                            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.45)',
+                            display: 'flex', flexDirection: 'column', gap: 16
+                        }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
+                            <span style={{ fontWeight: 'bold', fontSize: '0.95rem', color: 'var(--gold)' }}>
+                                Move Column: {reorderCol.label}
+                            </span>
+                            <button onClick={() => setReorderCol(null)}
+                                style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center' }}>
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            <button 
+                                onClick={() => handleReorder('front')}
+                                className="btn btn-secondary"
+                                style={{ justifyContent: 'center', width: '100%', gap: 8 }}
+                            >
+                                ⬅ Move to Front
+                            </button>
+
+                            <button 
+                                onClick={() => handleReorder('last')}
+                                className="btn btn-secondary"
+                                style={{ justifyContent: 'center', width: '100%', gap: 8 }}
+                            >
+                                ➡ Move to End
+                            </button>
+
+                            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                <label style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Move after another column:</label>
+                                <select 
+                                    onChange={(e) => handleReorder('after', e.target.value)}
+                                    defaultValue=""
+                                    style={{
+                                        background: 'var(--input-bg)', border: '1px solid var(--border)',
+                                        borderRadius: 6, padding: '8px', color: 'var(--text)', width: '100%',
+                                        fontSize: '0.85rem', outline: 'none'
+                                    }}
+                                >
+                                    <option value="" disabled>Select a column...</option>
+                                    {cols.filter(c => c.key !== '_actions' && c.key !== reorderCol.key).map(c => (
+                                        <option key={c.key} value={c.key}>{c.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
+                            <button onClick={() => setReorderCol(null)} className="btn btn-secondary" style={{ padding: '6px 16px' }}>
+                                Cancel
+                            </button>
                         </div>
                     </div>
                 </div>

@@ -36,6 +36,7 @@ export default function DashboardPage() {
     const [newColLabel, setNewColLabel] = useState('')
     const [newColDesc, setNewColDesc] = useState('')
     const [addingCol, setAddingCol] = useState(false)
+    const [editStatusCell, setEditStatusCell] = useState(null)
 
     useEffect(() => {
         Promise.all([
@@ -45,7 +46,7 @@ export default function DashboardPage() {
             setCandidates(candRes.data)
             setColumns([...colRes.data.base, ...colRes.data.custom])
         }).catch(() => { })
-        .finally(() => setLoading(false))
+            .finally(() => setLoading(false))
     }, [])
 
     const handleAddColumn = async () => {
@@ -261,19 +262,19 @@ export default function DashboardPage() {
                                         {columns.map(col => {
                                             if (col.col_key === 'full_name') {
                                                 return <td style={{ padding: '10px 12px', verticalAlign: 'top', minWidth: '180px' }} key={col.col_key}>
-                                                    <a 
-                                                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/static/${c.filename}`} 
-                                                        target="_blank" 
-                                                        rel="noreferrer" 
-                                                        style={{ 
+                                                    <a
+                                                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/static/${c.filename}`}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        style={{
                                                             display: 'inline-flex',
                                                             alignItems: 'center',
                                                             gap: '6px',
-                                                            color: 'var(--gold)', 
-                                                            textDecoration: 'underline', 
+                                                            color: 'var(--gold)',
+                                                            textDecoration: 'underline',
                                                             fontWeight: 700,
-                                                            transition: 'color 0.2s' 
-                                                        }} 
+                                                            transition: 'color 0.2s'
+                                                        }}
                                                         title={`Download ${c.filename}`}
                                                     >
                                                         <FileText size={14} style={{ flexShrink: 0, color: 'var(--gold)' }} />
@@ -294,6 +295,83 @@ export default function DashboardPage() {
                                                         {displayVal}
                                                     </span>
                                                 </td>
+                                            }
+                                            if (col.col_key === 'candidate_status') {
+                                                const s = String(c.candidate_status || 'New').trim();
+                                                const isEditing = editStatusCell?.candidateId === c.id;
+
+                                                if (isEditing) {
+                                                    const statusOptions = ['New', 'In-Review', 'Available', 'Selected', 'Rejected', 'Engaged', 'Offered', 'Hired'];
+                                                    return (
+                                                        <td key={col.col_key} style={{ padding: '8px 12px', verticalAlign: 'top' }}>
+                                                            <select
+                                                                autoFocus
+                                                                value={s}
+                                                                onChange={async (e) => {
+                                                                    const newVal = e.target.value;
+                                                                    try {
+                                                                        await axios.put(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/candidates/${c.id}`, { candidate_status: newVal });
+                                                                        setCandidates(prev => prev.map((cand) => cand.id === c.id ? { ...cand, candidate_status: newVal } : cand));
+                                                                    } catch (err) {
+                                                                        alert('Save failed: ' + (err.response?.data?.detail || err.message));
+                                                                    }
+                                                                    setEditStatusCell(null);
+                                                                }}
+                                                                onBlur={() => setEditStatusCell(null)}
+                                                                onKeyDown={e => { if (e.key === 'Escape') setEditStatusCell(null); }}
+                                                                style={{
+                                                                    background: 'var(--input-bg)', border: '1px solid var(--gold)',
+                                                                    borderRadius: 6, padding: '4px 8px', color: 'var(--text)', width: '100%',
+                                                                    fontFamily: 'var(--fb)', fontSize: '0.82rem', outline: 'none'
+                                                                }}
+                                                            >
+                                                                {statusOptions.map(opt => (
+                                                                    <option key={opt} value={opt} style={{ background: 'var(--card-bg)', color: 'var(--text)' }}>
+                                                                        {opt}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        </td>
+                                                    );
+                                                }
+
+                                                let color = '#38bdf8';
+                                                let bg = 'rgba(56, 189, 248, 0.12)';
+                                                let border = '1px solid rgba(56, 189, 248, 0.25)';
+
+                                                const lowerS = s.toLowerCase();
+                                                if (lowerS === 'in-review') {
+                                                    color = '#fbbf24'; bg = 'rgba(251, 191, 36, 0.12)'; border = '1px solid rgba(251, 191, 36, 0.25)';
+                                                } else if (lowerS === 'available') {
+                                                    color = '#34d399'; bg = 'rgba(52, 211, 153, 0.12)'; border = '1px solid rgba(52, 211, 153, 0.25)';
+                                                } else if (lowerS === 'selected') {
+                                                    color = '#2dd4bf'; bg = 'rgba(45, 212, 191, 0.12)'; border = '1px solid rgba(45, 212, 191, 0.25)';
+                                                } else if (lowerS === 'rejected') {
+                                                    color = '#f87171'; bg = 'rgba(248, 113, 113, 0.12)'; border = '1px solid rgba(248, 113, 113, 0.25)';
+                                                } else if (lowerS === 'engaged') {
+                                                    color = '#c084fc'; bg = 'rgba(192, 132, 252, 0.12)'; border = '1px solid rgba(192, 132, 252, 0.25)';
+                                                } else if (lowerS === 'offered') {
+                                                    color = '#f43f5e'; bg = 'rgba(244, 63, 94, 0.12)'; border = '1px solid rgba(244, 63, 94, 0.25)';
+                                                } else if (lowerS === 'hired') {
+                                                    color = '#4ade80'; bg = 'rgba(74, 222, 128, 0.15)'; border = '1px solid rgba(74, 222, 128, 0.35)';
+                                                }
+
+                                                return (
+                                                    <td
+                                                        key={col.col_key}
+                                                        onClick={() => setEditStatusCell({ candidateId: c.id })}
+                                                        style={{ padding: '10px 12px', verticalAlign: 'top', cursor: 'pointer' }}
+                                                    >
+                                                        <span style={{
+                                                            background: bg, color: color, border: border,
+                                                            borderRadius: 5, padding: '2px 8px', fontSize: '0.73rem',
+                                                            fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-block',
+                                                            textTransform: 'capitalize'
+                                                        }}>
+                                                            {s}
+                                                        </span>
+                                                    </td>
+                                                );
                                             }
                                             if (col.col_key === 'total_experience' || col.col_key === 'pega_experience' || col.col_key === 'cdh_exp') {
                                                 return <td key={col.col_key} style={{ padding: '10px 12px', textAlign: 'center', verticalAlign: 'top' }}>
@@ -325,28 +403,28 @@ export default function DashboardPage() {
             {/* Add Column Modal */}
             {showAddCol && (
                 <div style={{
-                    position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', 
-                    background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', 
+                    position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+                    background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center',
                     justifyContent: 'center', zIndex: 1000
                 }}>
                     <div className="card" style={{ width: '400px', padding: '2rem' }}>
                         <h3 style={{ color: 'var(--gold)', marginBottom: '1.5rem', fontFamily: 'var(--fh)' }}>Add Custom Column</h3>
                         <div style={{ marginBottom: '1rem' }}>
                             <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--sky-dim)', marginBottom: '6px' }}>Column Label</label>
-                            <input 
-                                type="text" 
-                                value={newColLabel} 
-                                onChange={e => setNewColLabel(e.target.value)} 
-                                placeholder="e.g. Github Profile" 
+                            <input
+                                type="text"
+                                value={newColLabel}
+                                onChange={e => setNewColLabel(e.target.value)}
+                                placeholder="e.g. Github Profile"
                                 style={{ width: '100%', padding: '10px', background: 'rgba(var(--navy-dark-rgb), 0.8)', border: '1px solid var(--border)', color: '#fff', borderRadius: 6 }}
                             />
                         </div>
                         <div style={{ marginBottom: '1.5rem' }}>
                             <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--sky-dim)', marginBottom: '6px' }}>AI Extraction Prompt</label>
-                            <textarea 
-                                value={newColDesc} 
-                                onChange={e => setNewColDesc(e.target.value)} 
-                                placeholder="e.g. Extract the candidate's Github URL. Leave empty if none." 
+                            <textarea
+                                value={newColDesc}
+                                onChange={e => setNewColDesc(e.target.value)}
+                                placeholder="e.g. Extract the candidate's Github URL. Leave empty if none."
                                 rows={3}
                                 style={{ width: '100%', padding: '10px', background: 'rgba(var(--navy-dark-rgb), 0.8)', border: '1px solid var(--border)', color: '#fff', borderRadius: 6, resize: 'vertical' }}
                             />

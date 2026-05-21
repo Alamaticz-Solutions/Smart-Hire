@@ -1,24 +1,88 @@
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 /**
- * Exports JSON data to an Excel file (.xlsx)
+ * Exports JSON data to an Excel file (.xlsx) with status dropdown lists and custom styling
  * @param {Array} data - Array of objects to export
  * @param {string} filename - Name of the file to save
  * @param {string} sheetName - Name of the worksheet
  */
-export const exportToExcel = (data, filename = 'candidates.xlsx', sheetName = 'Candidates') => {
+export const exportToExcel = async (data, filename = 'candidates.xlsx', sheetName = 'Candidates') => {
     if (!data || data.length === 0) {
         console.error('No data to export');
         return;
     }
 
-    // Create a new workbook and worksheet
-    const worksheet = XLSX.utils.json_to_sheet(data);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+    try {
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet(sheetName);
 
-    // Write file
-    XLSX.writeFile(workbook, filename);
+        // Get columns from keys of the first data object
+        const headers = Object.keys(data[0]);
+        worksheet.columns = headers.map(h => ({ header: h, key: h, width: 22 }));
+
+        // Add rows
+        worksheet.addRows(data);
+
+        // Find the column index of 'Candidate Status'
+        const statusColIndex = headers.findIndex(h => h.toLowerCase() === 'candidate status');
+        
+        if (statusColIndex !== -1) {
+            // Excel columns are 1-indexed
+            const colLetter = worksheet.getColumn(statusColIndex + 1).letter;
+            
+            // Add validation to data rows (plus buffer rows for manual additions)
+            const rowCount = Math.max(data.length + 50, 100);
+            for (let i = 2; i <= rowCount; i++) {
+                const cell = worksheet.getCell(`${colLetter}${i}`);
+                cell.dataValidation = {
+                    type: 'list',
+                    allowBlank: true,
+                    formulae: ['"New,In-Review,Available,Selected,Rejected,Engaged,Offered,Hired"']
+                };
+            }
+        }
+
+        // Apply styled header row formatting
+        const headerRow = worksheet.getRow(1);
+        headerRow.font = { bold: true, color: { argb: 'FFFFFF' }, name: 'Segoe UI', size: 11 };
+        headerRow.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: '00203F' } // Deep navy/dark blue
+        };
+        headerRow.alignment = { vertical: 'middle', horizontal: 'left' };
+        headerRow.height = 25;
+
+        // Apply segment formatting to the grid rows
+        for (let i = 2; i <= data.length + 1; i++) {
+            const row = worksheet.getRow(i);
+            row.alignment = { vertical: 'middle' };
+            row.font = { name: 'Segoe UI', size: 10 };
+            
+            // Alternate row background colors (zebra striping)
+            if (i % 2 === 0) {
+                row.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: 'F4F8FA' }
+                };
+            }
+        }
+
+        // Write workbook to buffer and trigger download in-browser
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = window.URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        window.URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('Excel export failed:', error);
+    }
 };
 
 /**

@@ -85,6 +85,7 @@ def init_db():
             id                   INTEGER PRIMARY KEY AUTOINCREMENT,
             filename             TEXT,
             full_name            TEXT,
+            candidate_status     TEXT DEFAULT 'New',
             total_experience     REAL DEFAULT 0.0,
             pega_experience      REAL DEFAULT 0.0,
             skills               TEXT,
@@ -130,6 +131,7 @@ def init_db():
     cur.execute("PRAGMA table_info(candidate_metadata)")
     existing = [c[1] for c in cur.fetchall()]
     new_cols = {
+        'candidate_status': "TEXT DEFAULT 'New'",
         'cdh_exp': 'REAL DEFAULT 0.0',
         'expected_ctc': 'TEXT',
         'percentage_hike': 'TEXT',
@@ -249,6 +251,7 @@ def get_columns():
     
     base_cols = [
         {"col_key": "full_name", "col_label": "Name"},
+        {"col_key": "candidate_status", "col_label": "Candidate Status"},
         {"col_key": "total_experience", "col_label": "Total Exp"},
         {"col_key": "pega_experience", "col_label": "Pega Exp"},
         {"col_key": "cdh_exp", "col_label": "CDH Exp"},
@@ -482,6 +485,7 @@ def process_resume_logic(safe_name: str, path: str):
         # -- End Data Validation & Normalization --
 
         data['filename'] = safe_name
+        data['candidate_status'] = 'New'
         candidate_id = log_candidate(data)
     except Exception as e:
         error_msg = str(e)[:100]
