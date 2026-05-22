@@ -167,7 +167,8 @@ export default function UploadPage() {
     
     const [showColVisibility, setShowColVisibility] = useState(false)
     const [hiddenColumnKeys, setHiddenColumnKeys] = useState([])
-    const [reorderCol, setReorderCol] = useState(null)
+    const [draggedColKey, setDraggedColKey] = useState(null)
+    const [dragOverColKey, setDragOverColKey] = useState(null)
 
     const toggleColumnVisibility = (key) => {
         setHiddenColumnKeys(prev => 
@@ -183,31 +184,47 @@ export default function UploadPage() {
         setHiddenColumnKeys(cols.filter(c => c.key !== '_actions' && c.key !== 'full_name').map(c => c.key))
     }
 
-    const handleReorder = (targetPos, afterColKey) => {
-        if (!reorderCol) return
-        const filtered = cols.filter(c => c.key !== reorderCol.key)
-        let newCols = []
-        if (targetPos === 'front') {
-            newCols = [reorderCol, ...filtered]
-        } else if (targetPos === 'last') {
-            const nonActions = filtered.filter(c => c.key !== '_actions')
-            const actions = filtered.filter(c => c.key === '_actions')
-            newCols = [...nonActions, reorderCol, ...actions]
-        } else if (targetPos === 'after' && afterColKey) {
-            const index = filtered.findIndex(c => c.key === afterColKey)
-            if (index !== -1) {
-                newCols = [
-                    ...filtered.slice(0, index + 1),
-                    reorderCol,
-                    ...filtered.slice(index + 1)
-                ]
-            } else {
-                newCols = [...filtered]
-            }
+    const handleDragStart = (e, key) => {
+        setDraggedColKey(key);
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', key);
+    };
+
+    const handleDragOver = (e, key) => {
+        if (key === '_actions') return;
+        e.preventDefault();
+    };
+
+    const handleDragEnter = (e, key) => {
+        if (key === '_actions') return;
+        setDragOverColKey(key);
+    };
+
+    const handleDragEnd = () => {
+        setDraggedColKey(null);
+        setDragOverColKey(null);
+    };
+
+    const handleDrop = (e, targetKey) => {
+        e.preventDefault();
+        if (!draggedColKey || draggedColKey === targetKey || targetKey === '_actions' || draggedColKey === '_actions') {
+            setDraggedColKey(null);
+            setDragOverColKey(null);
+            return;
         }
-        setCols(newCols)
-        setReorderCol(null)
-    }
+
+        const dragIdx = cols.findIndex(c => c.key === draggedColKey);
+        const targetIdx = cols.findIndex(c => c.key === targetKey);
+
+        if (dragIdx !== -1 && targetIdx !== -1) {
+            const updatedCols = [...cols];
+            const [draggedItem] = updatedCols.splice(dragIdx, 1);
+            updatedCols.splice(targetIdx, 0, draggedItem);
+            setCols(updatedCols);
+        }
+        setDraggedColKey(null);
+        setDragOverColKey(null);
+    };
 
     useEffect(() => {
         if (cols.length > 0) {
@@ -321,8 +338,9 @@ export default function UploadPage() {
         }
     }, [candidates]);
 
-    const handleDeleteCol = async (col_key) => {
-        if (!window.confirm('Delete this custom column?')) return
+    const handleDeleteCol = async (col_key, col_label) => {
+        const label = col_label || col_key;
+        if (!window.confirm(`Are you sure you want to delete the "${label}" column?`)) return
         try {
             await axios.delete(`${API_URL}/api/columns/${col_key}`)
             showToast('Column deleted')
@@ -572,31 +590,96 @@ export default function UploadPage() {
                                     <tr>
                                         {activeCols.map(c => {
                                             const isActions = c.key === '_actions';
+                                            const isDragged = draggedColKey === c.key;
+                                            const isDragTarget = dragOverColKey === c.key;
+                                            
+                                            // Harmonic highlight background and dashed border for drag targets
+                                            let backgroundStyle = isActions ? 'var(--table-header-bg)' : TH.background;
+                                            if (isDragTarget && !isDragged) {
+                                                backgroundStyle = 'rgba(var(--gold-rgb), 0.18)';
+                                            }
+                                            
                                             return (
                                                 <th 
                                                     key={c.key} 
+                                                    draggable={!isActions}
+                                                    onDragStart={(e) => !isActions && handleDragStart(e, c.key)}
+                                                    onDragOver={(e) => !isActions && handleDragOver(e, c.key)}
+                                                    onDragEnter={(e) => !isActions && handleDragEnter(e, c.key)}
+                                                    onDragLeave={() => !isActions && setDragOverColKey(null)}
+                                                    onDragEnd={() => !isActions && handleDragEnd()}
+                                                    onDrop={(e) => !isActions && handleDrop(e, c.key)}
                                                     style={{ 
                                                         ...TH, 
                                                         position: isActions ? 'sticky' : undefined, 
                                                         right: isActions ? 0 : undefined, 
                                                         zIndex: isActions ? 11 : undefined,
-                                                        background: isActions ? 'var(--table-header-bg)' : TH.background,
+                                                        background: backgroundStyle,
                                                         boxShadow: isActions ? '-3px 0 6px rgba(0,0,0,0.15)' : undefined,
-                                                        cursor: isActions ? 'default' : 'pointer'
+                                                        cursor: isActions ? 'default' : (isDragged ? 'grabbing' : 'grab'),
+                                                        opacity: isDragged ? 0.4 : 1,
+                                                        borderLeft: (isDragTarget && !isDragged) ? '2px dashed var(--gold)' : '2px dashed transparent',
+                                                        borderRight: (isDragTarget && !isDragged) ? '2px dashed var(--gold)' : '2px dashed transparent',
+                                                        transition: 'all 0.2s ease-in-out'
                                                     }} 
-                                                    title={isActions ? c.label : `${c.label} (Double-click to move)`}
-                                                    onDoubleClick={() => !isActions && setReorderCol(c)}
+                                                    title={isActions ? c.label : `${c.label} (Drag to reorder)`}
                                                 >
-                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '6px' }}>
                                                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.label}</span>
-                                                        {c.isCustom && (
-                                                            <button
-                                                                onClick={() => handleDeleteCol(c.key)}
-                                                                style={{ background: 'none', border: 'none', color: '#ef233c', cursor: 'pointer', padding: 0, marginLeft: 5, display: 'flex' }}
-                                                                title="Delete Column"
-                                                            >
-                                                                <Trash2 size={12} />
-                                                            </button>
+                                                        {!isActions && (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                                                                {c.isCustom ? (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.preventDefault();
+                                                                            e.stopPropagation();
+                                                                            handleDeleteCol(c.key, c.label);
+                                                                        }}
+                                                                        style={{
+                                                                            background: 'none',
+                                                                            border: 'none',
+                                                                            color: '#ef4444',
+                                                                            cursor: 'pointer',
+                                                                            padding: '2px',
+                                                                            display: 'inline-flex',
+                                                                            alignItems: 'center',
+                                                                            transition: 'transform 0.15s, color 0.15s',
+                                                                            opacity: 0.7,
+                                                                        }}
+                                                                        onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.15)'; e.currentTarget.style.opacity = 1; }}
+                                                                        onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.opacity = 0.7; }}
+                                                                        title="Delete Column"
+                                                                    >
+                                                                        <Trash2 size={12} />
+                                                                    </button>
+                                                                ) : (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.preventDefault();
+                                                                            e.stopPropagation();
+                                                                            if (window.confirm(`Are you sure you want to delete the "${c.label}" column?`)) {
+                                                                                toggleColumnVisibility(c.key);
+                                                                            }
+                                                                        }}
+                                                                        style={{
+                                                                            background: 'none',
+                                                                            border: 'none',
+                                                                            color: 'var(--text-dim)',
+                                                                            cursor: 'pointer',
+                                                                            padding: '2px',
+                                                                            display: 'inline-flex',
+                                                                            alignItems: 'center',
+                                                                            transition: 'transform 0.15s, color 0.15s',
+                                                                            opacity: 0.5,
+                                                                        }}
+                                                                        onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.15)'; e.currentTarget.style.opacity = 1; e.currentTarget.style.color = 'var(--gold)'; }}
+                                                                        onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.opacity = 0.5; e.currentTarget.style.color = 'var(--text-dim)'; }}
+                                                                        title="Hide Column"
+                                                                    >
+                                                                        <X size={12} />
+                                                                    </button>
+                                                                )}
+                                                            </div>
                                                         )}
                                                     </div>
                                                 </th>
@@ -1043,79 +1126,7 @@ export default function UploadPage() {
                 </div>
             )}
 
-            {/* Column Reordering Modal */}
-            {reorderCol && (
-                <div 
-                    onClick={() => setReorderCol(null)}
-                    style={{
-                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                        background: 'rgba(0, 0, 0, 0.45)', zIndex: 99999,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        backdropFilter: 'blur(2px)'
-                    }}
-                >
-                    <div
-                        onClick={e => e.stopPropagation()}
-                        style={{
-                            background: 'var(--card-bg)', border: '1px solid var(--border)',
-                            borderRadius: 12, padding: '20px', width: 360, maxWidth: '90%',
-                            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.45)',
-                            display: 'flex', flexDirection: 'column', gap: 16
-                        }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
-                            <span style={{ fontWeight: 'bold', fontSize: '0.95rem', color: 'var(--gold)' }}>
-                                Move Column: {reorderCol.label}
-                            </span>
-                            <button onClick={() => setReorderCol(null)}
-                                style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center' }}>
-                                <X size={16} />
-                            </button>
-                        </div>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                            <button 
-                                onClick={() => handleReorder('front')}
-                                className="btn btn-secondary"
-                                style={{ justifyContent: 'center', width: '100%', gap: 8 }}
-                            >
-                                ⬅ Move to Front
-                            </button>
-
-                            <button 
-                                onClick={() => handleReorder('last')}
-                                className="btn btn-secondary"
-                                style={{ justifyContent: 'center', width: '100%', gap: 8 }}
-                            >
-                                ➡ Move to End
-                            </button>
-
-                            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                <label style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Move after another column:</label>
-                                <select 
-                                    onChange={(e) => handleReorder('after', e.target.value)}
-                                    defaultValue=""
-                                    style={{
-                                        background: 'var(--input-bg)', border: '1px solid var(--border)',
-                                        borderRadius: 6, padding: '8px', color: 'var(--text)', width: '100%',
-                                        fontSize: '0.85rem', outline: 'none'
-                                    }}
-                                >
-                                    <option value="" disabled>Select a column...</option>
-                                    {cols.filter(c => c.key !== '_actions' && c.key !== reorderCol.key).map(c => (
-                                        <option key={c.key} value={c.key}>{c.label}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
-                            <button onClick={() => setReorderCol(null)} className="btn btn-secondary" style={{ padding: '6px 16px' }}>
-                                Cancel
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Column Reordering Modal Removed */}
 
             {/* Resume Viewer Modal */}
             {viewingPdf && (

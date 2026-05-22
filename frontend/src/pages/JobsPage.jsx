@@ -17,6 +17,8 @@ export default function JobsPage() {
     const [editExp, setEditExp] = useState('');
     const [editSkills, setEditSkills] = useState('');
     const [editReason, setEditReason] = useState('');
+    const [editCurrentLocation, setEditCurrentLocation] = useState('');
+    const [editPrefLocations, setEditPrefLocations] = useState('');
     const [isSavingEdit, setIsSavingEdit] = useState(false);
 
     const [editingJob, setEditingJob] = useState(null);
@@ -140,7 +142,9 @@ export default function JobsPage() {
             await axios.put(`${API_URL}/api/candidates/${editingCandidate.id}`, {
                 full_name: editName,
                 total_experience: editExp,
-                skills: editSkills
+                skills: editSkills,
+                current_location: editCurrentLocation,
+                pref_locations: editPrefLocations
             });
             
             // 2. Update Job Candidate specific details (AI Reason)
@@ -327,9 +331,11 @@ export default function JobsPage() {
                                                     {c.full_name || c.filename}
                                                     {c.is_qualified ? <span style={{fontSize: '0.8rem', background: 'rgba(var(--gold-rgb), 0.2)', padding: '2px 8px', borderRadius: '12px', color: 'var(--gold)'}}>⭐ Qualified</span> : null}
                                                 </h3>
-                                                <div style={{ display: 'flex', gap: '15px', fontSize: '0.85rem', color: 'var(--text)', marginBottom: '10px' }}>
+                                                <div style={{ display: 'flex', gap: '15px', fontSize: '0.85rem', color: 'var(--text)', marginBottom: '10px', flexWrap: 'wrap' }}>
                                                     <span><strong>Exp:</strong> {c.total_experience || 0} yrs</span>
                                                     <span><strong>Skills:</strong> {c.skills || 'N/A'}</span>
+                                                    {c.current_location && <span><strong>Current Location:</strong> {c.current_location}</span>}
+                                                    {c.pref_locations && <span><strong>Pref Locations:</strong> {c.pref_locations}</span>}
                                                 </div>
                                                 <div style={{ fontSize: '0.9rem', color: 'var(--text-dim)', background: 'var(--input-bg)', padding: '10px', borderRadius: '8px', borderLeft: '3px solid var(--gold)' }}>
                                                     <strong>🤖 AI Analysis:</strong> {c.ai_reason}
@@ -351,6 +357,8 @@ export default function JobsPage() {
                                                     setEditExp(c.total_experience || '0');
                                                     setEditSkills(c.skills || '');
                                                     setEditReason(c.ai_reason || '');
+                                                    setEditCurrentLocation(c.current_location || '');
+                                                    setEditPrefLocations(c.pref_locations || '');
                                                 }} style={{ fontSize: '0.8rem', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center', borderColor: 'rgba(var(--gold-rgb), 0.3)', color: 'var(--gold)' }}>
                                                     <Edit size={12}/> Edit Details
                                                 </button>
@@ -417,8 +425,30 @@ export default function JobsPage() {
                                     value={editSkills} 
                                     onChange={e => setEditSkills(e.target.value)} 
                                     placeholder="e.g. Pega, Java, SQL" 
-                                    rows={3}
+                                    rows={2}
                                     style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, resize: 'vertical', outline: 'none' }}
+                                />
+                            </div>
+                            
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Current Location</label>
+                                <input 
+                                    type="text" 
+                                    value={editCurrentLocation} 
+                                    onChange={e => setEditCurrentLocation(e.target.value)} 
+                                    placeholder="e.g. Chennai" 
+                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none' }}
+                                />
+                            </div>
+
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Preferred Locations (comma separated)</label>
+                                <input 
+                                    type="text" 
+                                    value={editPrefLocations} 
+                                    onChange={e => setEditPrefLocations(e.target.value)} 
+                                    placeholder="e.g. Chennai, Bangalore" 
+                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none' }}
                                 />
                             </div>
                             
@@ -428,7 +458,7 @@ export default function JobsPage() {
                                     value={editReason} 
                                     onChange={e => setEditReason(e.target.value)} 
                                     placeholder="Explanation of how the candidate fits this job description" 
-                                    rows={4}
+                                    rows={3}
                                     style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, resize: 'vertical', outline: 'none' }}
                                 />
                             </div>

@@ -294,7 +294,7 @@ def delete_column(col_key: str):
     return {"status": "deleted"}
 
 @app.put("/api/candidates/{candidate_id}")
-async def update_candidate(candidate_id: int, request: Request):
+async def update_candidate(candidate_id: int, request: Request, background_tasks: BackgroundTasks):
     body = await request.json()
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur  = conn.cursor()
@@ -329,6 +329,15 @@ async def update_candidate(candidate_id: int, request: Request):
     )
     conn.commit()
     conn.close()
+
+    # Re-trigger matching if matching-related details have changed
+    match_related_fields = {
+        'full_name', 'total_experience', 'pega_experience', 'cdh_exp',
+        'skills', 'certifications', 'current_location', 'pref_locations'
+    }
+    if any(field in updates for field in match_related_fields):
+        background_tasks.add_task(match_candidate_to_all_jobs, candidate_id)
+
     return {"status": "updated"}
 
 @app.delete("/api/candidates/{candidate_id}")
@@ -505,28 +514,45 @@ def process_resume_logic(safe_name: str, path: str):
 
     # Automatically match this candidate to all active JDs in the database
     if candidate_id:
-        try:
-            # Query all jobs (JDs)
-            conn = sqlite3.connect(STATS_DB, timeout=30.0)
-            conn.row_factory = sqlite3.Row
-            cur = conn.cursor()
-            cur.execute("SELECT id, title, description FROM jobs")
-            jobs = [dict(row) for row in cur.fetchall()]
+        match_candidate_to_all_jobs(candidate_id)
+
+def match_candidate_to_all_jobs(candidate_id: int):
+    try:
+        # Query candidate details
+        conn = sqlite3.connect(STATS_DB, timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM candidate_metadata WHERE id = ?", (candidate_id,))
+        row = cur.fetchone()
+        if not row:
             conn.close()
+            return
+        data = dict(row)
+        
+        # Query all jobs (JDs)
+        cur.execute("SELECT id, title, description FROM jobs")
+        jobs = [dict(r) for r in cur.fetchall()]
+        conn.close()
 
-            if jobs:
-                # Format JDs for the LLM
-                jds_str_list = []
-                for job in jobs:
-                    jds_str_list.append(f"JD ID: {job['id']}\nTitle: {job['title']}\nDescription: {job['description']}\n---")
-                formatted_jds = "\n".join(jds_str_list)
+        if not jobs:
+            return
 
-                prompt = f"""You are an expert technical recruiter. Evaluate candidate "{data.get('full_name', 'Candidate')}" against the following Job Descriptions "pin to pin".
+        # Format JDs for the LLM
+        jds_str_list = []
+        for job in jobs:
+            jds_str_list.append(f"JD ID: {job['id']}\nTitle: {job['title']}\nDescription: {job['description']}\n---")
+        formatted_jds = "\n".join(jds_str_list)
+
+        _, llm = get_models()
+
+        prompt = f"""You are an expert technical recruiter. Evaluate candidate "{data.get('full_name', 'Candidate')}" against the following Job Descriptions "pin to pin".
 
 Candidate Details:
 - Skills: {data.get('skills', '')}
 - Experience: {data.get('total_experience', 0)} years (Pega Experience: {data.get('pega_experience', 0)} years, CDH Experience: {data.get('cdh_exp', 0)} years)
 - Certifications: {data.get('certifications', '')}
+- Current Location: {data.get('current_location', '')}
+- Preferred Locations: {data.get('pref_locations', '')}
 
 Job Descriptions:
 {formatted_jds}
@@ -539,49 +565,74 @@ Rules for evaluation:
    - CSA is equivalent to any of: "PEGA Certified System Architect", "Pega Certified System Architect", "Certified Pega System Architect", "System Architect", or "CSA".
    - LSA is equivalent to any of: "PEGA Certified Lead System Architect", "Pega Certified Lead System Architect", "Certified Pega Lead System Architect", "Lead System Architect", or "LSA".
 3. Do not invent requirements. If the Job Description only mentions Pega experience, do NOT reject candidates for lacking CSSA or other unrelated certifications.
+4. Location Matching: If the Job Description specifies a location requirement, a candidate matches if their Current Location or any of their Preferred Locations match the specified job location (e.g. if the Job Description mentions 'Chennai', a candidate with Current Location or Preferred Location 'Chennai' is a match).
 
 For each Job Description, decide if the candidate is a good match based on the rules.
 Respond with a JSON list of objects for matches only:
 [
-  {{"job_id": {chr(123)}job_id{chr(125)}, "reason": "<1-sentence explanation of fit based on specific experience and skills>"}}
+  {{"job_id": <job_id>, "reason": "<1-sentence explanation of fit based on specific experience, skills, and location>"}}
 ]
 If there are no matches, return an empty list [].
 Return ONLY the JSON block, no markdown, no other text."""
 
+        # Add a retry mechanism for rate limits
+        max_retries = 3
+        resp = None
+        for attempt in range(max_retries):
+            try:
                 resp = llm.invoke([HumanMessage(content=prompt)])
-                raw = resp.content.strip()
-                if "```json" in raw:
-                    raw = raw.split("```json")[1].split("```")[0].strip()
-                elif "```" in raw:
-                    raw = raw.split("```")[1].split("```")[0].strip()
-                start, end = raw.find('['), raw.rfind(']')
-                if start != -1 and end != -1:
-                    raw = raw[start:end+1]
+                break
+            except Exception as api_err:
+                if "429" in str(api_err) and attempt < max_retries - 1:
+                    import time
+                    time.sleep(3) # Wait 3 seconds before retrying
+                    continue
+                raise api_err
                 
-                matches = json.loads(raw)
-                if matches:
-                    conn = sqlite3.connect(STATS_DB, timeout=30.0)
-                    cur = conn.cursor()
-                    matched_any = False
-                    for match in matches:
-                        job_id = match.get("job_id")
-                        reason = match.get("reason", "Matched during resume upload.")
-                        if job_id:
-                            cur.execute("""
-                                INSERT INTO job_candidates (job_id, candidate_id, ai_reason, status) 
-                                VALUES (?, ?, ?, 'matched')
-                                ON CONFLICT(job_id, candidate_id) DO UPDATE SET ai_reason = excluded.ai_reason
-                            """, (job_id, candidate_id, reason))
-                            matched_any = True
-                    
-                    if matched_any:
-                        # Automatically mark candidate as qualified
-                        cur.execute("UPDATE candidate_metadata SET is_qualified = 1 WHERE id = ?", (candidate_id,))
-                    
-                    conn.commit()
-                    conn.close()
-        except Exception as match_err:
-            print(f"Error auto-matching uploaded resume: {match_err}")
+        if resp is None:
+            raise Exception("Failed to get response from AI model")
+
+        raw  = resp.content.strip()
+
+        if "```json" in raw:
+            raw = raw.split("```json")[1].split("```")[0].strip()
+        elif "```" in raw:
+            raw = raw.split("```")[1].split("```")[0].strip()
+        start, end = raw.find('['), raw.rfind(']')
+        if start != -1 and end != -1:
+            raw = raw[start:end+1]
+
+        matches = json.loads(raw)
+        
+        conn = sqlite3.connect(STATS_DB, timeout=30.0)
+        cur = conn.cursor()
+        
+        # Clear existing automatic matches for this candidate
+        cur.execute("DELETE FROM job_candidates WHERE candidate_id = ? AND status = 'matched'", (candidate_id,))
+        
+        matched_any = False
+        if matches:
+            for match in matches:
+                job_id = match.get("job_id")
+                reason = match.get("reason", "Matched based on candidate details.")
+                if job_id:
+                    cur.execute("""
+                        INSERT INTO job_candidates (job_id, candidate_id, ai_reason, status) 
+                        VALUES (?, ?, ?, 'matched')
+                        ON CONFLICT(job_id, candidate_id) DO UPDATE SET ai_reason = excluded.ai_reason
+                    """, (job_id, candidate_id, reason))
+                    matched_any = True
+        
+        # Automatically update qualification status
+        cur.execute("SELECT COUNT(*) FROM job_candidates WHERE candidate_id = ?", (candidate_id,))
+        cnt = cur.fetchone()[0]
+        is_qualified = 1 if cnt > 0 else 0
+        cur.execute("UPDATE candidate_metadata SET is_qualified = ? WHERE id = ?", (is_qualified, candidate_id))
+        
+        conn.commit()
+        conn.close()
+    except Exception as match_err:
+        print(f"Error auto-matching candidate {candidate_id} to jobs: {match_err}")
 
 def process_resume(safe_name: str, path: str):
     # Use a lock to ensure only one resume is processed at a time
@@ -838,7 +889,9 @@ def match_jd(req: JDMatchRequest):
             f"Pega Experience: {r.get('pega_experience')} yrs | "
             f"CDH Experience: {r.get('cdh_exp')} yrs | "
             f"Skills: {r.get('skills')} | "
-            f"Certifications: {r.get('certifications')}"
+            f"Certifications: {r.get('certifications')} | "
+            f"Current Location: {r.get('current_location')} | "
+            f"Preferred Locations: {r.get('pref_locations')}"
         )
     
     prompt = f"""You are an expert technical recruiter. Evaluate the following candidates against the Job Description "pin to pin".
@@ -857,13 +910,14 @@ Rules for evaluation:
    - CSA is equivalent to any of: "PEGA Certified System Architect", "Pega Certified System Architect", "Certified Pega System Architect", "System Architect", or "CSA".
    - LSA is equivalent to any of: "PEGA Certified Lead System Architect", "Pega Certified Lead System Architect", "Certified Pega Lead System Architect", "Lead System Architect", or "LSA".
 3. Do not invent requirements. If the Job Description only mentions Pega experience, do NOT reject candidates for lacking CSSA or other unrelated certifications.
+4. Location Matching: If the Job Description specifies a location requirement, a candidate matches if their Current Location or any of their Preferred Locations match the specified job location (e.g. if the Job Description mentions 'Chennai', a candidate with Current Location or Preferred Location 'Chennai' is a match).
 
 For EACH candidate, decide if they match based on the rules. If they match, provide a 1-sentence explanation of why they are a good fit.
 Format your response exactly as a JSON list of objects:
 [
   {{
     "name": "Candidate Name",
-    "reason": "1-sentence explanation of why they fit based on their specific experience and skills"
+    "reason": "1-sentence explanation of why they fit based on their specific experience, skills, and location"
   }}
 ]
 Return ONLY the raw JSON block, no markdown, no other text."""
@@ -1075,7 +1129,9 @@ def match_candidates_for_job(job_id: int):
             f"Pega Experience: {r.get('pega_experience')} yrs | "
             f"CDH Experience: {r.get('cdh_exp')} yrs | "
             f"Skills: {r.get('skills')} | "
-            f"Certifications: {r.get('certifications')}"
+            f"Certifications: {r.get('certifications')} | "
+            f"Current Location: {r.get('current_location')} | "
+            f"Preferred Locations: {r.get('pref_locations')}"
         )
     
     emb, llm = get_models()
@@ -1096,12 +1152,13 @@ Rules for evaluation:
    - CSA is equivalent to any of: "PEGA Certified System Architect", "Pega Certified System Architect", "Certified Pega System Architect", "System Architect", or "CSA".
    - LSA is equivalent to any of: "PEGA Certified Lead System Architect", "Pega Certified Lead System Architect", "Certified Pega Lead System Architect", "Lead System Architect", or "LSA".
 3. Do not invent requirements. If the Job Description only mentions Pega experience, do NOT reject candidates for lacking CSSA or other unrelated certifications.
+4. Location Matching: If the Job Description specifies a location requirement, a candidate matches if their Current Location or any of their Preferred Locations match the specified job location (e.g. if the Job Description mentions 'Chennai', a candidate with Current Location or Preferred Location 'Chennai' is a match).
 
 Format your response exactly as a JSON list of objects for matching candidates only:
 [
   {{
     "name": "Candidate Name",
-    "reason": "1-sentence explanation of why they fit based on their specific experience and skills"
+    "reason": "1-sentence explanation of why they fit based on their specific experience, skills, and location"
   }}
 ]
 Return ONLY the raw JSON block, no markdown, no other text."""
