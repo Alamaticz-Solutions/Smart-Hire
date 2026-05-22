@@ -66,7 +66,11 @@ def get_models():
     with _model_lock:
         _models_loading = True
         if _embeddings is None:
-            _embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+            try:
+                _embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+            except Exception as e:
+                print(f"Warning: Failed to load HuggingFaceEmbeddings: {e}")
+                _embeddings = None
         if _llm is None:
             _llm = ChatGroq(temperature=0.1, model_name="llama-3.1-8b-instant", groq_api_key=GROQ_API_KEY)
         _models_loading = False
@@ -126,6 +130,27 @@ def init_db():
             FOREIGN KEY (candidate_id) REFERENCES candidate_metadata(id)
         )
     ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            full_name TEXT NOT NULL,
+            username TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            role TEXT DEFAULT 'user'
+        )
+    ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS change_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            action_type TEXT NOT NULL,
+            target_id TEXT,
+            payload TEXT,
+            description TEXT,
+            status TEXT DEFAULT 'pending',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
 
     # Migration: add missing columns
     cur.execute("PRAGMA table_info(candidate_metadata)")
@@ -147,11 +172,22 @@ def init_db():
         'email': 'TEXT',
         'phone': 'TEXT',
         'linkedin': 'TEXT',
-        'is_qualified': 'INTEGER DEFAULT 0'
+        'is_qualified': 'INTEGER DEFAULT 0',
+        'is_approved': 'INTEGER DEFAULT 1'
     }
     for col, dtype in new_cols.items():
         if col not in existing:
             cur.execute(f"ALTER TABLE candidate_metadata ADD COLUMN {col} {dtype}")
+            
+    # Seed default users if empty
+    cur.execute("SELECT COUNT(*) FROM users")
+    count = cur.fetchone()[0]
+    if count == 0:
+        cur.execute("INSERT INTO users (full_name, username, password, role) VALUES (?, ?, ?, ?)",
+                    ("System Admin", "admin1", "admin1", "admin"))
+        cur.execute("INSERT INTO users (full_name, username, password, role) VALUES (?, ?, ?, ?)",
+                    ("Test User", "user1", "user1", "user"))
+        
     conn.commit()
     conn.close()
 
@@ -202,10 +238,56 @@ init_db()
 def health():
     return {"status": "ok"}
 
+# ── Authorization Helpers ──────────────────────────────────────────────────────
+def get_user_role(username: Optional[str]) -> str:
+    if not username:
+        return "user"
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    cur.execute("SELECT role FROM users WHERE username = ?", (username,))
+    row = cur.fetchone()
+    conn.close()
+    if row:
+        return row[0]
+    return "user"
+
+def create_change_request(username: str, action_type: str, target_id: Optional[str] = None, payload: Optional[str] = None, description: Optional[str] = None):
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO change_requests (username, action_type, target_id, payload, description, status)
+        VALUES (?, ?, ?, ?, ?, 'pending')
+    """, (username, action_type, target_id, payload, description))
+    conn.commit()
+    conn.close()
+
+def get_candidate_name(candidate_id: int) -> str:
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    cur.execute("SELECT full_name FROM candidate_metadata WHERE id = ?", (candidate_id,))
+    row = cur.fetchone()
+    conn.close()
+    return row[0] if row else f"ID {candidate_id}"
+
+def get_job_title(job_id: int) -> str:
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    cur.execute("SELECT title FROM jobs WHERE id = ?", (job_id,))
+    row = cur.fetchone()
+    conn.close()
+    return row[0] if row else f"ID {job_id}"
+
 # ── Candidates ─────────────────────────────────────────────────────────────────
 @app.get("/api/candidates")
-def list_candidates():
+def list_candidates(request: Request):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
     rows = get_candidates_list()
+    
+    # Filter unapproved resumes for normal users
+    if role != "admin":
+        rows = [r for r in rows if int(r.get("is_approved") or 0) == 1]
+        
     # Replace None values with empty string
     for row in rows:
         for k, v in row.items():
@@ -219,7 +301,18 @@ class CustomColumn(BaseModel):
     description: str
 
 @app.post("/api/columns")
-def add_column(col: CustomColumn):
+def add_column(col: CustomColumn, request: Request):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+    if role != "admin":
+        create_change_request(
+            username=username or "unknown",
+            action_type="add_column",
+            payload=col.model_dump_json(),
+            description=f"Add custom column '{col.col_label}' ({col.col_key})"
+        )
+        return {"status": "pending_approval", "message": "Change request submitted to Admin for approval."}
+        
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
     clean_key = re.sub(r'[^a-zA-Z0-9_]', '', col.col_key.replace(' ', '_')).lower()
@@ -277,7 +370,18 @@ def get_columns():
     return {"base": base_cols, "custom": customs}
 
 @app.delete("/api/columns/{col_key}")
-def delete_column(col_key: str):
+def delete_column(col_key: str, request: Request):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+    if role != "admin":
+        create_change_request(
+            username=username or "unknown",
+            action_type="delete_column",
+            target_id=col_key,
+            description=f"Delete custom column '{col_key}'"
+        )
+        return {"status": "pending_approval", "message": "Change request submitted to Admin for approval."}
+        
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
     try:
@@ -295,6 +399,9 @@ def delete_column(col_key: str):
 
 @app.put("/api/candidates/{candidate_id}")
 async def update_candidate(candidate_id: int, request: Request, background_tasks: BackgroundTasks):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+
     body = await request.json()
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur  = conn.cursor()
@@ -322,6 +429,18 @@ async def update_candidate(candidate_id: int, request: Request, background_tasks
     if not updates:
         conn.close()
         return {"status": "no changes"}
+
+    if role != "admin":
+        conn.close()
+        create_change_request(
+            username=username or "unknown",
+            action_type="update_candidate",
+            target_id=str(candidate_id),
+            payload=json.dumps(updates),
+            description=f"Update candidate '{get_candidate_name(candidate_id)}' fields"
+        )
+        return {"status": "pending_approval", "message": "Change request submitted to Admin for approval."}
+
     set_clause = ", ".join(f"{k}=?" for k in updates)
     cur.execute(
         f"UPDATE candidate_metadata SET {set_clause} WHERE id=?",
@@ -341,7 +460,18 @@ async def update_candidate(candidate_id: int, request: Request, background_tasks
     return {"status": "updated"}
 
 @app.delete("/api/candidates/{candidate_id}")
-def delete_candidate(candidate_id: int):
+def delete_candidate(candidate_id: int, request: Request):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+    if role != "admin":
+        create_change_request(
+            username=username or "unknown",
+            action_type="delete_candidate",
+            target_id=str(candidate_id),
+            description=f"Delete candidate '{get_candidate_name(candidate_id)}'"
+        )
+        return {"status": "pending_approval", "message": "Change request submitted to Admin for approval."}
+
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur  = conn.cursor()
     cur.execute("DELETE FROM job_candidates WHERE candidate_id=?", (candidate_id,))
@@ -395,7 +525,7 @@ Resume Text:
 JSON:"""
 
 
-def process_resume_logic(safe_name: str, path: str):
+def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, username: str = "unknown"):
     try:
         _, llm = get_models()
         embeddings, _ = get_models()
@@ -495,11 +625,29 @@ def process_resume_logic(safe_name: str, path: str):
 
         data['filename'] = safe_name
         data['candidate_status'] = 'New'
+        data['is_approved'] = is_approved
         candidate_id = log_candidate(data)
+        
+        if is_approved == 0 and candidate_id:
+            create_change_request(
+                username=username,
+                action_type="approve_resume",
+                target_id=str(candidate_id),
+                payload=json.dumps({"filename": safe_name, "candidate_id": candidate_id}),
+                description=f"Approve resume upload: {data.get('full_name', safe_name)}"
+            )
     except Exception as e:
         error_msg = str(e)[:100]
-        data = {"filename": safe_name, "full_name": f"Processing Error: {error_msg}"}
-        log_candidate(data)
+        data = {"filename": safe_name, "full_name": f"Processing Error: {error_msg}", "is_approved": is_approved}
+        candidate_id = log_candidate(data)
+        if is_approved == 0 and candidate_id:
+            create_change_request(
+                username=username,
+                action_type="approve_resume",
+                target_id=str(candidate_id),
+                payload=json.dumps({"filename": safe_name, "candidate_id": candidate_id}),
+                description=f"Approve resume upload: {safe_name} (with processing error)"
+            )
         return
 
     # Add to ChromaDB
@@ -513,7 +661,7 @@ def process_resume_logic(safe_name: str, path: str):
         pass
 
     # Automatically match this candidate to all active JDs in the database
-    if candidate_id:
+    if candidate_id and is_approved == 1:
         match_candidate_to_all_jobs(candidate_id)
 
 def match_candidate_to_all_jobs(candidate_id: int):
@@ -634,15 +782,19 @@ Return ONLY the JSON block, no markdown, no other text."""
     except Exception as match_err:
         print(f"Error auto-matching candidate {candidate_id} to jobs: {match_err}")
 
-def process_resume(safe_name: str, path: str):
+def process_resume(safe_name: str, path: str, is_approved: int = 1, username: str = "unknown"):
     # Use a lock to ensure only one resume is processed at a time
     # This prevents Render memory crashes (OOM), Groq Rate Limits, and SQLite database locks
     with _processing_lock:
-        process_resume_logic(safe_name, path)
+        process_resume_logic(safe_name, path, is_approved, username)
 
 
 @app.post("/api/upload")
-async def upload_resume(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+async def upload_resume(request: Request, background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+    is_approved = 1 if role == "admin" else 0
+
     # Save file
     safe_name = file.filename
     path = os.path.join(UPLOAD_DIR, safe_name)
@@ -651,11 +803,13 @@ async def upload_resume(background_tasks: BackgroundTasks, file: UploadFile = Fi
         f.write(content)
 
     # Placeholder while processing in background
-    log_candidate({"filename": safe_name, "full_name": f"⏳ Processing: {safe_name}"})
+    log_candidate({"filename": safe_name, "full_name": f"⏳ Processing: {safe_name}", "is_approved": is_approved})
     
     # Process asynchronously
-    background_tasks.add_task(process_resume, safe_name, path)
+    background_tasks.add_task(process_resume, safe_name, path, is_approved, username or "unknown")
 
+    if is_approved == 0:
+        return {"status": "pending_approval", "message": "Resume uploaded. Awaiting admin approval."}
     return {"status": "processing", "message": "Resume uploaded and is processing in the background."}
 
 # ── Chat ──────────────────────────────────────────────────────────────────────
@@ -963,30 +1117,34 @@ class JobStatusUpdate(BaseModel):
     status: Optional[str] = None
     ai_reason: Optional[str] = None
 
-@app.get("/api/jobs")
-def get_jobs():
-    conn = sqlite3.connect(STATS_DB, timeout=30.0)
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM jobs ORDER BY created_at DESC")
-    jobs = [dict(row) for row in cur.fetchall()]
-    # Get candidate counts
-    for job in jobs:
-        cur.execute("SELECT status, COUNT(*) as cnt FROM job_candidates WHERE job_id = ? GROUP BY status", (job['id'],))
-        counts = {r['status']: r['cnt'] for r in cur.fetchall()}
-        job['matched_count'] = counts.get('matched', 0)
-        job['selected_count'] = counts.get('selected', 0)
-    conn.close()
-    return jobs
+class RegisterRequest(BaseModel):
+    full_name: str
+    username: str
+    password: str
 
-def run_match_candidates_background(job_id: int):
-    try:
-        match_candidates_for_job(job_id)
-    except Exception as e:
-        print(f"Error matching candidates in background for job {job_id}: {e}")
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class UserRoleUpdate(BaseModel):
+    role: str
+
+def has_digit(s: str) -> bool:
+    return any(c.isdigit() for c in s)
 
 @app.post("/api/jobs")
-def create_job(job: JobCreate):
+def create_job(job: JobCreate, request: Request):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+    if role != "admin":
+        create_change_request(
+            username=username or "unknown",
+            action_type="create_job",
+            payload=job.model_dump_json(),
+            description=f"Create job description: {job.title}"
+        )
+        return {"status": "pending_approval", "message": "Change request submitted to Admin for approval."}
+
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
     cur.execute("INSERT INTO jobs (title, description) VALUES (?, ?)", (job.title, job.description))
@@ -994,7 +1152,6 @@ def create_job(job: JobCreate):
     conn.commit()
     conn.close()
     
-    # Run the perfect matcher synchronously so matches are populated immediately
     try:
         match_candidates_for_job(job_id)
     except Exception as e:
@@ -1006,7 +1163,6 @@ def create_job(job: JobCreate):
     cur.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
     updated_job = dict(cur.fetchone())
     
-    # Get candidate counts
     cur.execute("SELECT status, COUNT(*) as cnt FROM job_candidates WHERE job_id = ? GROUP BY status", (job_id,))
     counts = {r['status']: r['cnt'] for r in cur.fetchall()}
     updated_job['matched_count'] = counts.get('matched', 0)
@@ -1016,7 +1172,19 @@ def create_job(job: JobCreate):
     return updated_job
 
 @app.put("/api/jobs/{job_id}")
-def update_job(job_id: int, job: JobCreate):
+def update_job(job_id: int, job: JobCreate, request: Request):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+    if role != "admin":
+        create_change_request(
+            username=username or "unknown",
+            action_type="update_job",
+            target_id=str(job_id),
+            payload=job.model_dump_json(),
+            description=f"Update job description: {job.title} (ID {job_id})"
+        )
+        return {"status": "pending_approval", "message": "Change request submitted to Admin for approval."}
+
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
     cur.execute("UPDATE jobs SET title = ?, description = ? WHERE id = ?", (job.title, job.description, job_id))
@@ -1026,7 +1194,6 @@ def update_job(job_id: int, job: JobCreate):
     conn.commit()
     conn.close()
     
-    # Re-trigger candidate matching for the updated job description!
     try:
         match_candidates_for_job(job_id)
     except Exception as e:
@@ -1038,7 +1205,6 @@ def update_job(job_id: int, job: JobCreate):
     cur.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
     updated_job = dict(cur.fetchone())
     
-    # Get candidate counts
     cur.execute("SELECT status, COUNT(*) as cnt FROM job_candidates WHERE job_id = ? GROUP BY status", (job_id,))
     counts = {r['status']: r['cnt'] for r in cur.fetchall()}
     updated_job['matched_count'] = counts.get('matched', 0)
@@ -1048,7 +1214,18 @@ def update_job(job_id: int, job: JobCreate):
     return updated_job
 
 @app.delete("/api/jobs/{job_id}")
-def delete_job(job_id: int):
+def delete_job(job_id: int, request: Request):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+    if role != "admin":
+        create_change_request(
+            username=username or "unknown",
+            action_type="delete_job",
+            target_id=str(job_id),
+            description=f"Delete job description: {get_job_title(job_id)} (ID {job_id})"
+        )
+        return {"status": "pending_approval", "message": "Change request submitted to Admin for approval."}
+
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
     cur.execute("DELETE FROM job_candidates WHERE job_id = ?", (job_id,))
@@ -1073,7 +1250,24 @@ def get_job_candidates(job_id: int):
     return candidates
 
 @app.put("/api/jobs/{job_id}/candidates/{candidate_id}")
-def update_job_candidate_status(job_id: int, candidate_id: int, update: JobStatusUpdate):
+def update_job_candidate_status(job_id: int, candidate_id: int, update: JobStatusUpdate, request: Request):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+    if role != "admin":
+        desc = ""
+        if update.status:
+            desc = f"Update status to '{update.status}'"
+        elif update.ai_reason:
+            desc = "Update match reasoning"
+        create_change_request(
+            username=username or "unknown",
+            action_type="update_job_candidate",
+            target_id=f"{job_id}:{candidate_id}",
+            payload=update.model_dump_json(),
+            description=f"{desc} for candidate '{get_candidate_name(candidate_id)}' in job '{get_job_title(job_id)}'"
+        )
+        return {"status": "pending_approval", "message": "Change request submitted to Admin for approval."}
+
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
     
@@ -1091,7 +1285,18 @@ def update_job_candidate_status(job_id: int, candidate_id: int, update: JobStatu
     return {"message": "Status updated"}
 
 @app.delete("/api/jobs/{job_id}/candidates/{candidate_id}")
-def delete_job_candidate(job_id: int, candidate_id: int):
+def delete_job_candidate(job_id: int, candidate_id: int, request: Request):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+    if role != "admin":
+        create_change_request(
+            username=username or "unknown",
+            action_type="delete_job_candidate",
+            target_id=f"{job_id}:{candidate_id}",
+            description=f"Remove candidate '{get_candidate_name(candidate_id)}' from job '{get_job_title(job_id)}'"
+        )
+        return {"status": "pending_approval", "message": "Change request submitted to Admin for approval."}
+
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
     cur.execute("DELETE FROM job_candidates WHERE job_id = ? AND candidate_id = ?", (job_id, candidate_id))
@@ -1099,7 +1304,6 @@ def delete_job_candidate(job_id: int, candidate_id: int):
     conn.close()
     return {"message": "Candidate removed from job"}
 
-@app.post("/api/jobs/{job_id}/match")
 def match_candidates_for_job(job_id: int):
     # This endpoint finds matching candidates for a job and saves them to job_candidates
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
@@ -1203,10 +1407,34 @@ Return ONLY the raw JSON block, no markdown, no other text."""
     conn.close()
     return {"message": f"Successfully matched and added {matches_added} candidates to job"}
 
+@app.post("/api/jobs/{job_id}/match")
+def match_candidates_for_job_endpoint(job_id: int, request: Request):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+    if role != "admin":
+        create_change_request(
+            username=username or "unknown",
+            action_type="match_job",
+            target_id=str(job_id),
+            description=f"Trigger manual match for job '{get_job_title(job_id)}'"
+        )
+        return {"status": "pending_approval", "message": "Change request submitted to Admin for approval."}
+    
+    return match_candidates_for_job(job_id)
 
 # ── Reset ──────────────────────────────────────────────────────────────────────
 @app.post("/api/reset")
-def reset_all():
+def reset_all(request: Request):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+    if role != "admin":
+        create_change_request(
+            username=username or "unknown",
+            action_type="reset_all",
+            description="Reset all candidate and ChromaDB data"
+        )
+        return {"status": "pending_approval", "message": "Change request submitted to Admin for approval."}
+
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     conn.execute("DELETE FROM candidate_metadata")
     conn.commit()
@@ -1217,6 +1445,238 @@ def reset_all():
     except Exception:
         pass
     return {"status": "reset complete"}
+
+# ── Auth & Admin Endpoints ───────────────────────────────────────────────────────
+@app.post("/api/auth/register")
+def register(req: RegisterRequest):
+    if not has_digit(req.username):
+        raise HTTPException(status_code=400, detail="Username must contain at least one digit")
+    if not has_digit(req.password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one digit")
+        
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    try:
+        cur.execute("INSERT INTO users (full_name, username, password, role) VALUES (?, ?, ?, 'user')",
+                    (req.full_name, req.username, req.password))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Username already exists")
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+    conn.close()
+    return {"status": "registered", "username": req.username}
+
+@app.post("/api/auth/login")
+def login(req: LoginRequest):
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM users WHERE username = ? AND password = ?", (req.username, req.password))
+    user = cur.fetchone()
+    conn.close()
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    user_dict = dict(user)
+    return {
+        "username": user_dict["username"],
+        "full_name": user_dict["full_name"],
+        "role": user_dict["role"]
+    }
+
+@app.get("/api/admin/requests")
+def list_change_requests(request: Request):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+        
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM change_requests ORDER BY created_at DESC")
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return rows
+
+@app.get("/api/admin/users")
+def list_users(request: Request):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+        
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT id, full_name, username, role FROM users")
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return rows
+
+@app.put("/api/admin/users/{user_id}/role")
+def update_user_role_endpoint(user_id: int, body: UserRoleUpdate, request: Request):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+        
+    if body.role not in ["admin", "user"]:
+        raise HTTPException(status_code=400, detail="Invalid role")
+        
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET role = ? WHERE id = ?", (body.role, user_id))
+    conn.commit()
+    conn.close()
+    return {"status": "updated"}
+
+@app.post("/api/admin/requests/{request_id}/approve")
+def approve_change_request(request_id: int, request: Request, background_tasks: BackgroundTasks):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+        
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM change_requests WHERE id = ?", (request_id,))
+    req_row = cur.fetchone()
+    if not req_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+        
+    req_data = dict(req_row)
+    if req_data["status"] != "pending":
+        conn.close()
+        raise HTTPException(status_code=400, detail="Request is already resolved")
+        
+    action_type = req_data["action_type"]
+    target_id = req_data["target_id"]
+    payload = req_data["payload"]
+    
+    try:
+        if action_type == "add_column":
+            col_data = json.loads(payload)
+            clean_key = re.sub(r'[^a-zA-Z0-9_]', '', col_data["col_key"].replace(' ', '_')).lower()
+            cur.execute("PRAGMA table_info(candidate_metadata)")
+            existing = [c[1] for c in cur.fetchall()]
+            if clean_key not in existing:
+                cur.execute(f"ALTER TABLE candidate_metadata ADD COLUMN {clean_key} TEXT")
+                cur.execute("INSERT OR IGNORE INTO custom_columns (col_key, col_label, description) VALUES (?, ?, ?)", 
+                            (clean_key, col_data["col_label"], col_data["description"]))
+                
+        elif action_type == "delete_column":
+            col_key = target_id
+            cur.execute("DELETE FROM custom_columns WHERE col_key=?", (col_key,))
+            try:
+                cur.execute(f"ALTER TABLE candidate_metadata DROP COLUMN {col_key}")
+            except Exception:
+                pass
+                
+        elif action_type == "update_candidate":
+            candidate_id = int(target_id)
+            updates = json.loads(payload)
+            set_clause = ", ".join(f"{k}=?" for k in updates)
+            cur.execute(
+                f"UPDATE candidate_metadata SET {set_clause} WHERE id=?",
+                list(updates.values()) + [candidate_id]
+            )
+            match_related_fields = {
+                'full_name', 'total_experience', 'pega_experience', 'cdh_exp',
+                'skills', 'certifications', 'current_location', 'pref_locations'
+            }
+            if any(field in updates for field in match_related_fields):
+                background_tasks.add_task(match_candidate_to_all_jobs, candidate_id)
+                
+        elif action_type == "delete_candidate":
+            candidate_id = int(target_id)
+            cur.execute("DELETE FROM job_candidates WHERE candidate_id=?", (candidate_id,))
+            cur.execute("DELETE FROM candidate_metadata WHERE id=?", (candidate_id,))
+            
+        elif action_type == "approve_resume":
+            candidate_id = int(target_id)
+            cur.execute("UPDATE candidate_metadata SET is_approved = 1 WHERE id = ?", (candidate_id,))
+            background_tasks.add_task(match_candidate_to_all_jobs, candidate_id)
+            
+        elif action_type == "create_job":
+            job_data = json.loads(payload)
+            cur.execute("INSERT INTO jobs (title, description) VALUES (?, ?)", (job_data["title"], job_data["description"]))
+            job_id = cur.lastrowid
+            background_tasks.add_task(match_candidates_for_job, job_id)
+            
+        elif action_type == "update_job":
+            job_id = int(target_id)
+            job_data = json.loads(payload)
+            cur.execute("UPDATE jobs SET title = ?, description = ? WHERE id = ?", (job_data["title"], job_data["description"], job_id))
+            background_tasks.add_task(match_candidates_for_job, job_id)
+            
+        elif action_type == "delete_job":
+            job_id = int(target_id)
+            cur.execute("DELETE FROM job_candidates WHERE job_id = ?", (job_id,))
+            cur.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+            
+        elif action_type == "update_job_candidate":
+            job_id, candidate_id = map(int, target_id.split(":"))
+            update_data = json.loads(payload)
+            if "status" in update_data and update_data["status"] is not None:
+                cur.execute("UPDATE job_candidates SET status = ? WHERE job_id = ? AND candidate_id = ?", 
+                            (update_data["status"], job_id, candidate_id))
+            if "ai_reason" in update_data and update_data["ai_reason"] is not None:
+                cur.execute("UPDATE job_candidates SET ai_reason = ? WHERE job_id = ? AND candidate_id = ?", 
+                            (update_data["ai_reason"], job_id, candidate_id))
+                                
+        elif action_type == "delete_job_candidate":
+            job_id, candidate_id = map(int, target_id.split(":"))
+            cur.execute("DELETE FROM job_candidates WHERE job_id = ? AND candidate_id = ?", (job_id, candidate_id))
+            
+        elif action_type == "match_job":
+            job_id = int(target_id)
+            background_tasks.add_task(match_candidates_for_job, job_id)
+            
+        elif action_type == "reset_all":
+            cur.execute("DELETE FROM candidate_metadata")
+            try:
+                if os.path.exists(CHROMA_PATH):
+                    shutil.rmtree(CHROMA_PATH)
+            except Exception:
+                pass
+                
+        cur.execute("UPDATE change_requests SET status = 'approved' WHERE id = ?", (request_id,))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        raise HTTPException(status_code=500, detail=f"Failed to execute request: {str(e)}")
+        
+    conn.close()
+    return {"status": "approved"}
+
+@app.post("/api/admin/requests/{request_id}/reject")
+def reject_change_request(request_id: int, request: Request):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+        
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    cur.execute("SELECT status FROM change_requests WHERE id = ?", (request_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+    if row[0] != "pending":
+        conn.close()
+        raise HTTPException(status_code=400, detail="Request is already resolved")
+        
+    cur.execute("UPDATE change_requests SET status = 'rejected' WHERE id = ?", (request_id,))
+    conn.commit()
+    conn.close()
+    return {"status": "rejected"}
 
 # ── Serve React Frontend ───────────────────────────────────────────────────────
 FRONTEND_DIST = os.path.join(PROJECT_ROOT, "frontend", "dist")

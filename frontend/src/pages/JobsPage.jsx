@@ -61,6 +61,12 @@ export default function JobsPage() {
         if (!newJob.title || !newJob.description) return showToast('Please fill all fields', 'error');
         try {
             const r = await axios.post(`${API_URL}/api/jobs`, newJob);
+            if (r.data?.status === 'pending_approval') {
+                showToast('Create job request sent to Admin for approval.', 'info');
+                setShowNewForm(false);
+                setNewJob({ title: '', description: '' });
+                return;
+            }
             setJobs([r.data, ...jobs]);
             setShowNewForm(false);
             setNewJob({ title: '', description: '' });
@@ -74,7 +80,11 @@ export default function JobsPage() {
     const handleDeleteJob = async (jobId) => {
         if (!window.confirm('Delete this job?')) return;
         try {
-            await axios.delete(`${API_URL}/api/jobs/${jobId}`);
+            const r = await axios.delete(`${API_URL}/api/jobs/${jobId}`);
+            if (r.data?.status === 'pending_approval') {
+                showToast('Delete request sent to Admin for approval.', 'info');
+                return;
+            }
             setJobs(jobs.filter(j => j.id !== jobId));
             if (selectedJob?.id === jobId) setSelectedJob(null);
             showToast('Job Deleted');
@@ -137,24 +147,31 @@ export default function JobsPage() {
         if (!editName.trim()) return showToast('Name cannot be empty', 'error');
         
         setIsSavingEdit(true);
+        let wasPending = false;
         try {
             // 1. Update core candidate details
-            await axios.put(`${API_URL}/api/candidates/${editingCandidate.id}`, {
+            const r1 = await axios.put(`${API_URL}/api/candidates/${editingCandidate.id}`, {
                 full_name: editName,
                 total_experience: editExp,
                 skills: editSkills,
                 current_location: editCurrentLocation,
                 pref_locations: editPrefLocations
             });
+            if (r1.data?.status === 'pending_approval') wasPending = true;
             
             // 2. Update Job Candidate specific details (AI Reason)
-            await axios.put(`${API_URL}/api/jobs/${selectedJob.id}/candidates/${editingCandidate.id}`, {
+            const r2 = await axios.put(`${API_URL}/api/jobs/${selectedJob.id}/candidates/${editingCandidate.id}`, {
                 ai_reason: editReason
             });
+            if (r2.data?.status === 'pending_approval') wasPending = true;
             
-            showToast('Candidate details updated successfully!');
+            if (wasPending) {
+                showToast('Candidate updates sent to Admin for approval.', 'info');
+            } else {
+                showToast('Candidate details updated successfully!');
+                loadCandidates(selectedJob.id);
+            }
             setEditingCandidate(null);
-            loadCandidates(selectedJob.id);
         } catch (e) {
             showToast(e.response?.data?.detail || 'Failed to update candidate details', 'error');
         } finally {
@@ -170,11 +187,15 @@ export default function JobsPage() {
         setIsSavingJob(true);
         try {
             const r = await axios.put(`${API_URL}/api/jobs/${editingJob.id}`, editJobForm);
-            setJobs(jobs.map(j => j.id === editingJob.id ? r.data : j));
-            setSelectedJob(r.data);
+            if (r.data?.status === 'pending_approval') {
+                showToast('Job update request sent to Admin for approval.', 'info');
+            } else {
+                setJobs(jobs.map(j => j.id === editingJob.id ? r.data : j));
+                setSelectedJob(r.data);
+                showToast('Job updated and candidates re-matched successfully!');
+                loadCandidates(editingJob.id);
+            }
             setEditingJob(null);
-            showToast('Job updated and candidates re-matched successfully!');
-            loadCandidates(editingJob.id);
         } catch (e) {
             showToast(e.response?.data?.detail || 'Failed to update job description', 'error');
         } finally {

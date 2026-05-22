@@ -58,8 +58,12 @@ export default function DashboardPage() {
                 col_label: newColLabel,
                 description: newColDesc
             });
-            const cols = await axios.get(`${import.meta.env.VITE_API_URL || ''}/api/columns`);
-            setColumns([...cols.data.base, ...cols.data.custom]);
+            if (res.data?.status === 'pending_approval') {
+                alert('Add column request sent to Admin for approval.');
+            } else {
+                const cols = await axios.get(`${import.meta.env.VITE_API_URL || ''}/api/columns`);
+                setColumns([...cols.data.base, ...cols.data.custom]);
+            }
             setShowAddCol(false);
             setNewColLabel('');
             setNewColDesc('');
@@ -73,8 +77,12 @@ export default function DashboardPage() {
     const handleDeleteCandidate = async (id, name) => {
         if (!window.confirm(`Are you sure you want to delete ${name || 'this candidate'}?`)) return;
         try {
-            await axios.delete(`${import.meta.env.VITE_API_URL || ''}/api/candidates/${id}`);
-            setCandidates(prev => prev.filter(c => c.id !== id));
+            const res = await axios.delete(`${import.meta.env.VITE_API_URL || ''}/api/candidates/${id}`);
+            if (res.data?.status === 'pending_approval') {
+                alert('Delete request sent to Admin for approval.');
+            } else {
+                setCandidates(prev => prev.filter(c => c.id !== id));
+            }
         } catch (e) {
             alert('Failed to delete candidate: ' + (e.response?.data?.detail || e.message));
         }
@@ -310,8 +318,12 @@ export default function DashboardPage() {
                                                                 onChange={async (e) => {
                                                                     const newVal = e.target.value;
                                                                     try {
-                                                                        await axios.put(`${import.meta.env.VITE_API_URL || ''}/api/candidates/${c.id}`, { candidate_status: newVal });
-                                                                        setCandidates(prev => prev.map((cand) => cand.id === c.id ? { ...cand, candidate_status: newVal } : cand));
+                                                                        const res = await axios.put(`${import.meta.env.VITE_API_URL || ''}/api/candidates/${c.id}`, { candidate_status: newVal });
+                                                                        if (res.data?.status === 'pending_approval') {
+                                                                            alert('Status update request sent to Admin for approval.');
+                                                                        } else {
+                                                                            setCandidates(prev => prev.map((cand) => cand.id === c.id ? { ...cand, candidate_status: newVal } : cand));
+                                                                        }
                                                                     } catch (err) {
                                                                         alert('Save failed: ' + (err.response?.data?.detail || err.message));
                                                                     }

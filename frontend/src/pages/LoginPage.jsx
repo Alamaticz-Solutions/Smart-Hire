@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import axios from 'axios'
 import alamaticzLogo from '../assets/alamaticz-logo.jpg'
 
 export default function LoginPage({ onLogin }) {
@@ -12,22 +13,37 @@ export default function LoginPage({ onLogin }) {
     const [error, setError] = useState('')
     const [info, setInfo] = useState('')
 
-    const handleLogin = (e) => {
+    const handleLogin = async (e) => {
         e.preventDefault()
         setError(''); setInfo('')
-        if (!cred || !pass) { setError('Please enter your Email/Mobile and Password.'); return }
-        const userName = cred.includes('@') ? cred.split('@')[0].replace(/[^a-zA-Z0-9]/g, ' ').trim() : 'HR User'
-        const display = userName.split(' ').map(w => w[0].toUpperCase() + w.slice(1)).join(' ')
-        onLogin({ name: display, credential: cred })
+        if (!cred || !pass) { setError('Please enter your Username and Password.'); return }
+        
+        try {
+            const res = await axios.post('/api/auth/login', { username: cred, password: pass })
+            onLogin(res.data.user)
+        } catch (err) {
+            setError(err.response?.data?.detail || 'Invalid username or password.')
+        }
     }
 
-    const handleRegister = (e) => {
+    const handleRegister = async (e) => {
         e.preventDefault()
         setError(''); setInfo('')
-        if (!name || !cred || !pass) { setError('Name, Email, and Password are required.'); return }
+        if (!name || !cred || !pass) { setError('Name, Username, and Password are required.'); return }
         if (pass !== pass2) { setError('Passwords do not match!'); return }
-        setInfo(`Account created for ${name}! Please sign in.`)
-        setTimeout(() => { setMode('login'); setInfo('') }, 2000)
+        
+        try {
+            await axios.post('/api/auth/register', {
+                username: cred,
+                password: pass,
+                full_name: name,
+                mobile: mobile
+            })
+            setInfo(`Account created for ${name}! Please sign in.`)
+            setTimeout(() => { setMode('login'); setInfo(''); setPass(''); setPass2(''); }, 2000)
+        } catch (err) {
+            setError(err.response?.data?.detail || 'Registration failed.')
+        }
     }
 
     const handleForgot = (e) => {

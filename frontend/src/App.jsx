@@ -1,10 +1,12 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
+import axios from 'axios'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import JobsPage from './pages/JobsPage'
 import UploadPage from './pages/UploadPage'
 import ChatPage from './pages/ChatPage'
+import AdminPage from './pages/AdminPage'
 import Layout from './components/Layout'
 
 export default function App() {
@@ -23,6 +25,14 @@ export default function App() {
         localStorage.setItem('hire_ai_theme', theme)
     }, [theme])
 
+    useEffect(() => {
+        if (user && user.username) {
+            axios.defaults.headers.common['x-user-username'] = user.username
+        } else {
+            delete axios.defaults.headers.common['x-user-username']
+        }
+    }, [user])
+
     const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark')
 
     const login = (u) => { setUser(u); sessionStorage.setItem('hire_ai_user', JSON.stringify(u)) }
@@ -37,6 +47,7 @@ export default function App() {
                     <Route path="/jobs" element={<JobsPage />} />
                     <Route path="/upload" element={<UploadPage />} />
                     <Route path="/chat" element={<ChatPage />} />
+                    <Route path="/admin" element={user?.role === 'admin' ? <AdminPage /> : <Navigate to="/" />} />
                 </Route>
                 <Route path="*" element={<Navigate to="/" />} />
             </Routes>

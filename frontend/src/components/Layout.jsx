@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from 'react-router-dom'
-import { LayoutDashboard, Upload, MessageSquare, LogOut, Sun, Moon, Briefcase } from 'lucide-react'
+import { LayoutDashboard, Upload, MessageSquare, LogOut, Sun, Moon, Briefcase, Shield } from 'lucide-react'
 import alamaticzLogo from '../assets/alamaticz-logo.jpg'
 
 export default function Layout({ user, onLogout, theme, toggleTheme }) {
@@ -9,6 +9,11 @@ export default function Layout({ user, onLogout, theme, toggleTheme }) {
         { to: '/upload', label: 'Upload Resume', Icon: Upload },
         { to: '/chat', label: 'Chat with Hire', Icon: MessageSquare },
     ]
+
+    // Add admin portal link if user is admin
+    if (user?.role === 'admin') {
+        navItems.push({ to: '/admin', label: 'Admin Portal', Icon: Shield })
+    }
 
     return (
         <div className="app-shell">

@@ -367,18 +367,23 @@ export default function UploadPage() {
             const fd = new FormData(); fd.append('file', files[i])
             setProgress(p => p.map((x, idx) => idx === i ? { ...x, status: 'processing', percent: 10 } : x))
             try {
-                await axios.post(`${API_URL}/api/upload`, fd, {
+                const res = await axios.post(`${API_URL}/api/upload`, fd, {
                     onUploadProgress: ev => {
                         const pct = Math.round((ev.loaded / ev.total) * 70)
                         setProgress(p => p.map((x, idx) => idx === i ? { ...x, percent: 10 + pct } : x))
                     }
                 })
-                setProgress(p => p.map((x, idx) => idx === i ? { ...x, status: 'done', percent: 100 } : x))
+                if (res.data?.status === 'pending_approval') {
+                    setProgress(p => p.map((x, idx) => idx === i ? { ...x, status: 'done', percent: 100, name: x.name + ' (Pending)' } : x))
+                    showToast('Resume uploaded. Awaiting Admin Approval.', 'info')
+                } else {
+                    setProgress(p => p.map((x, idx) => idx === i ? { ...x, status: 'done', percent: 100 } : x))
+                }
             } catch {
                 setProgress(p => p.map((x, idx) => idx === i ? { ...x, status: 'error', percent: 0 } : x))
             }
         }
-        load(); showToast(`${files.length} resume(s) analyzed!`)
+        load()
     }, [])
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -408,16 +413,27 @@ export default function UploadPage() {
         }
 
         try {
-            await axios.put(`${API_URL}/api/candidates/${c.id}`, { [editCell.col]: finalVal })
-            setCandidates(prev => prev.map((row, i) => i === ri ? { ...row, [editCell.col]: finalVal } : row))
-            showToast('Saved!')
+            const res = await axios.put(`${API_URL}/api/candidates/${c.id}`, { [editCell.col]: finalVal })
+            if (res.data?.status === 'pending_approval') {
+                showToast('Update request sent to Admin for approval.')
+            } else {
+                setCandidates(prev => prev.map((row, i) => i === ri ? { ...row, [editCell.col]: finalVal } : row))
+                showToast('Saved!')
+            }
         } catch (e) { showToast(e.response?.data?.detail || 'Save failed', 'error') }
         setEditCell(null)
     }
     const del = async (id) => {
         if (!window.confirm('Delete this candidate?')) return
-        try { await axios.delete(`${API_URL}/api/candidates/${id}`); setCandidates(p => p.filter(c => c.id !== id)); showToast('Deleted') }
-        catch { showToast('Delete failed', 'error') }
+        try { 
+            const res = await axios.delete(`${API_URL}/api/candidates/${id}`); 
+            if (res.data?.status === 'pending_approval') {
+                showToast('Delete request sent to Admin for approval.')
+            } else {
+                setCandidates(p => p.filter(c => c.id !== id)); 
+                showToast('Deleted') 
+            }
+        } catch { showToast('Delete failed', 'error') }
     }
 
     const getTableWidth = () => {
