@@ -40,8 +40,8 @@ export default function DashboardPage() {
 
     useEffect(() => {
         Promise.all([
-            axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/candidates`),
-            axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/columns`)
+            axios.get(`${import.meta.env.VITE_API_URL || ''}/api/candidates`),
+            axios.get(`${import.meta.env.VITE_API_URL || ''}/api/columns`)
         ]).then(([candRes, colRes]) => {
             setCandidates(candRes.data)
             setColumns([...colRes.data.base, ...colRes.data.custom])
@@ -53,12 +53,12 @@ export default function DashboardPage() {
         if (!newColLabel || !newColDesc) return;
         setAddingCol(true);
         try {
-            const res = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/columns`, {
+            const res = await axios.post(`${import.meta.env.VITE_API_URL || ''}/api/columns`, {
                 col_key: newColLabel,
                 col_label: newColLabel,
                 description: newColDesc
             });
-            const cols = await axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/columns`);
+            const cols = await axios.get(`${import.meta.env.VITE_API_URL || ''}/api/columns`);
             setColumns([...cols.data.base, ...cols.data.custom]);
             setShowAddCol(false);
             setNewColLabel('');
@@ -73,7 +73,7 @@ export default function DashboardPage() {
     const handleDeleteCandidate = async (id, name) => {
         if (!window.confirm(`Are you sure you want to delete ${name || 'this candidate'}?`)) return;
         try {
-            await axios.delete(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/candidates/${id}`);
+            await axios.delete(`${import.meta.env.VITE_API_URL || ''}/api/candidates/${id}`);
             setCandidates(prev => prev.filter(c => c.id !== id));
         } catch (e) {
             alert('Failed to delete candidate: ' + (e.response?.data?.detail || e.message));
@@ -263,7 +263,7 @@ export default function DashboardPage() {
                                             if (col.col_key === 'full_name') {
                                                 return <td style={{ padding: '10px 12px', verticalAlign: 'top', minWidth: '180px' }} key={col.col_key}>
                                                     <a
-                                                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/static/${c.filename}`}
+                                                        href={`${import.meta.env.VITE_API_URL || ''}/static/${c.filename}`}
                                                         target="_blank"
                                                         rel="noreferrer"
                                                         style={{
@@ -299,7 +299,7 @@ export default function DashboardPage() {
                                             if (col.col_key === 'candidate_status') {
                                                 const s = String(c.candidate_status || 'New').trim();
                                                 const isEditing = editStatusCell?.candidateId === c.id;
-
+ 
                                                 if (isEditing) {
                                                     const statusOptions = ['New', 'In-Review', 'Available', 'Selected', 'Rejected', 'Engaged', 'Offered', 'Hired'];
                                                     return (
@@ -310,7 +310,7 @@ export default function DashboardPage() {
                                                                 onChange={async (e) => {
                                                                     const newVal = e.target.value;
                                                                     try {
-                                                                        await axios.put(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/candidates/${c.id}`, { candidate_status: newVal });
+                                                                        await axios.put(`${import.meta.env.VITE_API_URL || ''}/api/candidates/${c.id}`, { candidate_status: newVal });
                                                                         setCandidates(prev => prev.map((cand) => cand.id === c.id ? { ...cand, candidate_status: newVal } : cand));
                                                                     } catch (err) {
                                                                         alert('Save failed: ' + (err.response?.data?.detail || err.message));

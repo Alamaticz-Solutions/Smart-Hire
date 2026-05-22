@@ -157,7 +157,7 @@ export default function ChatPage() {
         setLoading(true)
 
         try {
-            const { data } = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/chat`, { message: content })
+            const { data } = await axios.post(`${import.meta.env.VITE_API_URL || ''}/api/chat`, { message: content })
             setMessages(prev => [
                 ...prev,
                 data.type === 'table'

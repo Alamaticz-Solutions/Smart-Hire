@@ -4,7 +4,7 @@ import axios from 'axios'
 import { UploadCloud, Trash2, CheckCircle, FileText, Search, Plus, Filter, Loader, RefreshCw, Download, Upload, X, Check, Eye } from 'lucide-react'
 import { exportToExcel, formatCandidatesForExcel } from '../utils/excelUtils'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 /* ─── Single chip ─────────────────────────────────────────────────────────── */
 function Chip({ text }) {
