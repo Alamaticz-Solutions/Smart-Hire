@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Briefcase, Plus, Trash2, Search, UserCheck, Loader, ChevronRight, Edit } from 'lucide-react';
+import { Briefcase, Plus, Trash2, Search, UserCheck, Loader, ChevronRight, Edit, Calendar, User, Building, DollarSign, Award, Target } from 'lucide-react';
 const API_URL = import.meta.env.VITE_API_URL || '';
 
 export default function JobsPage() {
@@ -8,7 +8,21 @@ export default function JobsPage() {
     const [selectedJob, setSelectedJob] = useState(null);
     const [candidates, setCandidates] = useState([]);
     const [showNewForm, setShowNewForm] = useState(false);
-    const [newJob, setNewJob] = useState({ title: '', description: '' });
+    const [newJob, setNewJob] = useState({
+        title: '',
+        description: '',
+        client_name: '',
+        contact_name: '',
+        account_manager: '',
+        assigned_recruiter: '',
+        target_date: '',
+        job_type: 'Full time',
+        job_status: 'In-progress',
+        work_experience: 'None',
+        industry: 'None',
+        salary: '',
+        required_skills: ''
+    });
     const [isMatching, setIsMatching] = useState(false);
     const [activeTab, setActiveTab] = useState('matched'); // 'matched' or 'selected'
     const [toast, setToast] = useState(null);
@@ -22,7 +36,21 @@ export default function JobsPage() {
     const [isSavingEdit, setIsSavingEdit] = useState(false);
 
     const [editingJob, setEditingJob] = useState(null);
-    const [editJobForm, setEditJobForm] = useState({ title: '', description: '' });
+    const [editJobForm, setEditJobForm] = useState({
+        title: '',
+        description: '',
+        client_name: '',
+        contact_name: '',
+        account_manager: '',
+        assigned_recruiter: '',
+        target_date: '',
+        job_type: 'Full time',
+        job_status: 'In-progress',
+        work_experience: 'None',
+        industry: 'None',
+        salary: '',
+        required_skills: ''
+    });
     const [isSavingJob, setIsSavingJob] = useState(false);
 
     const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500) }
@@ -58,18 +86,26 @@ export default function JobsPage() {
     }, [selectedJob]);
 
     const handleCreateJob = async () => {
-        if (!newJob.title || !newJob.description) return showToast('Please fill all fields', 'error');
+        if (!newJob.title || !newJob.description) return showToast('Title and Description are required', 'error');
         try {
             const r = await axios.post(`${API_URL}/api/jobs`, newJob);
-            if (r.data?.status === 'pending_approval') {
-                showToast('Create job request sent to Admin for approval.', 'info');
-                setShowNewForm(false);
-                setNewJob({ title: '', description: '' });
-                return;
-            }
             setJobs([r.data, ...jobs]);
             setShowNewForm(false);
-            setNewJob({ title: '', description: '' });
+            setNewJob({
+                title: '',
+                description: '',
+                client_name: '',
+                contact_name: '',
+                account_manager: '',
+                assigned_recruiter: '',
+                target_date: '',
+                job_type: 'Full time',
+                job_status: 'In-progress',
+                work_experience: 'None',
+                industry: 'None',
+                salary: '',
+                required_skills: ''
+            });
             setSelectedJob(r.data);
             showToast('Job Created!');
         } catch (e) {
@@ -80,11 +116,7 @@ export default function JobsPage() {
     const handleDeleteJob = async (jobId) => {
         if (!window.confirm('Delete this job?')) return;
         try {
-            const r = await axios.delete(`${API_URL}/api/jobs/${jobId}`);
-            if (r.data?.status === 'pending_approval') {
-                showToast('Delete request sent to Admin for approval.', 'info');
-                return;
-            }
+            await axios.delete(`${API_URL}/api/jobs/${jobId}`);
             setJobs(jobs.filter(j => j.id !== jobId));
             if (selectedJob?.id === jobId) setSelectedJob(null);
             showToast('Job Deleted');
@@ -147,30 +179,23 @@ export default function JobsPage() {
         if (!editName.trim()) return showToast('Name cannot be empty', 'error');
         
         setIsSavingEdit(true);
-        let wasPending = false;
         try {
             // 1. Update core candidate details
-            const r1 = await axios.put(`${API_URL}/api/candidates/${editingCandidate.id}`, {
+            await axios.put(`${API_URL}/api/candidates/${editingCandidate.id}`, {
                 full_name: editName,
                 total_experience: editExp,
                 skills: editSkills,
                 current_location: editCurrentLocation,
                 pref_locations: editPrefLocations
             });
-            if (r1.data?.status === 'pending_approval') wasPending = true;
             
             // 2. Update Job Candidate specific details (AI Reason)
-            const r2 = await axios.put(`${API_URL}/api/jobs/${selectedJob.id}/candidates/${editingCandidate.id}`, {
+            await axios.put(`${API_URL}/api/jobs/${selectedJob.id}/candidates/${editingCandidate.id}`, {
                 ai_reason: editReason
             });
-            if (r2.data?.status === 'pending_approval') wasPending = true;
             
-            if (wasPending) {
-                showToast('Candidate updates sent to Admin for approval.', 'info');
-            } else {
-                showToast('Candidate details updated successfully!');
-                loadCandidates(selectedJob.id);
-            }
+            showToast('Candidate details updated successfully!');
+            loadCandidates(selectedJob.id);
             setEditingCandidate(null);
         } catch (e) {
             showToast(e.response?.data?.detail || 'Failed to update candidate details', 'error');
@@ -187,14 +212,10 @@ export default function JobsPage() {
         setIsSavingJob(true);
         try {
             const r = await axios.put(`${API_URL}/api/jobs/${editingJob.id}`, editJobForm);
-            if (r.data?.status === 'pending_approval') {
-                showToast('Job update request sent to Admin for approval.', 'info');
-            } else {
-                setJobs(jobs.map(j => j.id === editingJob.id ? r.data : j));
-                setSelectedJob(r.data);
-                showToast('Job updated and candidates re-matched successfully!');
-                loadCandidates(editingJob.id);
-            }
+            setJobs(jobs.map(j => j.id === editingJob.id ? r.data : j));
+            setSelectedJob(r.data);
+            showToast('Job updated and candidates re-matched successfully!');
+            loadCandidates(editingJob.id);
             setEditingJob(null);
         } catch (e) {
             showToast(e.response?.data?.detail || 'Failed to update job description', 'error');
@@ -254,23 +275,89 @@ export default function JobsPage() {
             {/* Main Content: Job Details */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--card-bg)' }}>
                 {showNewForm ? (
-                    <div style={{ padding: '3rem', maxWidth: '600px', margin: '0 auto', width: '100%' }}>
+                    <div style={{ padding: '3rem', maxWidth: '850px', margin: '0 auto', width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
                         <h2 style={{ fontFamily: 'var(--fh)', color: 'var(--gold)', marginBottom: '1.5rem' }}>Create New Job Description</h2>
-                        <div style={{ marginBottom: '1rem' }}>
-                            <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-dim)' }}>Job Title</label>
-                            <input 
-                                value={newJob.title} 
-                                onChange={e => setNewJob({...newJob, title: e.target.value})}
-                                style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
-                                placeholder="e.g. Senior Pega Developer"
-                            />
+                        
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Job Title *</label>
+                                <input value={newJob.title} onChange={e => setNewJob({...newJob, title: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }} placeholder="e.g. pega CSSA" />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Client Name</label>
+                                <input value={newJob.client_name} onChange={e => setNewJob({...newJob, client_name: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }} placeholder="e.g. My company" />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Contact Name</label>
+                                <input value={newJob.contact_name} onChange={e => setNewJob({...newJob, contact_name: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }} placeholder="e.g. Sabari Shree" />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Account Manager</label>
+                                <input value={newJob.account_manager} onChange={e => setNewJob({...newJob, account_manager: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }} placeholder="e.g. Sabari Shree" />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Assigned Recruiter(s)</label>
+                                <input value={newJob.assigned_recruiter} onChange={e => setNewJob({...newJob, assigned_recruiter: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }} placeholder="Recruiter Name" />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Target Date</label>
+                                <input type="date" value={newJob.target_date} onChange={e => setNewJob({...newJob, target_date: e.target.value})} style={{ width: '100%', padding: '9px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }} />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Job Type</label>
+                                <select value={newJob.job_type} onChange={e => setNewJob({...newJob, job_type: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', height: 'auto' }}>
+                                    <option value="Full time">Full time</option>
+                                    <option value="Part time">Part time</option>
+                                    <option value="Contract">Contract</option>
+                                    <option value="Temporary">Temporary</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Job Opening Status</label>
+                                <select value={newJob.job_status} onChange={e => setNewJob({...newJob, job_status: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', height: 'auto' }}>
+                                    <option value="In-progress">In-progress</option>
+                                    <option value="On-hold">On-hold</option>
+                                    <option value="Filled">Filled</option>
+                                    <option value="Closed">Closed</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Work Experience</label>
+                                <select value={newJob.work_experience} onChange={e => setNewJob({...newJob, work_experience: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', height: 'auto' }}>
+                                    <option value="None">None</option>
+                                    <option value="Fresher">Fresher</option>
+                                    <option value="1-3 years">1-3 years</option>
+                                    <option value="3-5 years">3-5 years</option>
+                                    <option value="5+ years">5+ years</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Industry</label>
+                                <select value={newJob.industry} onChange={e => setNewJob({...newJob, industry: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', height: 'auto' }}>
+                                    <option value="None">None</option>
+                                    <option value="IT">IT</option>
+                                    <option value="Finance">Finance</option>
+                                    <option value="Healthcare">Healthcare</option>
+                                    <option value="Telecom">Telecom</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Salary</label>
+                                <input value={newJob.salary} onChange={e => setNewJob({...newJob, salary: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }} placeholder="e.g. 10 LPA" />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Required Skills</label>
+                                <input value={newJob.required_skills} onChange={e => setNewJob({...newJob, required_skills: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }} placeholder="e.g. Pega, CSSA" />
+                            </div>
                         </div>
+
                         <div style={{ marginBottom: '1.5rem' }}>
-                            <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-dim)' }}>Job Description</label>
+                            <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-dim)' }}>Job Description *</label>
                             <textarea 
                                 value={newJob.description} 
                                 onChange={e => setNewJob({...newJob, description: e.target.value})}
-                                style={{ width: '100%', minHeight: '200px', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', resize: 'vertical', outline: 'none' }}
+                                style={{ width: '100%', minHeight: '120px', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', resize: 'vertical', outline: 'none' }}
                                 placeholder="Paste the full job description here..."
                             />
                         </div>
@@ -280,25 +367,175 @@ export default function JobsPage() {
                         </div>
                     </div>
                 ) : selectedJob ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-                        <div style={{ padding: '2rem', borderBottom: '1px solid var(--border)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
+                        <div style={{ padding: '2rem', borderBottom: '1px solid var(--border)', background: 'rgba(var(--navy-rgb), 0.15)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
                                 <div>
-                                    <h2 style={{ fontFamily: 'var(--fh)', color: 'var(--gold)', margin: '0 0 8px 0' }}>{selectedJob.title}</h2>
-                                    <div style={{ color: 'var(--text-dim)', fontSize: '0.9rem', maxWidth: '800px', maxHeight: '100px', overflowY: 'auto' }}>
-                                        {selectedJob.description}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                                        <h2 style={{ fontFamily: 'var(--fh)', color: 'var(--gold)', margin: 0 }}>{selectedJob.title}</h2>
+                                        
+                                        {/* Status Badge */}
+                                        <span style={{
+                                            fontSize: '0.8rem',
+                                            fontWeight: 600,
+                                            padding: '4px 10px',
+                                            borderRadius: '20px',
+                                            textTransform: 'uppercase',
+                                            background: selectedJob.job_status === 'In-progress' ? 'rgba(34, 197, 94, 0.15)' :
+                                                        selectedJob.job_status === 'On-hold' ? 'rgba(249, 115, 22, 0.15)' :
+                                                        selectedJob.job_status === 'Closed' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(33, 158, 188, 0.15)',
+                                            color: selectedJob.job_status === 'In-progress' ? '#4ade80' :
+                                                   selectedJob.job_status === 'On-hold' ? '#fdba74' :
+                                                   selectedJob.job_status === 'Closed' ? '#fca5a5' : '#38bdf8',
+                                            border: `1px solid ${
+                                                selectedJob.job_status === 'In-progress' ? 'rgba(34, 197, 94, 0.3)' :
+                                                selectedJob.job_status === 'On-hold' ? 'rgba(249, 115, 22, 0.3)' :
+                                                selectedJob.job_status === 'Closed' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(33, 158, 188, 0.3)'
+                                            }`
+                                        }}>
+                                            ● {selectedJob.job_status || 'In-progress'}
+                                        </span>
+
+                                        {/* Job Type Badge */}
+                                        <span style={{
+                                            fontSize: '0.8rem',
+                                            fontWeight: 600,
+                                            padding: '4px 10px',
+                                            borderRadius: '20px',
+                                            background: 'rgba(var(--sky-rgb), 0.1)',
+                                            color: 'var(--sky-dim)',
+                                            border: '1px solid rgba(var(--sky-rgb), 0.2)'
+                                        }}>
+                                            {selectedJob.job_type || 'Full time'}
+                                        </span>
+                                    </div>
+                                    <div style={{ color: 'var(--text-dim)', fontSize: '0.9rem' }}>
+                                        Client: <strong style={{ color: '#fff' }}>{selectedJob.client_name || 'N/A'}</strong>
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', gap: '10px' }}>
                                     <button className="btn btn-secondary" onClick={() => {
                                         setEditingJob(selectedJob);
-                                        setEditJobForm({ title: selectedJob.title, description: selectedJob.description });
+                                        setEditJobForm({
+                                            title: selectedJob.title || '',
+                                            description: selectedJob.description || '',
+                                            client_name: selectedJob.client_name || '',
+                                            contact_name: selectedJob.contact_name || '',
+                                            account_manager: selectedJob.account_manager || '',
+                                            assigned_recruiter: selectedJob.assigned_recruiter || '',
+                                            target_date: selectedJob.target_date || '',
+                                            job_type: selectedJob.job_type || 'Full time',
+                                            job_status: selectedJob.job_status || 'In-progress',
+                                            work_experience: selectedJob.work_experience || 'None',
+                                            industry: selectedJob.industry || 'None',
+                                            salary: selectedJob.salary || '',
+                                            required_skills: selectedJob.required_skills || ''
+                                        });
                                     }} style={{ borderColor: 'rgba(var(--gold-rgb), 0.3)', color: 'var(--gold)' }}>
                                         <Edit size={16}/> Edit Job
                                     </button>
                                     <button className="btn btn-danger" onClick={() => handleDeleteJob(selectedJob.id)}>
                                         <Trash2 size={16}/> Delete Job Description
                                     </button>
+                                </div>
+                            </div>
+
+                            {/* Zoho Recruit style parameters grid */}
+                            <div style={{ 
+                                display: 'grid', 
+                                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+                                gap: '1.25rem', 
+                                padding: '1.25rem', 
+                                background: 'rgba(var(--navy-dark-rgb), 0.4)', 
+                                border: '1px solid var(--border)', 
+                                borderRadius: '12px',
+                                marginBottom: '1.5rem'
+                            }}>
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Contact Name</span>
+                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <User size={14} style={{ color: 'var(--gold)' }} /> {selectedJob.contact_name || '--'}
+                                    </span>
+                                </div>
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Account Manager</span>
+                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <User size={14} style={{ color: 'var(--gold)' }} /> {selectedJob.account_manager || '--'}
+                                    </span>
+                                </div>
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Assigned Recruiter</span>
+                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <User size={14} style={{ color: 'var(--gold)' }} /> {selectedJob.assigned_recruiter || '--'}
+                                    </span>
+                                </div>
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Target Date</span>
+                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <Calendar size={14} style={{ color: 'var(--gold)' }} /> {selectedJob.target_date || '--'}
+                                    </span>
+                                </div>
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Work Experience</span>
+                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <Award size={14} style={{ color: 'var(--gold)' }} /> {selectedJob.work_experience || '--'}
+                                    </span>
+                                </div>
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Industry</span>
+                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <Briefcase size={14} style={{ color: 'var(--gold)' }} /> {selectedJob.industry || '--'}
+                                    </span>
+                                </div>
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Salary</span>
+                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <DollarSign size={14} style={{ color: 'var(--gold)' }} /> {selectedJob.salary || '--'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Required Skills Badges */}
+                            {selectedJob.required_skills && (
+                                <div style={{ marginBottom: '1.5rem' }}>
+                                    <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Required Skills</span>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                        {selectedJob.required_skills.split(',').map((skill, index) => {
+                                            const trimmed = skill.trim();
+                                            if (!trimmed) return null;
+                                            return (
+                                                <span key={index} style={{
+                                                    fontSize: '0.78rem',
+                                                    fontWeight: 600,
+                                                    padding: '4px 10px',
+                                                    borderRadius: '6px',
+                                                    background: 'rgba(var(--sky-rgb), 0.15)',
+                                                    color: 'var(--sky-dim)',
+                                                    border: '1px solid rgba(var(--sky-rgb), 0.3)'
+                                                }}>
+                                                    {trimmed}
+                                                </span>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Job Description Text Area (Collapsible) */}
+                            <div style={{ marginBottom: '1.5rem' }}>
+                                <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Full Job Description</span>
+                                <div style={{ 
+                                    color: 'var(--text)', 
+                                    fontSize: '0.9rem', 
+                                    maxHeight: '120px', 
+                                    overflowY: 'auto',
+                                    padding: '12px',
+                                    background: 'rgba(var(--navy-dark-rgb), 0.2)',
+                                    border: '1px solid var(--border)',
+                                    borderRadius: '8px',
+                                    whiteSpace: 'pre-wrap'
+                                }}>
+                                    {selectedJob.description}
                                 </div>
                             </div>
                             
@@ -501,31 +738,161 @@ export default function JobsPage() {
                     background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', 
                     justifyContent: 'center', zIndex: 1000
                 }}>
-                    <div className="card" style={{ width: '600px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxHeight: '90vh', overflowY: 'auto' }}>
+                    <div className="card" style={{ width: '800px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxHeight: '90vh', overflowY: 'auto' }}>
                         <h3 style={{ color: 'var(--gold)', margin: 0, fontFamily: 'var(--fh)', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem' }}>Edit Job Description</h3>
                         
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                             <div>
-                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Job Title</label>
+                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Job Title *</label>
                                 <input 
                                     type="text" 
                                     value={editJobForm.title} 
                                     onChange={e => setEditJobForm({...editJobForm, title: e.target.value})} 
-                                    placeholder="e.g. Senior Pega Developer" 
                                     style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none' }}
                                 />
                             </div>
                             
                             <div>
-                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Job Description</label>
-                                <textarea 
-                                    value={editJobForm.description} 
-                                    onChange={e => setEditJobForm({...editJobForm, description: e.target.value})} 
-                                    placeholder="Paste the full job description here..." 
-                                    rows={10}
-                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, resize: 'vertical', outline: 'none' }}
+                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Client Name</label>
+                                <input 
+                                    type="text" 
+                                    value={editJobForm.client_name} 
+                                    onChange={e => setEditJobForm({...editJobForm, client_name: e.target.value})} 
+                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none' }}
                                 />
                             </div>
+                            
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Contact Name</label>
+                                <input 
+                                    type="text" 
+                                    value={editJobForm.contact_name} 
+                                    onChange={e => setEditJobForm({...editJobForm, contact_name: e.target.value})} 
+                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none' }}
+                                />
+                            </div>
+                            
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Account Manager</label>
+                                <input 
+                                    type="text" 
+                                    value={editJobForm.account_manager} 
+                                    onChange={e => setEditJobForm({...editJobForm, account_manager: e.target.value})} 
+                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none' }}
+                                />
+                            </div>
+                            
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Assigned Recruiter(s)</label>
+                                <input 
+                                    type="text" 
+                                    value={editJobForm.assigned_recruiter} 
+                                    onChange={e => setEditJobForm({...editJobForm, assigned_recruiter: e.target.value})} 
+                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none' }}
+                                />
+                            </div>
+                            
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Target Date</label>
+                                <input 
+                                    type="date" 
+                                    value={editJobForm.target_date} 
+                                    onChange={e => setEditJobForm({...editJobForm, target_date: e.target.value})} 
+                                    style={{ width: '100%', padding: '9px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none' }}
+                                />
+                            </div>
+                            
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Job Type</label>
+                                <select 
+                                    value={editJobForm.job_type} 
+                                    onChange={e => setEditJobForm({...editJobForm, job_type: e.target.value})} 
+                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none', height: 'auto' }}
+                                >
+                                    <option value="Full time">Full time</option>
+                                    <option value="Part time">Part time</option>
+                                    <option value="Contract">Contract</option>
+                                    <option value="Temporary">Temporary</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Job Opening Status</label>
+                                <select 
+                                    value={editJobForm.job_status} 
+                                    onChange={e => setEditJobForm({...editJobForm, job_status: e.target.value})} 
+                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none', height: 'auto' }}
+                                >
+                                    <option value="In-progress">In-progress</option>
+                                    <option value="On-hold">On-hold</option>
+                                    <option value="Filled">Filled</option>
+                                    <option value="Closed">Closed</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Work Experience</label>
+                                <select 
+                                    value={editJobForm.work_experience} 
+                                    onChange={e => setEditJobForm({...editJobForm, work_experience: e.target.value})} 
+                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none', height: 'auto' }}
+                                >
+                                    <option value="None">None</option>
+                                    <option value="Fresher">Fresher</option>
+                                    <option value="1-3 years">1-3 years</option>
+                                    <option value="3-5 years">3-5 years</option>
+                                    <option value="5+ years">5+ years</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Industry</label>
+                                <select 
+                                    value={editJobForm.industry} 
+                                    onChange={e => setEditJobForm({...editJobForm, industry: e.target.value})} 
+                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none', height: 'auto' }}
+                                >
+                                    <option value="None">None</option>
+                                    <option value="IT">IT</option>
+                                    <option value="Finance">Finance</option>
+                                    <option value="Healthcare">Healthcare</option>
+                                    <option value="Telecom">Telecom</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Salary</label>
+                                <input 
+                                    type="text" 
+                                    value={editJobForm.salary} 
+                                    onChange={e => setEditJobForm({...editJobForm, salary: e.target.value})} 
+                                    placeholder="e.g. 10 LPA"
+                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none' }}
+                                />
+                            </div>
+                            
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Required Skills</label>
+                                <input 
+                                    type="text" 
+                                    value={editJobForm.required_skills} 
+                                    onChange={e => setEditJobForm({...editJobForm, required_skills: e.target.value})} 
+                                    placeholder="e.g. Pega, CSSA"
+                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none' }}
+                                />
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Job Description *</label>
+                            <textarea 
+                                value={editJobForm.description} 
+                                onChange={e => setEditJobForm({...editJobForm, description: e.target.value})} 
+                                placeholder="Paste the full job description here..." 
+                                rows={6}
+                                style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, resize: 'vertical', outline: 'none' }}
+                            />
                         </div>
                         
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid var(--border)', paddingTop: '1rem', marginTop: '0.5rem' }}>

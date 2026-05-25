@@ -10,10 +10,7 @@ export default function Layout({ user, onLogout, theme, toggleTheme }) {
         { to: '/chat', label: 'Chat with Hire', Icon: MessageSquare },
     ]
 
-    // Add admin portal link if user is admin
-    if (user?.role === 'admin') {
-        navItems.push({ to: '/admin', label: 'Admin Portal', Icon: Shield })
-    }
+
 
     return (
         <div className="app-shell">
@@ -68,9 +65,9 @@ export default function Layout({ user, onLogout, theme, toggleTheme }) {
                         </button>
                         <div className="profile-chip">
                             <div className="profile-avatar">
-                                {(user?.name?.[0] || 'H').toUpperCase()}
+                                {(user?.full_name?.[0] || user?.name?.[0] || 'H').toUpperCase()}
                             </div>
-                            <span className="profile-name">{user?.name || 'HR User'}</span>
+                            <span className="profile-name">{user?.full_name || user?.name || 'HR User'}</span>
                         </div>
                     </div>
                 </header>

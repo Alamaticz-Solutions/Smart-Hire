@@ -116,6 +116,17 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
             description TEXT NOT NULL,
+            client_name TEXT,
+            contact_name TEXT,
+            account_manager TEXT,
+            assigned_recruiter TEXT,
+            target_date TEXT,
+            job_type TEXT,
+            job_status TEXT,
+            work_experience TEXT,
+            industry TEXT,
+            salary TEXT,
+            required_skills TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -152,7 +163,7 @@ def init_db():
         )
     ''')
 
-    # Migration: add missing columns
+    # Migration: add missing columns to candidate_metadata
     cur.execute("PRAGMA table_info(candidate_metadata)")
     existing = [c[1] for c in cur.fetchall()]
     new_cols = {
@@ -178,6 +189,26 @@ def init_db():
     for col, dtype in new_cols.items():
         if col not in existing:
             cur.execute(f"ALTER TABLE candidate_metadata ADD COLUMN {col} {dtype}")
+
+    # Migration: add missing columns to jobs
+    cur.execute("PRAGMA table_info(jobs)")
+    existing_jobs = [c[1] for c in cur.fetchall()]
+    new_jobs_cols = {
+        'client_name': 'TEXT',
+        'contact_name': 'TEXT',
+        'account_manager': 'TEXT',
+        'assigned_recruiter': 'TEXT',
+        'target_date': 'TEXT',
+        'job_type': 'TEXT',
+        'job_status': 'TEXT',
+        'work_experience': 'TEXT',
+        'industry': 'TEXT',
+        'salary': 'TEXT',
+        'required_skills': 'TEXT'
+    }
+    for col, dtype in new_jobs_cols.items():
+        if col not in existing_jobs:
+            cur.execute(f"ALTER TABLE jobs ADD COLUMN {col} {dtype}")
             
     # Seed default users if empty
     cur.execute("SELECT COUNT(*) FROM users")
@@ -281,13 +312,8 @@ def get_job_title(job_id: int) -> str:
 @app.get("/api/candidates")
 def list_candidates(request: Request):
     username = request.headers.get("x-user-username")
-    role = get_user_role(username)
     rows = get_candidates_list()
     
-    # Filter unapproved resumes for normal users
-    if role != "admin":
-        rows = [r for r in rows if int(r.get("is_approved") or 0) == 1]
-        
     # Replace None values with empty string
     for row in rows:
         for k, v in row.items():
@@ -302,17 +328,6 @@ class CustomColumn(BaseModel):
 
 @app.post("/api/columns")
 def add_column(col: CustomColumn, request: Request):
-    username = request.headers.get("x-user-username")
-    role = get_user_role(username)
-    if role != "admin":
-        create_change_request(
-            username=username or "unknown",
-            action_type="add_column",
-            payload=col.model_dump_json(),
-            description=f"Add custom column '{col.col_label}' ({col.col_key})"
-        )
-        return {"status": "pending_approval", "message": "Change request submitted to Admin for approval."}
-        
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
     clean_key = re.sub(r'[^a-zA-Z0-9_]', '', col.col_key.replace(' ', '_')).lower()
@@ -371,17 +386,6 @@ def get_columns():
 
 @app.delete("/api/columns/{col_key}")
 def delete_column(col_key: str, request: Request):
-    username = request.headers.get("x-user-username")
-    role = get_user_role(username)
-    if role != "admin":
-        create_change_request(
-            username=username or "unknown",
-            action_type="delete_column",
-            target_id=col_key,
-            description=f"Delete custom column '{col_key}'"
-        )
-        return {"status": "pending_approval", "message": "Change request submitted to Admin for approval."}
-        
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
     try:
@@ -430,16 +434,7 @@ async def update_candidate(candidate_id: int, request: Request, background_tasks
         conn.close()
         return {"status": "no changes"}
 
-    if role != "admin":
-        conn.close()
-        create_change_request(
-            username=username or "unknown",
-            action_type="update_candidate",
-            target_id=str(candidate_id),
-            payload=json.dumps(updates),
-            description=f"Update candidate '{get_candidate_name(candidate_id)}' fields"
-        )
-        return {"status": "pending_approval", "message": "Change request submitted to Admin for approval."}
+
 
     set_clause = ", ".join(f"{k}=?" for k in updates)
     cur.execute(
@@ -461,17 +456,6 @@ async def update_candidate(candidate_id: int, request: Request, background_tasks
 
 @app.delete("/api/candidates/{candidate_id}")
 def delete_candidate(candidate_id: int, request: Request):
-    username = request.headers.get("x-user-username")
-    role = get_user_role(username)
-    if role != "admin":
-        create_change_request(
-            username=username or "unknown",
-            action_type="delete_candidate",
-            target_id=str(candidate_id),
-            description=f"Delete candidate '{get_candidate_name(candidate_id)}'"
-        )
-        return {"status": "pending_approval", "message": "Change request submitted to Admin for approval."}
-
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur  = conn.cursor()
     cur.execute("DELETE FROM job_candidates WHERE candidate_id=?", (candidate_id,))
@@ -792,8 +776,7 @@ def process_resume(safe_name: str, path: str, is_approved: int = 1, username: st
 @app.post("/api/upload")
 async def upload_resume(request: Request, background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     username = request.headers.get("x-user-username")
-    role = get_user_role(username)
-    is_approved = 1 if role == "admin" else 0
+    is_approved = 1
 
     # Save file
     safe_name = file.filename
@@ -808,8 +791,6 @@ async def upload_resume(request: Request, background_tasks: BackgroundTasks, fil
     # Process asynchronously
     background_tasks.add_task(process_resume, safe_name, path, is_approved, username or "unknown")
 
-    if is_approved == 0:
-        return {"status": "pending_approval", "message": "Resume uploaded. Awaiting admin approval."}
     return {"status": "processing", "message": "Resume uploaded and is processing in the background."}
 
 # ── Chat ──────────────────────────────────────────────────────────────────────
@@ -1112,6 +1093,17 @@ Return ONLY the raw JSON block, no markdown, no other text."""
 class JobCreate(BaseModel):
     title: str
     description: str
+    client_name: Optional[str] = ""
+    contact_name: Optional[str] = ""
+    account_manager: Optional[str] = ""
+    assigned_recruiter: Optional[str] = ""
+    target_date: Optional[str] = ""
+    job_type: Optional[str] = ""
+    job_status: Optional[str] = ""
+    work_experience: Optional[str] = ""
+    industry: Optional[str] = ""
+    salary: Optional[str] = ""
+    required_skills: Optional[str] = ""
 
 class JobStatusUpdate(BaseModel):
     status: Optional[str] = None
@@ -1132,22 +1124,37 @@ class UserRoleUpdate(BaseModel):
 def has_digit(s: str) -> bool:
     return any(c.isdigit() for c in s)
 
+@app.get("/api/jobs")
+def list_jobs():
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM jobs ORDER BY id DESC")
+    jobs = [dict(r) for r in cur.fetchall()]
+    for job in jobs:
+        job_id = job['id']
+        cur.execute("SELECT status, COUNT(*) as cnt FROM job_candidates WHERE job_id = ? GROUP BY status", (job_id,))
+        counts = {r['status']: r['cnt'] for r in cur.fetchall()}
+        job['matched_count'] = counts.get('matched', 0)
+        job['selected_count'] = counts.get('selected', 0)
+    conn.close()
+    return jobs
+
 @app.post("/api/jobs")
 def create_job(job: JobCreate, request: Request):
-    username = request.headers.get("x-user-username")
-    role = get_user_role(username)
-    if role != "admin":
-        create_change_request(
-            username=username or "unknown",
-            action_type="create_job",
-            payload=job.model_dump_json(),
-            description=f"Create job description: {job.title}"
-        )
-        return {"status": "pending_approval", "message": "Change request submitted to Admin for approval."}
-
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
-    cur.execute("INSERT INTO jobs (title, description) VALUES (?, ?)", (job.title, job.description))
+    cur.execute("""
+        INSERT INTO jobs (
+            title, description, client_name, contact_name, account_manager,
+            assigned_recruiter, target_date, job_type, job_status,
+            work_experience, industry, salary, required_skills
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        job.title, job.description, job.client_name, job.contact_name, job.account_manager,
+        job.assigned_recruiter, job.target_date, job.job_type, job.job_status,
+        job.work_experience, job.industry, job.salary, job.required_skills
+    ))
     job_id = cur.lastrowid
     conn.commit()
     conn.close()
@@ -1173,21 +1180,20 @@ def create_job(job: JobCreate, request: Request):
 
 @app.put("/api/jobs/{job_id}")
 def update_job(job_id: int, job: JobCreate, request: Request):
-    username = request.headers.get("x-user-username")
-    role = get_user_role(username)
-    if role != "admin":
-        create_change_request(
-            username=username or "unknown",
-            action_type="update_job",
-            target_id=str(job_id),
-            payload=job.model_dump_json(),
-            description=f"Update job description: {job.title} (ID {job_id})"
-        )
-        return {"status": "pending_approval", "message": "Change request submitted to Admin for approval."}
-
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
-    cur.execute("UPDATE jobs SET title = ?, description = ? WHERE id = ?", (job.title, job.description, job_id))
+    cur.execute("""
+        UPDATE jobs SET 
+            title = ?, description = ?, client_name = ?, contact_name = ?, account_manager = ?,
+            assigned_recruiter = ?, target_date = ?, job_type = ?, job_status = ?,
+            work_experience = ?, industry = ?, salary = ?, required_skills = ?
+        WHERE id = ?
+    """, (
+        job.title, job.description, job.client_name, job.contact_name, job.account_manager,
+        job.assigned_recruiter, job.target_date, job.job_type, job.job_status,
+        job.work_experience, job.industry, job.salary, job.required_skills,
+        job_id
+    ))
     if cur.rowcount == 0:
         conn.close()
         raise HTTPException(status_code=404, detail="Job not found")
@@ -1215,17 +1221,6 @@ def update_job(job_id: int, job: JobCreate, request: Request):
 
 @app.delete("/api/jobs/{job_id}")
 def delete_job(job_id: int, request: Request):
-    username = request.headers.get("x-user-username")
-    role = get_user_role(username)
-    if role != "admin":
-        create_change_request(
-            username=username or "unknown",
-            action_type="delete_job",
-            target_id=str(job_id),
-            description=f"Delete job description: {get_job_title(job_id)} (ID {job_id})"
-        )
-        return {"status": "pending_approval", "message": "Change request submitted to Admin for approval."}
-
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
     cur.execute("DELETE FROM job_candidates WHERE job_id = ?", (job_id,))
@@ -1251,23 +1246,6 @@ def get_job_candidates(job_id: int):
 
 @app.put("/api/jobs/{job_id}/candidates/{candidate_id}")
 def update_job_candidate_status(job_id: int, candidate_id: int, update: JobStatusUpdate, request: Request):
-    username = request.headers.get("x-user-username")
-    role = get_user_role(username)
-    if role != "admin":
-        desc = ""
-        if update.status:
-            desc = f"Update status to '{update.status}'"
-        elif update.ai_reason:
-            desc = "Update match reasoning"
-        create_change_request(
-            username=username or "unknown",
-            action_type="update_job_candidate",
-            target_id=f"{job_id}:{candidate_id}",
-            payload=update.model_dump_json(),
-            description=f"{desc} for candidate '{get_candidate_name(candidate_id)}' in job '{get_job_title(job_id)}'"
-        )
-        return {"status": "pending_approval", "message": "Change request submitted to Admin for approval."}
-
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
     
@@ -1286,17 +1264,6 @@ def update_job_candidate_status(job_id: int, candidate_id: int, update: JobStatu
 
 @app.delete("/api/jobs/{job_id}/candidates/{candidate_id}")
 def delete_job_candidate(job_id: int, candidate_id: int, request: Request):
-    username = request.headers.get("x-user-username")
-    role = get_user_role(username)
-    if role != "admin":
-        create_change_request(
-            username=username or "unknown",
-            action_type="delete_job_candidate",
-            target_id=f"{job_id}:{candidate_id}",
-            description=f"Remove candidate '{get_candidate_name(candidate_id)}' from job '{get_job_title(job_id)}'"
-        )
-        return {"status": "pending_approval", "message": "Change request submitted to Admin for approval."}
-
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
     cur.execute("DELETE FROM job_candidates WHERE job_id = ? AND candidate_id = ?", (job_id, candidate_id))
@@ -1409,32 +1376,11 @@ Return ONLY the raw JSON block, no markdown, no other text."""
 
 @app.post("/api/jobs/{job_id}/match")
 def match_candidates_for_job_endpoint(job_id: int, request: Request):
-    username = request.headers.get("x-user-username")
-    role = get_user_role(username)
-    if role != "admin":
-        create_change_request(
-            username=username or "unknown",
-            action_type="match_job",
-            target_id=str(job_id),
-            description=f"Trigger manual match for job '{get_job_title(job_id)}'"
-        )
-        return {"status": "pending_approval", "message": "Change request submitted to Admin for approval."}
-    
     return match_candidates_for_job(job_id)
 
 # ── Reset ──────────────────────────────────────────────────────────────────────
 @app.post("/api/reset")
 def reset_all(request: Request):
-    username = request.headers.get("x-user-username")
-    role = get_user_role(username)
-    if role != "admin":
-        create_change_request(
-            username=username or "unknown",
-            action_type="reset_all",
-            description="Reset all candidate and ChromaDB data"
-        )
-        return {"status": "pending_approval", "message": "Change request submitted to Admin for approval."}
-
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     conn.execute("DELETE FROM candidate_metadata")
     conn.commit()

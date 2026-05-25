@@ -20,9 +20,16 @@ export default function LoginPage({ onLogin }) {
         
         try {
             const res = await axios.post('/api/auth/login', { username: cred, password: pass })
-            onLogin(res.data.user)
+            onLogin(res.data)
         } catch (err) {
-            setError(err.response?.data?.detail || 'Invalid username or password.')
+            const detail = err.response?.data?.detail;
+            if (Array.isArray(detail)) {
+                setError(detail.map(d => d.msg).join(', '));
+            } else if (typeof detail === 'string') {
+                setError(detail);
+            } else {
+                setError('Invalid username or password. (Is the backend server running?)');
+            }
         }
     }
 
@@ -42,7 +49,14 @@ export default function LoginPage({ onLogin }) {
             setInfo(`Account created for ${name}! Please sign in.`)
             setTimeout(() => { setMode('login'); setInfo(''); setPass(''); setPass2(''); }, 2000)
         } catch (err) {
-            setError(err.response?.data?.detail || 'Registration failed.')
+            const detail = err.response?.data?.detail;
+            if (Array.isArray(detail)) {
+                setError(detail.map(d => d.msg).join(', '));
+            } else if (typeof detail === 'string') {
+                setError(detail);
+            } else {
+                setError('Registration failed. (Is the backend server running?)');
+            }
         }
     }
 
