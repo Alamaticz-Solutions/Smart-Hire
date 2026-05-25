@@ -7,7 +7,20 @@ import gc
 import threading
 from typing import Optional
 from datetime import datetime
+import openpyxl
 
+def normalize_phone(phone) -> str:
+    if not phone:
+        return ""
+    digits = "".join(c for c in str(phone) if c.isdigit())
+    if len(digits) >= 10:
+        return digits[-10:]
+    return digits
+
+def normalize_email(email) -> str:
+    if not email:
+        return ""
+    return str(email).strip().lower()
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -607,31 +620,82 @@ def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, userna
                         data[num_field] = ""
         # -- End Data Validation & Normalization --
 
-        data['filename'] = safe_name
-        data['candidate_status'] = 'New'
-        data['is_approved'] = is_approved
-        candidate_id = log_candidate(data)
+        # Check for existing match (excluding the placeholder we just created)
+        conn = sqlite3.connect(STATS_DB, timeout=30.0)
+        cur = conn.cursor()
+        cur.execute("SELECT id, full_name, email, phone FROM candidate_metadata WHERE filename != ? OR filename IS NULL", (safe_name,))
+        existing_candidates = [
+            {
+                "id": r[0],
+                "full_name": r[1] or "",
+                "email": r[2] or "",
+                "phone": r[3] or ""
+            }
+            for r in cur.fetchall()
+        ]
         
-        if is_approved == 0 and candidate_id:
-            create_change_request(
-                username=username,
-                action_type="approve_resume",
-                target_id=str(candidate_id),
-                payload=json.dumps({"filename": safe_name, "candidate_id": candidate_id}),
-                description=f"Approve resume upload: {data.get('full_name', safe_name)}"
-            )
+        email = data.get('email', '')
+        phone = data.get('phone', '')
+        name = data.get('full_name', '')
+        
+        norm_email = normalize_email(email)
+        norm_phone = normalize_phone(phone)
+        
+        match_id = None
+        for ec in existing_candidates:
+            ec_email = normalize_email(ec["email"])
+            ec_phone = normalize_phone(ec["phone"])
+            
+            if norm_email and norm_email == ec_email:
+                match_id = ec["id"]
+                break
+            if norm_phone and norm_phone == ec_phone:
+                match_id = ec["id"]
+                break
+            if name and ec["full_name"] and name.strip().lower() == ec["full_name"].strip().lower():
+                match_id = ec["id"]
+                break
+                
+        if match_id:
+            # Match found! Delete the placeholder record we created in upload_resume
+            cur.execute("DELETE FROM candidate_metadata WHERE filename = ?", (safe_name,))
+            
+            # Fetch the existing candidate metadata to merge values
+            cur.execute("PRAGMA table_info(candidate_metadata)")
+            allowed_cols = {c[1] for c in cur.fetchall()}
+            
+            cur.execute("SELECT * FROM candidate_metadata WHERE id = ?", (match_id,))
+            cur.row_factory = sqlite3.Row
+            existing_row = dict(cur.fetchone())
+            
+            updates = {}
+            for k, v in data.items():
+                if k in allowed_cols and k != 'id':
+                    if k == 'filename':
+                        updates[k] = safe_name
+                    elif v is not None and v != "":
+                        existing_val = existing_row.get(k)
+                        if existing_val is None or str(existing_val).strip() == "" or existing_val == 0.0 or existing_val == 0:
+                            updates[k] = v
+            
+            if updates:
+                set_clause = ", ".join(f"{k}=?" for k in updates)
+                cur.execute(f"UPDATE candidate_metadata SET {set_clause} WHERE id=?", list(updates.values()) + [match_id])
+            
+            candidate_id = match_id
+            conn.commit()
+            conn.close()
+        else:
+            conn.close()
+            data['filename'] = safe_name
+            data['candidate_status'] = 'New'
+            data['is_approved'] = is_approved
+            candidate_id = log_candidate(data)
+            
     except Exception as e:
         error_msg = str(e)[:100]
         data = {"filename": safe_name, "full_name": f"Processing Error: {error_msg}", "is_approved": is_approved}
         candidate_id = log_candidate(data)
-        if is_approved == 0 and candidate_id:
-            create_change_request(
-                username=username,
-                action_type="approve_resume",
-                target_id=str(candidate_id),
-                payload=json.dumps({"filename": safe_name, "candidate_id": candidate_id}),
-                description=f"Approve resume upload: {safe_name} (with processing error)"
-            )
         return
 
     # Add to ChromaDB
@@ -766,6 +830,242 @@ Return ONLY the JSON block, no markdown, no other text."""
     except Exception as match_err:
         print(f"Error auto-matching candidate {candidate_id} to jobs: {match_err}")
 
+def process_excel_file_logic(safe_name: str, path: str, username: str):
+    try:
+        wb = openpyxl.load_workbook(path, data_only=True)
+        conn = sqlite3.connect(STATS_DB, timeout=30.0)
+        cur = conn.cursor()
+        
+        # Fetch custom columns
+        cur.execute("SELECT col_key, col_label FROM custom_columns")
+        custom_cols = {row[1].strip().lower(): row[0] for row in cur.fetchall()}
+        
+        # Mappings for common columns
+        column_mappings = {
+            'name': 'full_name',
+            'full name': 'full_name',
+            'candidate name': 'full_name',
+            'candidate': 'full_name',
+            'names': 'full_name',
+            
+            'phone': 'phone',
+            'phone no': 'phone',
+            'phone number': 'phone',
+            'mobile': 'phone',
+            'mobile number': 'phone',
+            'mobile no': 'phone',
+            'contact': 'phone',
+            'contact number': 'phone',
+            'contact no': 'phone',
+            
+            'email': 'email',
+            'email id': 'email',
+            'email address': 'email',
+            
+            'skills': 'skills',
+            'key skills': 'skills',
+            'technical skills': 'skills',
+            
+            'experience': 'total_experience',
+            'exp': 'total_experience',
+            'total exp': 'total_experience',
+            'total experience': 'total_experience',
+            'work experience': 'total_experience',
+            
+            'pega experience': 'pega_experience',
+            'pega exp': 'pega_experience',
+            
+            'cdh experience': 'cdh_exp',
+            'cdh exp': 'cdh_exp',
+            
+            'current ctc': 'ctc',
+            'ctc': 'ctc',
+            'salary': 'ctc',
+            
+            'expected ctc': 'expected_ctc',
+            
+            'percentage hike': 'percentage_hike',
+            'hike': 'percentage_hike',
+            
+            'notice period': 'notice_period',
+            'np': 'notice_period',
+            
+            'current location': 'current_location',
+            'location': 'current_location',
+            
+            'preferred locations': 'pref_locations',
+            'preferred location': 'pref_locations',
+            'pref locations': 'pref_locations',
+            
+            'current organization': 'current_organization',
+            'current employer': 'current_organization',
+            'employer': 'current_organization',
+            'current employment': 'current_organization',
+            
+            'current client': 'current_client',
+            
+            'domain': 'domain',
+            'tier': 'tier',
+            'certification version': 'certification_version',
+            'certifications': 'certifications'
+        }
+        
+        # Load existing candidates from DB
+        cur.execute("SELECT id, full_name, email, phone FROM candidate_metadata")
+        existing_candidates = [
+            {
+                "id": r[0],
+                "full_name": r[1] or "",
+                "email": r[2] or "",
+                "phone": r[3] or ""
+            }
+            for r in cur.fetchall()
+        ]
+        
+        # Iterate over all sheets
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            # Find the header row (iterating up to 10 rows)
+            header_row_idx = None
+            headers = []
+            for r_idx in range(1, min(ws.max_row + 1, 11)):
+                row_vals = [ws.cell(row=r_idx, column=c_idx).value for c_idx in range(1, ws.max_column + 1)]
+                non_empty = [v for v in row_vals if v is not None]
+                if len(non_empty) >= 2:
+                    is_header = False
+                    for val in non_empty:
+                        val_str = str(val).strip().lower()
+                        if val_str in column_mappings or val_str in custom_cols:
+                            is_header = True
+                            break
+                    if is_header:
+                        header_row_idx = r_idx
+                        headers = [str(h).strip() if h is not None else "" for h in row_vals]
+                        break
+            
+            if not header_row_idx:
+                header_row_idx = 1
+                headers = [str(ws.cell(row=1, column=c_idx).value).strip() if ws.cell(row=1, column=c_idx).value is not None else "" for c_idx in range(1, ws.max_column + 1)]
+            
+            # Map headers to DB columns
+            mapped_cols = {}
+            for idx, h in enumerate(headers):
+                h_lower = h.lower()
+                if h_lower in custom_cols:
+                    mapped_cols[idx] = custom_cols[h_lower]
+                elif h_lower in column_mappings:
+                    mapped_cols[idx] = column_mappings[h_lower]
+            
+            # Process rows starting from header_row_idx + 1
+            for row_idx in range(header_row_idx + 1, ws.max_row + 1):
+                row_data = {}
+                is_row_empty = True
+                for col_idx in range(1, len(headers) + 1):
+                    val = ws.cell(row=row_idx, column=col_idx).value
+                    if val is not None:
+                        is_row_empty = False
+                    if (col_idx - 1) in mapped_cols:
+                        db_col = mapped_cols[col_idx - 1]
+                        row_data[db_col] = str(val).strip() if val is not None else ""
+                
+                if is_row_empty:
+                    continue
+                
+                # Check that we have at least one identifying field
+                if not row_data.get('full_name') and not row_data.get('email') and not row_data.get('phone'):
+                    continue
+                
+                name = row_data.get('full_name', '')
+                email = row_data.get('email', '')
+                phone = row_data.get('phone', '')
+                
+                norm_email = normalize_email(email)
+                norm_phone = normalize_phone(phone)
+                
+                match_id = None
+                for ec in existing_candidates:
+                    ec_email = normalize_email(ec["email"])
+                    ec_phone = normalize_phone(ec["phone"])
+                    
+                    if norm_email and norm_email == ec_email:
+                        match_id = ec["id"]
+                        break
+                    if norm_phone and norm_phone == ec_phone:
+                        match_id = ec["id"]
+                        break
+                    if name and ec["full_name"] and name.strip().lower() == ec["full_name"].strip().lower():
+                        match_id = ec["id"]
+                        break
+                
+                # Normalize numeric/experience fields
+                if 'total_experience' in row_data and row_data['total_experience'] != "":
+                    try:
+                        row_data['total_experience'] = float(row_data['total_experience'])
+                    except ValueError:
+                        row_data['total_experience'] = 0.0
+                if 'pega_experience' in row_data and row_data['pega_experience'] != "":
+                    try:
+                        row_data['pega_experience'] = float(row_data['pega_experience'])
+                    except ValueError:
+                        row_data['pega_experience'] = 0.0
+                if 'cdh_exp' in row_data and row_data['cdh_exp'] != "":
+                    try:
+                        row_data['cdh_exp'] = float(row_data['cdh_exp'])
+                    except ValueError:
+                        row_data['cdh_exp'] = 0.0
+                if 'notice_period' in row_data and row_data['notice_period'] != "":
+                    try:
+                        digits = "".join(c for c in row_data['notice_period'] if c.isdigit())
+                        row_data['notice_period'] = int(digits) if digits else ""
+                    except Exception:
+                        row_data['notice_period'] = ""
+                if 'availability_in_days' in row_data and row_data['availability_in_days'] != "":
+                    try:
+                        digits = "".join(c for c in row_data['availability_in_days'] if c.isdigit())
+                        row_data['availability_in_days'] = int(digits) if digits else ""
+                    except Exception:
+                        row_data['availability_in_days'] = ""
+                
+                cur.execute("PRAGMA table_info(candidate_metadata)")
+                allowed_cols = {c[1] for c in cur.fetchall()}
+                db_data = {k: v for k, v in row_data.items() if k in allowed_cols and k != 'id'}
+                
+                if match_id:
+                    # Update existing record
+                    set_clause = ", ".join(f"{k}=?" for k in db_data)
+                    cur.execute(f"UPDATE candidate_metadata SET {set_clause} WHERE id=?", list(db_data.values()) + [match_id])
+                    candidate_id = match_id
+                else:
+                    # Insert new record
+                    db_data['is_approved'] = 1
+                    db_data['candidate_status'] = 'New'
+                    db_data['filename'] = safe_name
+                    cols_list = list(db_data.keys())
+                    vals_list = list(db_data.values())
+                    cur.execute(
+                        f"INSERT INTO candidate_metadata ({','.join(cols_list)}) VALUES ({','.join(['?']*len(cols_list))})",
+                        vals_list
+                    )
+                    candidate_id = cur.lastrowid
+                    existing_candidates.append({
+                        "id": candidate_id,
+                        "full_name": name,
+                        "email": email,
+                        "phone": phone
+                    })
+                
+                # Match candidate to all jobs
+                match_candidate_to_all_jobs(candidate_id)
+                
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error parsing Excel file {safe_name}: {e}")
+
+def process_excel_file(safe_name: str, path: str, username: str = "unknown"):
+    with _processing_lock:
+        process_excel_file_logic(safe_name, path, username)
+
 def process_resume(safe_name: str, path: str, is_approved: int = 1, username: str = "unknown"):
     # Use a lock to ensure only one resume is processed at a time
     # This prevents Render memory crashes (OOM), Groq Rate Limits, and SQLite database locks
@@ -785,13 +1085,19 @@ async def upload_resume(request: Request, background_tasks: BackgroundTasks, fil
         content = await file.read()
         f.write(content)
 
-    # Placeholder while processing in background
-    log_candidate({"filename": safe_name, "full_name": f"⏳ Processing: {safe_name}", "is_approved": is_approved})
-    
-    # Process asynchronously
-    background_tasks.add_task(process_resume, safe_name, path, is_approved, username or "unknown")
+    ext = os.path.splitext(safe_name.lower())[1]
+    if ext in ['.xlsx', '.xls', '.csv']:
+        log_candidate({"filename": safe_name, "full_name": f"⏳ Parsing Excel: {safe_name}", "is_approved": is_approved})
+        background_tasks.add_task(process_excel_file, safe_name, path, username or "unknown")
+        return {"status": "processing", "message": "Excel sheet uploaded and is processing in the background."}
+    else:
+        # Placeholder while processing in background
+        log_candidate({"filename": safe_name, "full_name": f"⏳ Processing: {safe_name}", "is_approved": is_approved})
+        
+        # Process asynchronously
+        background_tasks.add_task(process_resume, safe_name, path, is_approved, username or "unknown")
 
-    return {"status": "processing", "message": "Resume uploaded and is processing in the background."}
+        return {"status": "processing", "message": "Resume uploaded and is processing in the background."}
 
 # ── Chat ──────────────────────────────────────────────────────────────────────
 class ChatRequest(BaseModel):

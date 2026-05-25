@@ -383,7 +383,13 @@ export default function UploadPage() {
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop,
-        accept: { 'application/pdf': ['.pdf'], 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'] },
+        accept: { 
+            'application/pdf': ['.pdf'], 
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+            'application/vnd.ms-excel': ['.xls'],
+            'text/csv': ['.csv']
+        },
         multiple: true,
     })
 
@@ -442,7 +448,7 @@ export default function UploadPage() {
             {/* Drop Zone */}
             <div className="card">
                 <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem', fontWeight: 600, color: 'var(--sky)' }}>
-                    <Upload size={18} /> Upload Resumes
+                    <Upload size={18} /> Upload Resumes / Excel Sheets
                 </div>
                 <div {...getRootProps()} className={`dropzone${isDragActive ? ' active' : ''}`} style={{ textAlign: 'center', padding: '2rem', border: '2px dashed var(--border)', borderRadius: '8px', background: isDragActive ? 'rgba(var(--sky-rgb), 0.1)' : 'var(--input-bg)', cursor: 'pointer', transition: 'all 0.2s' }}>
                     <input {...getInputProps()} />
@@ -450,7 +456,7 @@ export default function UploadPage() {
                         <UploadCloud size={40} className="icon" style={{ color: 'var(--sky)', filter: 'drop-shadow(0 0 10px rgba(var(--sky-rgb), 0.5))' }} />
                     </div>
                     <div className="dropzone-text" style={{ color: 'var(--text-dim)' }}>
-                        {isDragActive ? <strong>Drop here…</strong> : <><strong>Drag & drop</strong> PDF / DOCX resumes, or click to browse</>}
+                        {isDragActive ? <strong>Drop here…</strong> : <><strong>Drag & drop</strong> PDF / DOCX resumes or XLSX/XLS/CSV sheets, or click to browse</>}
                     </div>
                 </div>
                 {progress.length > 0 && (

@@ -1,12 +1,12 @@
 import { Outlet, NavLink } from 'react-router-dom'
-import { LayoutDashboard, Upload, MessageSquare, LogOut, Sun, Moon, Briefcase, Shield } from 'lucide-react'
+import { LayoutDashboard, Upload, MessageSquare, LogOut, Sun, Moon, Briefcase, Shield, Users } from 'lucide-react'
 import alamaticzLogo from '../assets/alamaticz-logo.jpg'
 
 export default function Layout({ user, onLogout, theme, toggleTheme }) {
     const navItems = [
         { to: '/', label: 'Dashboard', Icon: LayoutDashboard },
         { to: '/jobs', label: 'Job Description', Icon: Briefcase },
-        { to: '/upload', label: 'Upload Resume', Icon: Upload },
+        { to: '/upload', label: 'Candidate Details', Icon: Users },
         { to: '/chat', label: 'Chat with Hire', Icon: MessageSquare },
     ]
 
