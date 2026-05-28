@@ -4,7 +4,7 @@ import axios from 'axios'
 import { LayoutDashboard, Upload, MessageSquare, LogOut, Sun, Moon, Briefcase, Shield, Users, Download } from 'lucide-react'
 import alamaticzLogo from '../assets/alamaticz-logo.jpg'
 
-export default function Layout({ user, onLogout, theme, toggleTheme }) {
+export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUser }) {
     const [activities, setActivities] = useState([])
 
     const fetchActivities = async () => {
@@ -86,17 +86,27 @@ export default function Layout({ user, onLogout, theme, toggleTheme }) {
                         >
                             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
                         </button>
-                        <div className="profile-chip">
-                            <div className="profile-avatar">
-                                {(user?.full_name?.[0] || user?.name?.[0] || 'H').toUpperCase()}
+                        <div className="profile-chip" title={user?.active_persona ? `Logged in as Admin, acting as ${user.active_persona}` : `Logged in as ${user.full_name}`}>
+                            <div className="profile-avatar" style={{
+                                background: user?.active_persona ? 'linear-gradient(135deg, #FB8500, #FFB703)' : 'var(--gold)',
+                                boxShadow: user?.active_persona ? '0 0 10px rgba(251, 133, 0, 0.4)' : 'none',
+                                transition: 'all 0.3s ease'
+                            }}>
+                                {(user?.active_persona?.[0] || user?.full_name?.[0] || 'H').toUpperCase()}
                             </div>
-                            <span className="profile-name">{user?.full_name || user?.name || 'HR User'}</span>
+                            <span className="profile-name" style={{
+                                fontWeight: user?.active_persona ? 'bold' : 'normal',
+                                color: user?.active_persona ? 'var(--gold)' : 'var(--text)',
+                                transition: 'all 0.3s ease'
+                            }}>
+                                {user?.active_persona ? `${user.active_persona} (Admin)` : (user?.full_name || 'HR User')}
+                            </span>
                         </div>
                     </div>
                 </header>
 
                 <div className="page-body" style={{ padding: 0, flex: 1, display: 'flex', flexDirection: 'column' }}>
-                    <Outlet />
+                    <Outlet context={{ user, onUpdateUser }} />
                 </div>
             </div>
             

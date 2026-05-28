@@ -1,19 +1,25 @@
 import { useState, useEffect } from 'react'
+import { useOutletContext } from 'react-router-dom'
 import axios from 'axios'
-import { Shield, CheckCircle, XCircle, UserCheck, Trash2 } from 'lucide-react'
+import { Shield, CheckCircle, XCircle, UserCheck, Trash2, UserPlus, Check } from 'lucide-react'
 
 export default function AdminPage() {
-    const [activeTab, setActiveTab] = useState('requests') // requests | users
+    const { user, onUpdateUser } = useOutletContext()
+    const [activeTab, setActiveTab] = useState('requests') // requests | users | matrix
     const [requests, setRequests] = useState([])
     const [users, setUsers] = useState([])
+    const [teamMembers, setTeamMembers] = useState([])
+    const [newMemberName, setNewMemberName] = useState('')
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState(null)
 
     useEffect(() => {
         if (activeTab === 'requests') {
             fetchRequests()
-        } else {
+        } else if (activeTab === 'users') {
             fetchUsers()
+        } else if (activeTab === 'matrix') {
+            fetchTeamMembers()
         }
     }, [activeTab])
 
@@ -81,6 +87,66 @@ export default function AdminPage() {
         }
     }
 
+    const fetchTeamMembers = async () => {
+        setLoading(true)
+        setError(null)
+        try {
+            const res = await axios.get('/api/team-members')
+            setTeamMembers(res.data || [])
+        } catch (err) {
+            setError(err.response?.data?.detail || 'Failed to load team members.')
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const handleSelectPersona = async (memberName) => {
+        const isActive = user?.active_persona === memberName;
+        const newPersona = isActive ? null : memberName;
+        
+        try {
+            const actionText = newPersona 
+                ? `is now the active recruiter persona` 
+                : `reverted to system admin`;
+            await axios.post('/api/activity', { 
+                username: memberName, 
+                action: actionText 
+            });
+        } catch (err) {
+            console.error("Failed to log persona shift activity", err);
+        }
+
+        onUpdateUser({ ...user, active_persona: newPersona });
+    }
+
+    const handleAddTeamMember = async (e) => {
+        e.preventDefault()
+        const name = newMemberName.trim()
+        if (!name) return
+        setError(null)
+        try {
+            await axios.post('/api/team-members', { name })
+            setNewMemberName('')
+            fetchTeamMembers()
+        } catch (err) {
+            setError(err.response?.data?.detail || 'Failed to add team member.')
+        }
+    }
+
+    const handleDeleteTeamMember = async (id, name) => {
+        if (!window.confirm(`Are you sure you want to remove "${name}" from the recruiter persona matrix?`)) return
+        setError(null)
+        try {
+            await axios.delete(`/api/team-members/${id}`)
+            if (user?.active_persona === name) {
+                onUpdateUser({ ...user, active_persona: null })
+            }
+            fetchTeamMembers()
+        } catch (err) {
+            setError(err.response?.data?.detail || 'Failed to delete team member.')
+        }
+    }
+
     return (
         <div className="page-container">
             <div className="page-header">
@@ -113,6 +179,17 @@ export default function AdminPage() {
                     }}
                 >
                     User Management
+                </button>
+                <button 
+                    onClick={() => setActiveTab('matrix')}
+                    style={{
+                        padding: '0.8rem 1.5rem', background: 'none', border: 'none', cursor: 'pointer',
+                        color: activeTab === 'matrix' ? 'var(--gold)' : 'var(--text-dim)',
+                        borderBottom: activeTab === 'matrix' ? '2px solid var(--gold)' : '2px solid transparent',
+                        fontWeight: activeTab === 'matrix' ? 'bold' : 'normal', fontSize: '1rem'
+                    }}
+                >
+                    Recruiter Persona Matrix
                 </button>
             </div>
 
@@ -218,6 +295,192 @@ export default function AdminPage() {
                             )}
                         </tbody>
                     </table>
+                </div>
+            )}
+
+            {/* Matrix Tab */}
+            {!loading && activeTab === 'matrix' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                    {/* Add Recruiter Card Form */}
+                    <div className="card" style={{
+                        maxWidth: '500px',
+                        background: 'rgba(var(--navy-dark-rgb), 0.25)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '12px',
+                        padding: '20px'
+                    }}>
+                        <h3 style={{ margin: '0 0 12px 0', fontSize: '1.05rem', color: 'var(--gold)' }}>
+                            ➕ Add Recruiter to Matrix
+                        </h3>
+                        <form onSubmit={handleAddTeamMember} style={{ display: 'flex', gap: '10px' }}>
+                            <input
+                                type="text"
+                                className="form-input"
+                                style={{ flex: 1, margin: 0 }}
+                                placeholder="Recruiter name (e.g. Sekhar)"
+                                value={newMemberName}
+                                onChange={e => setNewMemberName(e.target.value)}
+                            />
+                            <button type="submit" className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                <UserPlus size={16} /> Add
+                            </button>
+                        </form>
+                    </div>
+
+                    {/* Persona Grid Matrix */}
+                    <div>
+                        <h3 style={{ margin: '0 0 16px 0', fontSize: '1.1rem', color: 'var(--text)' }}>
+                            ⚡ Recruiter Personas
+                        </h3>
+                        
+                        {teamMembers.length === 0 ? (
+                            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-dim)' }}>
+                                No recruiter personas found. Add one above!
+                            </div>
+                        ) : (
+                            <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
+                                {teamMembers.map(member => {
+                                    const isActive = user?.active_persona === member.name;
+                                    return (
+                                        <div
+                                            key={member.id}
+                                            onClick={() => handleSelectPersona(member.name)}
+                                            style={{
+                                                background: isActive ? 'rgba(251, 133, 0, 0.08)' : 'var(--card-bg, rgba(255,255,255,0.02))',
+                                                border: isActive ? '2.5px solid #FB8500' : '1px solid var(--border)',
+                                                borderRadius: '12px',
+                                                padding: '20px 16px',
+                                                textAlign: 'center',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                                                position: 'relative',
+                                                boxShadow: isActive ? '0 0 20px rgba(251, 133, 0, 0.2)' : 'none',
+                                                transform: isActive ? 'scale(1.02)' : 'none'
+                                            }}
+                                            onMouseEnter={e => {
+                                                if (!isActive) {
+                                                    e.currentTarget.style.borderColor = 'var(--gold)';
+                                                    e.currentTarget.style.transform = 'translateY(-2px)';
+                                                }
+                                            }}
+                                            onMouseLeave={e => {
+                                                if (!isActive) {
+                                                    e.currentTarget.style.borderColor = 'var(--border)';
+                                                    e.currentTarget.style.transform = 'none';
+                                                }
+                                            }}
+                                        >
+                                            {/* Delete Button */}
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDeleteTeamMember(member.id, member.name);
+                                                }}
+                                                style={{
+                                                    position: 'absolute',
+                                                    top: '12px',
+                                                    right: '12px',
+                                                    background: 'rgba(239, 68, 68, 0.1)',
+                                                    border: '1px solid rgba(239, 68, 68, 0.2)',
+                                                    color: '#ef4444',
+                                                    borderRadius: '6px',
+                                                    width: '28px',
+                                                    height: '28px',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.2s'
+                                                }}
+                                                onMouseEnter={e => {
+                                                    e.currentTarget.style.background = 'rgba(239, 68, 68, 0.25)';
+                                                    e.currentTarget.style.borderColor = '#ef4444';
+                                                }}
+                                                onMouseLeave={e => {
+                                                    e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
+                                                    e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.2)';
+                                                }}
+                                                title="Remove recruiter from matrix"
+                                            >
+                                                <Trash2 size={13} />
+                                            </button>
+
+                                            {/* Avatar Badge */}
+                                            <div style={{
+                                                width: '52px',
+                                                height: '52px',
+                                                borderRadius: '50%',
+                                                background: isActive ? 'linear-gradient(135deg, #FB8500, #FFB703)' : 'rgba(255,255,255,0.06)',
+                                                color: isActive ? '#fff' : 'var(--text-dim)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                margin: '8px auto 12px',
+                                                fontWeight: 'bold',
+                                                fontSize: '1.25rem',
+                                                boxShadow: isActive ? '0 0 12px rgba(251, 133, 0, 0.35)' : 'none',
+                                                transition: 'all 0.2s'
+                                            }}>
+                                                {member.name[0]?.toUpperCase()}
+                                            </div>
+
+                                            {/* Name */}
+                                            <h4 style={{
+                                                margin: '0 0 6px 0',
+                                                fontSize: '1rem',
+                                                fontWeight: '700',
+                                                color: isActive ? 'var(--gold)' : 'var(--text)'
+                                            }}>
+                                                {member.name}
+                                            </h4>
+
+                                            {/* Status Indicator */}
+                                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                                                <span style={{
+                                                    width: '6px',
+                                                    height: '6px',
+                                                    borderRadius: '50%',
+                                                    background: isActive ? '#FB8500' : 'rgba(255,255,255,0.25)',
+                                                    display: 'inline-block'
+                                                }}></span>
+                                                <span style={{
+                                                    fontSize: '0.72rem',
+                                                    fontWeight: 'bold',
+                                                    textTransform: 'uppercase',
+                                                    letterSpacing: '0.03rem',
+                                                    color: isActive ? 'var(--gold)' : 'var(--text-dim)',
+                                                    opacity: isActive ? 1 : 0.6
+                                                }}>
+                                                    {isActive ? 'Active Persona' : 'Inactive'}
+                                                </span>
+                                            </div>
+
+                                            {isActive && (
+                                                <div style={{
+                                                    position: 'absolute',
+                                                    bottom: '-10px',
+                                                    left: '50%',
+                                                    transform: 'translateX(-50%)',
+                                                    background: '#FB8500',
+                                                    borderRadius: '10px',
+                                                    padding: '2px 8px',
+                                                    fontSize: '0.62rem',
+                                                    fontWeight: 'bold',
+                                                    color: '#fff',
+                                                    boxShadow: '0 2px 5px rgba(251, 133, 0, 0.3)',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '2px'
+                                                }}>
+                                                    <Check size={9} strokeWidth={4} /> ACTING RECRUITER
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
         </div>

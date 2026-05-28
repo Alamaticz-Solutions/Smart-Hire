@@ -27,7 +27,7 @@ export default function App() {
 
     useEffect(() => {
         if (user && user.username) {
-            axios.defaults.headers.common['x-user-username'] = user.username
+            axios.defaults.headers.common['x-user-username'] = user.active_persona || user.username
         } else {
             delete axios.defaults.headers.common['x-user-username']
         }
@@ -37,12 +37,13 @@ export default function App() {
 
     const login = (u) => { setUser(u); sessionStorage.setItem('hire_ai_user', JSON.stringify(u)) }
     const logout = () => { setUser(null); sessionStorage.removeItem('hire_ai_user') }
+    const updateUser = (u) => { setUser(u); sessionStorage.setItem('hire_ai_user', JSON.stringify(u)) }
 
     return (
         <BrowserRouter>
             <Routes>
                 <Route path="/login" element={user ? <Navigate to="/" /> : <LoginPage onLogin={login} />} />
-                <Route element={user ? <Layout user={user} onLogout={logout} theme={theme} toggleTheme={toggleTheme} /> : <Navigate to="/login" />}>
+                <Route element={user ? <Layout user={user} onLogout={logout} theme={theme} toggleTheme={toggleTheme} onUpdateUser={updateUser} /> : <Navigate to="/login" />}>
                     <Route path="/" element={<DashboardPage />} />
                     <Route path="/jobs" element={<JobsPage />} />
                     <Route path="/upload" element={<UploadPage />} />

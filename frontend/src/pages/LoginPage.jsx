@@ -29,18 +29,25 @@ export default function LoginPage({ onLogin }) {
         setSelectedMember(null)
     }
 
-    const handleLogin = async (e) => {
+        const handleLogin = async (e) => {
         e.preventDefault()
         setError(''); setInfo('')
         if (!cred || !pass) { setError('Please enter your Username and Password.'); return }
         
         try {
             const res = await axios.post('/api/auth/login', { username: cred, password: pass })
-            if (res.data.username.toLowerCase() === 'admin') {
-                setMode('team-selection')
-            } else {
-                onLogin(res.data)
+            
+            // Log login activity
+            try {
+                await axios.post('/api/activity', { 
+                    username: res.data.username, 
+                    action: 'logged in to the portal' 
+                })
+            } catch (err) {
+                console.error("Failed to log activity", err);
             }
+
+            onLogin(res.data)
         } catch (err) {
             const detail = err.response?.data?.detail;
             if (Array.isArray(detail)) {
@@ -51,16 +58,6 @@ export default function LoginPage({ onLogin }) {
                 setError('Invalid username or password. (Is the backend server running?)');
             }
         }
-    }
-
-    const handleEnterPortal = async () => {
-        if (!selectedMember) return;
-        try {
-            await axios.post('/api/activity', { username: selectedMember, action: 'logged in to the portal' })
-        } catch (err) {
-            console.error("Failed to log activity", err);
-        }
-        onLogin({ username: selectedMember, full_name: selectedMember, role: 'admin' })
     }
 
     const handleRegister = async (e) => {
@@ -221,97 +218,7 @@ export default function LoginPage({ onLogin }) {
                     </form>
                 )}
 
-                {/* Team Selection Form / Admin Portal Transitional Page */}
-                {mode === 'team-selection' && (
-                    <div>
-                        <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', marginBottom: '1.5rem', textAlign: 'center' }}>
-                            Identify yourself to proceed into the Admin Portal
-                        </p>
-                        
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.5rem' }}>
-                            {['Boopathi', 'Praveen', 'Harish', 'Sabari'].map(member => {
-                                const isSelected = selectedMember === member;
-                                return (
-                                    <div 
-                                        key={member}
-                                        onClick={() => setSelectedMember(member)}
-                                        style={{
-                                            background: isSelected ? 'rgba(251, 133, 0, 0.12)' : 'var(--input-bg)',
-                                            border: isSelected ? '2px solid #FB8500' : '1.5px solid var(--border)',
-                                            borderRadius: '12px',
-                                            padding: '16px 10px',
-                                            textAlign: 'center',
-                                            cursor: 'pointer',
-                                            transition: 'all 0.2s ease',
-                                            position: 'relative',
-                                            boxShadow: isSelected ? '0 0 15px rgba(251, 133, 0, 0.25)' : 'none',
-                                            transform: isSelected ? 'scale(1.03)' : 'none'
-                                        }}
-                                    >
-                                        <div style={{
-                                            width: '40px',
-                                            height: '40px',
-                                            borderRadius: '50%',
-                                            background: isSelected ? 'linear-gradient(135deg, #FB8500, #FFB703)' : 'rgba(255,255,255,0.08)',
-                                            color: isSelected ? '#fff' : 'var(--text-dim)',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            margin: '0 auto 8px',
-                                            fontWeight: 'bold',
-                                            fontSize: '1rem',
-                                            transition: 'all 0.2s'
-                                        }}>
-                                            {member[0]}
-                                        </div>
-                                        <span style={{ 
-                                            fontSize: '0.9rem', 
-                                            fontWeight: isSelected ? 'bold' : '500',
-                                            color: isSelected ? 'var(--gold)' : 'var(--text)'
-                                        }}>
-                                            {member}
-                                        </span>
-                                        {isSelected && (
-                                            <div style={{
-                                                position: 'absolute',
-                                                top: '8px',
-                                                right: '8px',
-                                                background: '#FB8500',
-                                                borderRadius: '50%',
-                                                width: '18px',
-                                                height: '18px',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                color: '#fff'
-                                            }}>
-                                                <Check size={11} strokeWidth={3} />
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-
-                        {selectedMember && (
-                            <button 
-                                onClick={handleEnterPortal}
-                                style={{
-                                    fontWeight: 'bold'
-                                }}
-                                className="btn btn-primary btn-full"
-                            >
-                                🚀 ENTER PORTAL AS {selectedMember.toUpperCase()}
-                            </button>
-                        )}
-                        
-                        <div className="login-footer" style={{ marginTop: '1rem' }}>
-                            <button type="button" className="form-link" onClick={() => changeMode('login')}>
-                                ← Back to Sign In
-                            </button>
-                        </div>
-                    </div>
-                )}
+                {/* Team selection is now handled inside the Admin Portal */}
             </div>
 
             {/* Footer */}

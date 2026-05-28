@@ -233,6 +233,13 @@ def init_db():
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS team_members (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
 
     # Migration: add missing columns to candidate_metadata
     cur.execute("PRAGMA table_info(candidate_metadata)")
@@ -295,6 +302,11 @@ def init_db():
     if cur.fetchone()[0] == 0:
         cur.execute("INSERT INTO users (full_name, username, password, role) VALUES (?, ?, ?, ?)",
                     ("Test User", "user", "user", "user"))
+        
+    cur.execute("SELECT COUNT(*) FROM team_members")
+    if cur.fetchone()[0] == 0:
+        for m in ["Boopathi", "Praveen", "Harish", "Sabari"]:
+            cur.execute("INSERT OR IGNORE INTO team_members (name) VALUES (?)", (m,))
         
     conn.commit()
     conn.close()
@@ -392,6 +404,71 @@ def clear_activity_logs(request: Request):
         conn.close()
         log_activity_db(username or "unknown", "cleared the activity feed")
         return {"status": "cleared"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class TeamMemberCreate(BaseModel):
+    name: str
+
+@app.get("/api/team-members")
+def list_team_members():
+    try:
+        conn = sqlite3.connect(STATS_DB, timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM team_members ORDER BY name ASC")
+        members = [dict(row) for row in cur.fetchall()]
+        conn.close()
+        return members
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/team-members")
+def create_team_member(req: TeamMemberCreate, request: Request):
+    username = request.headers.get("x-user-username") or "admin"
+    name = req.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name cannot be empty")
+    try:
+        conn = sqlite3.connect(STATS_DB, timeout=30.0)
+        cur = conn.cursor()
+        try:
+            cur.execute("INSERT INTO team_members (name) VALUES (?)", (name,))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            raise HTTPException(status_code=400, detail=f"Team member '{name}' already exists")
+        finally:
+            conn.close()
+        log_activity_db(username, f"added '{name}' to the recruiter persona matrix")
+        return {"status": "added", "name": name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/team-members/{member_id}")
+def delete_team_member(member_id: int, request: Request):
+    username = request.headers.get("x-user-username") or "admin"
+    try:
+        conn = sqlite3.connect(STATS_DB, timeout=30.0)
+        cur = conn.cursor()
+        
+        # Get member name first to log it
+        cur.execute("SELECT name FROM team_members WHERE id = ?", (member_id,))
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Team member not found")
+        member_name = row[0]
+        
+        cur.execute("DELETE FROM team_members WHERE id = ?", (member_id,))
+        conn.commit()
+        conn.close()
+        
+        log_activity_db(username, f"removed '{member_name}' from the recruiter persona matrix")
+        return {"status": "deleted"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
