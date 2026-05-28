@@ -338,7 +338,7 @@ export default function AdminPage() {
                                 No recruiter personas found. Add one above!
                             </div>
                         ) : (
-                            <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '20px' }}>
                                 {teamMembers.map(member => {
                                     const isActive = user?.active_persona === member.name;
                                     return (
@@ -346,27 +346,31 @@ export default function AdminPage() {
                                             key={member.id}
                                             onClick={() => handleSelectPersona(member.name)}
                                             style={{
-                                                background: isActive ? 'rgba(251, 133, 0, 0.08)' : 'var(--card-bg, rgba(255,255,255,0.02))',
+                                                background: isActive ? 'rgba(251, 133, 0, 0.08)' : 'rgba(255, 255, 255, 0.03)',
                                                 border: isActive ? '2.5px solid #FB8500' : '1px solid var(--border)',
-                                                borderRadius: '12px',
-                                                padding: '20px 16px',
+                                                borderRadius: '16px',
+                                                padding: '24px 20px',
                                                 textAlign: 'center',
                                                 cursor: 'pointer',
-                                                transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                                                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                                                 position: 'relative',
-                                                boxShadow: isActive ? '0 0 20px rgba(251, 133, 0, 0.2)' : 'none',
+                                                boxShadow: isActive ? '0 10px 25px rgba(251, 133, 0, 0.25)' : '0 4px 15px rgba(0, 0, 0, 0.05)',
                                                 transform: isActive ? 'scale(1.02)' : 'none'
                                             }}
                                             onMouseEnter={e => {
                                                 if (!isActive) {
                                                     e.currentTarget.style.borderColor = 'var(--gold)';
-                                                    e.currentTarget.style.transform = 'translateY(-2px)';
+                                                    e.currentTarget.style.transform = 'translateY(-4px)';
+                                                    e.currentTarget.style.boxShadow = '0 12px 30px rgba(0, 0, 0, 0.15)';
+                                                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
                                                 }
                                             }}
                                             onMouseLeave={e => {
                                                 if (!isActive) {
                                                     e.currentTarget.style.borderColor = 'var(--border)';
                                                     e.currentTarget.style.transform = 'none';
+                                                    e.currentTarget.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.05)';
+                                                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
                                                 }
                                             }}
                                         >
@@ -407,49 +411,61 @@ export default function AdminPage() {
 
                                             {/* Avatar Badge */}
                                             <div style={{
-                                                width: '52px',
-                                                height: '52px',
+                                                width: '56px',
+                                                height: '56px',
                                                 borderRadius: '50%',
-                                                background: isActive ? 'linear-gradient(135deg, #FB8500, #FFB703)' : 'rgba(255,255,255,0.06)',
-                                                color: isActive ? '#fff' : 'var(--text-dim)',
+                                                background: isActive ? 'linear-gradient(135deg, #FB8500, #FFB703)' : 'rgba(255, 255, 255, 0.08)',
+                                                color: isActive ? '#fff' : 'var(--text)',
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
-                                                margin: '8px auto 12px',
-                                                fontWeight: 'bold',
-                                                fontSize: '1.25rem',
-                                                boxShadow: isActive ? '0 0 12px rgba(251, 133, 0, 0.35)' : 'none',
-                                                transition: 'all 0.2s'
+                                                margin: '0 auto 16px',
+                                                fontWeight: '800',
+                                                fontSize: '1.4rem',
+                                                border: isActive ? 'none' : '1px solid rgba(255, 255, 255, 0.15)',
+                                                boxShadow: isActive ? '0 0 15px rgba(251, 133, 0, 0.4)' : 'none',
+                                                transition: 'all 0.3s ease'
                                             }}>
                                                 {member.name[0]?.toUpperCase()}
                                             </div>
 
                                             {/* Name */}
                                             <h4 style={{
-                                                margin: '0 0 6px 0',
-                                                fontSize: '1rem',
-                                                fontWeight: '700',
-                                                color: isActive ? 'var(--gold)' : 'var(--text)'
+                                                margin: '0 0 8px 0',
+                                                fontSize: '1.15rem',
+                                                fontWeight: '800',
+                                                color: isActive ? 'var(--gold)' : 'var(--text)',
+                                                transition: 'all 0.3s ease'
                                             }}>
                                                 {member.name}
                                             </h4>
 
                                             {/* Status Indicator */}
-                                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                                            <div style={{
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '6px',
+                                                padding: '4px 10px',
+                                                borderRadius: '12px',
+                                                background: isActive ? 'rgba(251, 133, 0, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                                                marginTop: '4px',
+                                                transition: 'all 0.3s ease'
+                                            }}>
                                                 <span style={{
                                                     width: '6px',
                                                     height: '6px',
                                                     borderRadius: '50%',
-                                                    background: isActive ? '#FB8500' : 'rgba(255,255,255,0.25)',
-                                                    display: 'inline-block'
+                                                    background: isActive ? '#FB8500' : 'var(--text-dim)',
+                                                    display: 'inline-block',
+                                                    opacity: isActive ? 1 : 0.6
                                                 }}></span>
                                                 <span style={{
                                                     fontSize: '0.72rem',
-                                                    fontWeight: 'bold',
+                                                    fontWeight: '700',
                                                     textTransform: 'uppercase',
-                                                    letterSpacing: '0.03rem',
+                                                    letterSpacing: '0.04rem',
                                                     color: isActive ? 'var(--gold)' : 'var(--text-dim)',
-                                                    opacity: isActive ? 1 : 0.6
+                                                    opacity: isActive ? 1 : 0.7
                                                 }}>
                                                     {isActive ? 'Active Persona' : 'Inactive'}
                                                 </span>
