@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import axios from 'axios'
+import { Eye, EyeOff, Check } from 'lucide-react'
 import alamaticzLogo from '../assets/alamaticz-logo.jpg'
 
 export default function LoginPage({ onLogin }) {
-    const [mode, setMode] = useState('login')   // login | register | forgot
+    const [mode, setMode] = useState('login')   // login | register | forgot | team-selection
     const [cred, setCred] = useState('')
     const [pass, setPass] = useState('')
     const [name, setName] = useState('')
@@ -13,6 +14,21 @@ export default function LoginPage({ onLogin }) {
     const [error, setError] = useState('')
     const [info, setInfo] = useState('')
 
+    const [showPass, setShowPass] = useState(false)
+    const [showRegisterPass, setShowRegisterPass] = useState(false)
+    const [showRegisterPass2, setShowRegisterPass2] = useState(false)
+    const [selectedMember, setSelectedMember] = useState(null)
+
+    const changeMode = (newMode) => {
+        setMode(newMode)
+        setError('')
+        setInfo('')
+        setShowPass(false)
+        setShowRegisterPass(false)
+        setShowRegisterPass2(false)
+        setSelectedMember(null)
+    }
+
     const handleLogin = async (e) => {
         e.preventDefault()
         setError(''); setInfo('')
@@ -20,7 +36,11 @@ export default function LoginPage({ onLogin }) {
         
         try {
             const res = await axios.post('/api/auth/login', { username: cred, password: pass })
-            onLogin(res.data)
+            if (res.data.username.toLowerCase() === 'admin') {
+                setMode('team-selection')
+            } else {
+                onLogin(res.data)
+            }
         } catch (err) {
             const detail = err.response?.data?.detail;
             if (Array.isArray(detail)) {
@@ -31,6 +51,16 @@ export default function LoginPage({ onLogin }) {
                 setError('Invalid username or password. (Is the backend server running?)');
             }
         }
+    }
+
+    const handleEnterPortal = async () => {
+        if (!selectedMember) return;
+        try {
+            await axios.post('/api/activity', { username: selectedMember, action: 'logged in to the portal' })
+        } catch (err) {
+            console.error("Failed to log activity", err);
+        }
+        onLogin({ username: selectedMember, full_name: selectedMember, role: 'admin' })
     }
 
     const handleRegister = async (e) => {
@@ -47,7 +77,11 @@ export default function LoginPage({ onLogin }) {
                 mobile: mobile
             })
             setInfo(`Account created for ${name}! Please sign in.`)
-            setTimeout(() => { setMode('login'); setInfo(''); setPass(''); setPass2(''); }, 2000)
+            setTimeout(() => {
+                changeMode('login')
+                setPass('')
+                setPass2('')
+            }, 2000)
         } catch (err) {
             const detail = err.response?.data?.detail;
             if (Array.isArray(detail)) {
@@ -94,11 +128,16 @@ export default function LoginPage({ onLogin }) {
                         </div>
                         <div className="form-group">
                             <label className="form-label">Password</label>
-                            <input className="form-input" type="password" placeholder="Enter your password"
-                                value={pass} onChange={e => setPass(e.target.value)} />
+                            <div className="password-input-container">
+                                <input className="form-input" type={showPass ? "text" : "password"} placeholder="Enter your password"
+                                    value={pass} onChange={e => setPass(e.target.value)} />
+                                <button type="button" className="password-toggle-btn" onClick={() => setShowPass(!showPass)}>
+                                    {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
+                            </div>
                         </div>
                         <div style={{ textAlign: 'right', marginBottom: '1rem' }}>
-                            <button type="button" className="form-link" onClick={() => { setMode('forgot'); setError(''); setInfo('') }}>
+                            <button type="button" className="form-link" onClick={() => changeMode('forgot')}>
                                 Forgot password?
                             </button>
                         </div>
@@ -106,7 +145,7 @@ export default function LoginPage({ onLogin }) {
                         {error && <div className="form-error">{error}</div>}
                         <div className="login-footer" style={{ marginTop: '1.2rem' }}>
                             Don't have an account?{' '}
-                            <button type="button" className="form-link" onClick={() => { setMode('register'); setError(''); setInfo('') }}>
+                            <button type="button" className="form-link" onClick={() => changeMode('register')}>
                                 Create one
                             </button>
                         </div>
@@ -130,20 +169,30 @@ export default function LoginPage({ onLogin }) {
                         </div>
                         <div className="form-group">
                             <label className="form-label">Password</label>
-                            <input className="form-input" type="password" placeholder="Create a strong password"
-                                value={pass} onChange={e => setPass(e.target.value)} />
+                            <div className="password-input-container">
+                                <input className="form-input" type={showRegisterPass ? "text" : "password"} placeholder="Create a strong password"
+                                    value={pass} onChange={e => setPass(e.target.value)} />
+                                <button type="button" className="password-toggle-btn" onClick={() => setShowRegisterPass(!showRegisterPass)}>
+                                    {showRegisterPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
+                            </div>
                         </div>
                         <div className="form-group">
                             <label className="form-label">Confirm Password</label>
-                            <input className="form-input" type="password" placeholder="Repeat password"
-                                value={pass2} onChange={e => setPass2(e.target.value)} />
+                            <div className="password-input-container">
+                                <input className="form-input" type={showRegisterPass2 ? "text" : "password"} placeholder="Repeat password"
+                                    value={pass2} onChange={e => setPass2(e.target.value)} />
+                                <button type="button" className="password-toggle-btn" onClick={() => setShowRegisterPass2(!showRegisterPass2)}>
+                                    {showRegisterPass2 ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
+                            </div>
                         </div>
                         <button type="submit" className="btn btn-primary btn-full">🚀 CREATE ACCOUNT</button>
                         {error && <div className="form-error">{error}</div>}
                         {info && <div className="form-success">{info}</div>}
                         <div className="login-footer" style={{ marginTop: '1rem' }}>
                             Already have an account?{' '}
-                            <button type="button" className="form-link" onClick={() => { setMode('login'); setError(''); setInfo('') }}>
+                            <button type="button" className="form-link" onClick={() => changeMode('login')}>
                                 Sign in
                             </button>
                         </div>
@@ -165,11 +214,103 @@ export default function LoginPage({ onLogin }) {
                         {error && <div className="form-error">{error}</div>}
                         {info && <div className="form-success">{info}</div>}
                         <div className="login-footer" style={{ marginTop: '1rem' }}>
-                            <button type="button" className="form-link" onClick={() => { setMode('login'); setError(''); setInfo('') }}>
+                            <button type="button" className="form-link" onClick={() => changeMode('login')}>
                                 ← Back to Sign In
                             </button>
                         </div>
                     </form>
+                )}
+
+                {/* Team Selection Form / Admin Portal Transitional Page */}
+                {mode === 'team-selection' && (
+                    <div>
+                        <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', marginBottom: '1.5rem', textAlign: 'center' }}>
+                            Identify yourself to proceed into the Admin Portal
+                        </p>
+                        
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.5rem' }}>
+                            {['Boopathi', 'Praveen', 'Harish', 'Sabari'].map(member => {
+                                const isSelected = selectedMember === member;
+                                return (
+                                    <div 
+                                        key={member}
+                                        onClick={() => setSelectedMember(member)}
+                                        style={{
+                                            background: isSelected ? 'rgba(251, 133, 0, 0.12)' : 'var(--input-bg)',
+                                            border: isSelected ? '2px solid #FB8500' : '1.5px solid var(--border)',
+                                            borderRadius: '12px',
+                                            padding: '16px 10px',
+                                            textAlign: 'center',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s ease',
+                                            position: 'relative',
+                                            boxShadow: isSelected ? '0 0 15px rgba(251, 133, 0, 0.25)' : 'none',
+                                            transform: isSelected ? 'scale(1.03)' : 'none'
+                                        }}
+                                    >
+                                        <div style={{
+                                            width: '40px',
+                                            height: '40px',
+                                            borderRadius: '50%',
+                                            background: isSelected ? 'linear-gradient(135deg, #FB8500, #FFB703)' : 'rgba(255,255,255,0.08)',
+                                            color: isSelected ? '#fff' : 'var(--text-dim)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            margin: '0 auto 8px',
+                                            fontWeight: 'bold',
+                                            fontSize: '1rem',
+                                            transition: 'all 0.2s'
+                                        }}>
+                                            {member[0]}
+                                        </div>
+                                        <span style={{ 
+                                            fontSize: '0.9rem', 
+                                            fontWeight: isSelected ? 'bold' : '500',
+                                            color: isSelected ? 'var(--gold)' : 'var(--text)'
+                                        }}>
+                                            {member}
+                                        </span>
+                                        {isSelected && (
+                                            <div style={{
+                                                position: 'absolute',
+                                                top: '8px',
+                                                right: '8px',
+                                                background: '#FB8500',
+                                                borderRadius: '50%',
+                                                width: '18px',
+                                                height: '18px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                color: '#fff'
+                                            }}>
+                                                <Check size={11} strokeWidth={3} />
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {selectedMember && (
+                            <button 
+                                onClick={handleEnterPortal}
+                                style={{
+                                    fontWeight: 'bold'
+                                }}
+                                className="btn btn-primary btn-full"
+                            >
+                                🚀 ENTER PORTAL AS {selectedMember.toUpperCase()}
+                            </button>
+                        )}
+                        
+                        <div className="login-footer" style={{ marginTop: '1rem' }}>
+                            <button type="button" className="form-link" onClick={() => changeMode('login')}>
+                                ← Back to Sign In
+                            </button>
+                        </div>
+                    </div>
                 )}
             </div>
 

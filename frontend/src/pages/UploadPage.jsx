@@ -5,6 +5,7 @@ import { UploadCloud, Trash2, CheckCircle, FileText, Search, Plus, Filter, Loade
 import { exportToExcel, formatCandidatesForExcel } from '../utils/excelUtils'
 
 const API_URL = import.meta.env.VITE_API_URL || '';
+const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 /* ─── Single chip ─────────────────────────────────────────────────────────── */
 function Chip({ text }) {
@@ -127,7 +128,7 @@ const BASE_WIDTHS = {
     phone: '130px', email: '180px', linkedin: '120px', current_location: '120px',
     pref_locations: '120px', current_organization: '150px', current_client: '150px',
     domain: '120px', tier: '90px', certification_version: '100px',
-    skills: '200px', certifications: '180px'
+    skills: '200px', certifications: '180px', notescomments: '180px'
 }
 
 const TH = {
@@ -338,6 +339,23 @@ export default function UploadPage() {
         }
     }, [candidates]);
 
+    // Polling mechanism to auto-refresh the table for 15 seconds after any file upload completes (e.g. Excel)
+    useEffect(() => {
+        const anyDone = progress.some(p => p.status === 'done');
+        if (anyDone) {
+            const timer = setInterval(() => {
+                load();
+            }, 3000);
+            const timeout = setTimeout(() => {
+                clearInterval(timer);
+            }, 15000);
+            return () => {
+                clearInterval(timer);
+                clearTimeout(timeout);
+            };
+        }
+    }, [progress]);
+
     const handleDeleteCol = async (col_key, col_label) => {
         const label = col_label || col_key;
         if (!window.confirm(`Are you sure you want to delete the "${label}" column?`)) return
@@ -480,7 +498,7 @@ export default function UploadPage() {
             <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                 <div className="section-header" style={{ borderBottom: '1px solid rgba(var(--sky-rgb), 0.2)', paddingBottom: '1rem', marginBottom: '1rem' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                        <div className="section-title">👥 Candidate Details</div>
+                        <div className="section-title">👥 Candidate Profiles</div>
                     </div>
                     <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', alignSelf: 'flex-start', marginTop: '10px' }}>
                         <button className="btn btn-secondary" onClick={() => setShowFilter(true)} style={{ gap: 6, color: 'var(--sky)', borderColor: 'rgba(var(--sky-rgb), 0.3)' }}>
@@ -953,9 +971,9 @@ export default function UploadPage() {
                                                         wordBreak: key === 'email' ? 'break-all' : undefined,
                                                         cursor: key === 'candidate_status' ? 'pointer' : 'text',
                                                     }}>
-                                                        {key === 'full_name' && row.filename ? (
+                                                        {key === 'full_name' && row.filename && !row.filename.toLowerCase().endsWith('.xlsx') && !row.filename.toLowerCase().endsWith('.xls') && !row.filename.toLowerCase().endsWith('.csv') ? (
                                                             <span
-                                                                onClick={() => setViewingPdf({ url: `${API_URL}/static/${row.filename}`, name: row.full_name })}
+                                                                onClick={() => setViewingPdf({ url: `${BACKEND_URL}/static/${row.filename}`, name: row.full_name })}
                                                                 style={{
                                                                     display: 'inline-flex',
                                                                     alignItems: 'center',
@@ -1158,16 +1176,48 @@ export default function UploadPage() {
                             <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', display: 'flex', alignItems: 'center', gap: 10, fontSize: '1.05rem' }}>
                                 <span style={{fontSize: '1.2rem', opacity: 0.8}}>📄</span> {viewingPdf.name}
                             </h3>
-                            <button onClick={() => setViewingPdf(null)} style={{ 
-                                background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)', 
-                                color: 'var(--gold)', cursor: 'pointer', padding: 6, borderRadius: '8px', 
-                                display: 'flex', transition: 'all 0.2s' 
-                            }}
-                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.2)'}
-                            onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.1)'}
-                            >
-                                <X size={18} />
-                            </button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <a 
+                                    href={viewingPdf.url} 
+                                    download 
+                                    style={{
+                                        background: 'rgba(var(--sky-rgb), 0.1)', 
+                                        border: '1px solid rgba(var(--sky-rgb), 0.3)',
+                                        color: 'var(--sky-dim)', 
+                                        textDecoration: 'none', 
+                                        fontSize: '0.85rem', 
+                                        fontFamily: 'var(--fh)', 
+                                        fontWeight: 700, 
+                                        cursor: 'pointer', 
+                                        padding: '6px 14px', 
+                                        borderRadius: '8px', 
+                                        display: 'inline-flex', 
+                                        alignItems: 'center', 
+                                        gap: '6px',
+                                        transition: 'all 0.2s'
+                                    }}
+                                    onMouseEnter={e => {
+                                        e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.2)';
+                                        e.currentTarget.style.color = '#fff';
+                                    }}
+                                    onMouseLeave={e => {
+                                        e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.1)';
+                                        e.currentTarget.style.color = 'var(--sky-dim)';
+                                    }}
+                                >
+                                    <Download size={14} /> Download File
+                                </a>
+                                <button onClick={() => setViewingPdf(null)} style={{ 
+                                    background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)', 
+                                    color: 'var(--gold)', cursor: 'pointer', padding: 6, borderRadius: '8px', 
+                                    display: 'flex', transition: 'all 0.2s' 
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.2)'}
+                                onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.1)'}
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
                         </div>
                         <iframe 
                             src={`${viewingPdf.url}#view=FitH`} 

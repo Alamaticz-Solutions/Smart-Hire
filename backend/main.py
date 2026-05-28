@@ -12,7 +12,10 @@ import openpyxl
 def normalize_phone(phone) -> str:
     if not phone:
         return ""
-    digits = "".join(c for c in str(phone) if c.isdigit())
+    s = str(phone).strip()
+    if s.endswith('.0'):
+        s = s[:-2]
+    digits = "".join(c for c in s if c.isdigit())
     if len(digits) >= 10:
         return digits[-10:]
     return digits
@@ -21,6 +24,52 @@ def normalize_email(email) -> str:
     if not email:
         return ""
     return str(email).strip().lower()
+
+def is_similar_name(n1: str, n2: str) -> bool:
+    if not n1 or not n2:
+        return False
+    # Clean non-alphanumeric chars and split into lowercase words
+    w1 = set(re.findall(r'[a-z0-9]+', n1.lower()))
+    w2 = set(re.findall(r'[a-z0-9]+', n2.lower()))
+    if not w1 or not w2:
+        return False
+    # If they are exactly equal
+    if n1.strip().lower() == n2.strip().lower():
+        return True
+    
+    # Calculate intersection
+    intersection = w1.intersection(w2)
+    if not intersection:
+        return False
+        
+    # We want at least two common words to match (e.g. "durga" and "dheeraj")
+    # unless one of them is only a single word, in which case we check if it is part of the other
+    shorter_len = min(len(w1), len(w2))
+    if shorter_len == 1:
+        word = list(w1 if len(w1) == 1 else w2)[0]
+        if len(word) >= 4:
+            return word in w1 or word in w2
+        return False
+    
+    return len(intersection) >= 2
+
+def phones_match(p1: str, p2: str) -> bool:
+    # Get only the digits of both phone numbers
+    d1 = "".join(c for c in str(p1) if c.isdigit())
+    d2 = "".join(c for c in str(p2) if c.isdigit())
+    if not d1 or not d2:
+        return False
+    # If they are exactly equal
+    if d1 == d2:
+        return True
+    # If the last 10 digits are equal
+    if len(d1) >= 10 and len(d2) >= 10 and d1[-10:] == d2[-10:]:
+        return True
+    # Check if the shorter one is contained in the longer one, as long as it's at least 9 digits
+    shorter, longer = (d1, d2) if len(d1) < len(d2) else (d2, d1)
+    if len(shorter) >= 9 and shorter in longer:
+        return True
+    return False
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -131,6 +180,7 @@ def init_db():
             description TEXT NOT NULL,
             client_name TEXT,
             contact_name TEXT,
+            client_phone TEXT,
             account_manager TEXT,
             assigned_recruiter TEXT,
             target_date TEXT,
@@ -175,6 +225,14 @@ def init_db():
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS activity_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            action TEXT NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
 
     # Migration: add missing columns to candidate_metadata
     cur.execute("PRAGMA table_info(candidate_metadata)")
@@ -209,6 +267,7 @@ def init_db():
     new_jobs_cols = {
         'client_name': 'TEXT',
         'contact_name': 'TEXT',
+        'client_phone': 'TEXT',
         'account_manager': 'TEXT',
         'assigned_recruiter': 'TEXT',
         'target_date': 'TEXT',
@@ -223,14 +282,19 @@ def init_db():
         if col not in existing_jobs:
             cur.execute(f"ALTER TABLE jobs ADD COLUMN {col} {dtype}")
             
-    # Seed default users if empty
-    cur.execute("SELECT COUNT(*) FROM users")
-    count = cur.fetchone()[0]
-    if count == 0:
+    # Seed default users if empty (do NOT wipe the table to preserve registered users!)
+    cur.execute("SELECT COUNT(*) FROM users WHERE username = 'admin'")
+    if cur.fetchone()[0] == 0:
         cur.execute("INSERT INTO users (full_name, username, password, role) VALUES (?, ?, ?, ?)",
-                    ("System Admin", "admin1", "admin1", "admin"))
+                    ("System Admin", "admin", "admin", "admin"))
+    else:
+        # Guarantee admin password is 'admin' as requested by the user
+        cur.execute("UPDATE users SET password = ?, role = 'admin' WHERE username = 'admin'", ("admin",))
+
+    cur.execute("SELECT COUNT(*) FROM users WHERE username = 'user'")
+    if cur.fetchone()[0] == 0:
         cur.execute("INSERT INTO users (full_name, username, password, role) VALUES (?, ?, ?, ?)",
-                    ("Test User", "user1", "user1", "user"))
+                    ("Test User", "user", "user", "user"))
         
     conn.commit()
     conn.close()
@@ -258,7 +322,8 @@ def log_candidate(data: dict):
     cols = [c for c in data.keys() if c in existing_cols and c != 'id']
     vals = [str(data.get(c, '')) if data.get(c) is not None else '' for c in cols]
     
-    cur.execute("DELETE FROM candidate_metadata WHERE filename = ?", (data.get('filename', ''),))
+    if data.get('filename'):
+        cur.execute("DELETE FROM candidate_metadata WHERE filename = ?", (data.get('filename'),))
     
     new_id = None
     if cols:
@@ -273,6 +338,18 @@ def log_candidate(data: dict):
 
 init_db()
 
+def log_activity_db(username: str, action: str):
+    if not username:
+        username = "unknown"
+    try:
+        conn = sqlite3.connect(STATS_DB, timeout=30.0)
+        cur = conn.cursor()
+        cur.execute("INSERT INTO activity_logs (username, action) VALUES (?, ?)", (username, action))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error logging activity: {e}")
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # ENDPOINTS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -282,13 +359,35 @@ init_db()
 def health():
     return {"status": "ok"}
 
+class ActivityCreate(BaseModel):
+    username: str
+    action: str
+
+@app.get("/api/activity")
+def get_activity_logs():
+    try:
+        conn = sqlite3.connect(STATS_DB, timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM activity_logs ORDER BY timestamp DESC")
+        logs = [dict(row) for row in cur.fetchall()]
+        conn.close()
+        return logs
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/activity")
+def create_activity_log(req: ActivityCreate):
+    log_activity_db(req.username, req.action)
+    return {"status": "logged"}
+
 # ── Authorization Helpers ──────────────────────────────────────────────────────
 def get_user_role(username: Optional[str]) -> str:
     if not username:
         return "user"
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
-    cur.execute("SELECT role FROM users WHERE username = ?", (username,))
+    cur.execute("SELECT role FROM users WHERE LOWER(username) = LOWER(?)", (username,))
     row = cur.fetchone()
     conn.close()
     if row:
@@ -393,7 +492,8 @@ def get_columns():
         {"col_key": "tier", "col_label": "Tier (Tier1 Tier2 Tier3)"},
         {"col_key": "certification_version", "col_label": "Certification Version"},
         {"col_key": "skills", "col_label": "Skills"},
-        {"col_key": "certifications", "col_label": "Certifications"}
+        {"col_key": "certifications", "col_label": "Certifications"},
+        {"col_key": "notescomments", "col_label": "Notes / Comments"}
     ]
     return {"base": base_cols, "custom": customs}
 
@@ -465,16 +565,22 @@ async def update_candidate(candidate_id: int, request: Request, background_tasks
     if any(field in updates for field in match_related_fields):
         background_tasks.add_task(match_candidate_to_all_jobs, candidate_id)
 
+    cname = get_candidate_name(candidate_id)
+    log_activity_db(username or "unknown", f"updated candidate '{cname}' details")
+
     return {"status": "updated"}
 
 @app.delete("/api/candidates/{candidate_id}")
 def delete_candidate(candidate_id: int, request: Request):
+    username = request.headers.get("x-user-username")
+    cname = get_candidate_name(candidate_id)
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur  = conn.cursor()
     cur.execute("DELETE FROM job_candidates WHERE candidate_id=?", (candidate_id,))
     cur.execute("DELETE FROM candidate_metadata WHERE id=?", (candidate_id,))
     conn.commit()
     conn.close()
+    log_activity_db(username or "unknown", f"deleted candidate '{cname}'")
     return {"status": "deleted"}
 
 # ── Upload & Extract ────────────────────────────────────────────────────────────
@@ -639,20 +745,18 @@ def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, userna
         name = data.get('full_name', '')
         
         norm_email = normalize_email(email)
-        norm_phone = normalize_phone(phone)
         
         match_id = None
         for ec in existing_candidates:
             ec_email = normalize_email(ec["email"])
-            ec_phone = normalize_phone(ec["phone"])
             
             if norm_email and norm_email == ec_email:
                 match_id = ec["id"]
                 break
-            if norm_phone and norm_phone == ec_phone:
+            if phone and ec["phone"] and phones_match(phone, ec["phone"]):
                 match_id = ec["id"]
                 break
-            if name and ec["full_name"] and name.strip().lower() == ec["full_name"].strip().lower():
+            if name and ec["full_name"] and is_similar_name(name, ec["full_name"]):
                 match_id = ec["id"]
                 break
                 
@@ -670,19 +774,20 @@ def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, userna
             
             updates = {}
             for k, v in data.items():
-                if k in allowed_cols and k != 'id':
-                    if k == 'filename':
-                        updates[k] = safe_name
-                    elif v is not None and v != "":
+                if k in allowed_cols and k != 'id' and k != 'filename':
+                    if v is not None and v != "":
                         existing_val = existing_row.get(k)
                         if existing_val is None or str(existing_val).strip() == "" or existing_val == 0.0 or existing_val == 0:
                             updates[k] = v
+            # Always update or attach the filename to the matched candidate
+            updates['filename'] = safe_name
             
             if updates:
                 set_clause = ", ".join(f"{k}=?" for k in updates)
                 cur.execute(f"UPDATE candidate_metadata SET {set_clause} WHERE id=?", list(updates.values()) + [match_id])
             
             candidate_id = match_id
+            print(f"INFO: Auto-attached uploaded resume {safe_name} to existing candidate profile ID {match_id} ({name})")
             conn.commit()
             conn.close()
         else:
@@ -831,10 +936,10 @@ Return ONLY the JSON block, no markdown, no other text."""
         print(f"Error auto-matching candidate {candidate_id} to jobs: {match_err}")
 
 def process_excel_file_logic(safe_name: str, path: str, username: str):
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
     try:
         wb = openpyxl.load_workbook(path, data_only=True)
-        conn = sqlite3.connect(STATS_DB, timeout=30.0)
-        cur = conn.cursor()
         
         # Fetch custom columns
         cur.execute("SELECT col_key, col_label FROM custom_columns")
@@ -907,7 +1012,25 @@ def process_excel_file_logic(safe_name: str, path: str, username: str):
             'domain': 'domain',
             'tier': 'tier',
             'certification version': 'certification_version',
-            'certifications': 'certifications'
+            'certifications': 'certifications',
+            
+            # Additional maps for thorough Excel parsing
+            'linkedin': 'linkedin',
+            'linkedin url': 'linkedin',
+            'linkedin profile': 'linkedin',
+            'notes': 'notescomments',
+            'comments': 'notescomments',
+            'notes/comments': 'notescomments',
+            'notescomments': 'notescomments',
+            'feedback': 'notescomments',
+            'candidate status': 'candidate_status',
+            'candidate_status': 'candidate_status',
+            'status': 'candidate_status',
+            'candidate interview status': 'candidate_interview_status',
+            'interview status': 'candidate_interview_status',
+            'availability': 'availability_in_days',
+            'availability in days': 'availability_in_days',
+            'availability_in_days': 'availability_in_days'
         }
         
         # Load existing candidates from DB
@@ -985,15 +1108,14 @@ def process_excel_file_logic(safe_name: str, path: str, username: str):
                 match_id = None
                 for ec in existing_candidates:
                     ec_email = normalize_email(ec["email"])
-                    ec_phone = normalize_phone(ec["phone"])
                     
                     if norm_email and norm_email == ec_email:
                         match_id = ec["id"]
                         break
-                    if norm_phone and norm_phone == ec_phone:
+                    if phone and ec["phone"] and phones_match(phone, ec["phone"]):
                         match_id = ec["id"]
                         break
-                    if name and ec["full_name"] and name.strip().lower() == ec["full_name"].strip().lower():
+                    if name and ec["full_name"] and is_similar_name(name, ec["full_name"]):
                         match_id = ec["id"]
                         break
                 
@@ -1039,7 +1161,7 @@ def process_excel_file_logic(safe_name: str, path: str, username: str):
                     # Insert new record
                     db_data['is_approved'] = 1
                     db_data['candidate_status'] = 'New'
-                    db_data['filename'] = safe_name
+                    db_data['filename'] = ""
                     cols_list = list(db_data.keys())
                     vals_list = list(db_data.values())
                     cur.execute(
@@ -1057,10 +1179,18 @@ def process_excel_file_logic(safe_name: str, path: str, username: str):
                 # Match candidate to all jobs
                 match_candidate_to_all_jobs(candidate_id)
                 
-        conn.commit()
-        conn.close()
     except Exception as e:
         print(f"Error parsing Excel file {safe_name}: {e}")
+    finally:
+        try:
+            cur.execute("DELETE FROM candidate_metadata WHERE filename = ? AND full_name LIKE '⏳ Parsing Excel:%'", (safe_name,))
+            conn.commit()
+        except Exception as db_err:
+            print(f"Error clearing Excel placeholder or committing in finally: {db_err}")
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 def process_excel_file(safe_name: str, path: str, username: str = "unknown"):
     with _processing_lock:
@@ -1087,7 +1217,7 @@ async def upload_resume(request: Request, background_tasks: BackgroundTasks, fil
 
     ext = os.path.splitext(safe_name.lower())[1]
     if ext in ['.xlsx', '.xls', '.csv']:
-        log_candidate({"filename": safe_name, "full_name": f"⏳ Parsing Excel: {safe_name}", "is_approved": is_approved})
+        log_activity_db(username or "unknown", f"uploaded candidate excel sheet '{safe_name}'")
         background_tasks.add_task(process_excel_file, safe_name, path, username or "unknown")
         return {"status": "processing", "message": "Excel sheet uploaded and is processing in the background."}
     else:
@@ -1095,6 +1225,7 @@ async def upload_resume(request: Request, background_tasks: BackgroundTasks, fil
         log_candidate({"filename": safe_name, "full_name": f"⏳ Processing: {safe_name}", "is_approved": is_approved})
         
         # Process asynchronously
+        log_activity_db(username or "unknown", f"uploaded resume '{safe_name}'")
         background_tasks.add_task(process_resume, safe_name, path, is_approved, username or "unknown")
 
         return {"status": "processing", "message": "Resume uploaded and is processing in the background."}
@@ -1401,6 +1532,7 @@ class JobCreate(BaseModel):
     description: str
     client_name: Optional[str] = ""
     contact_name: Optional[str] = ""
+    client_phone: Optional[str] = ""
     account_manager: Optional[str] = ""
     assigned_recruiter: Optional[str] = ""
     target_date: Optional[str] = ""
@@ -1452,12 +1584,12 @@ def create_job(job: JobCreate, request: Request):
     cur = conn.cursor()
     cur.execute("""
         INSERT INTO jobs (
-            title, description, client_name, contact_name, account_manager,
+            title, description, client_name, contact_name, client_phone, account_manager,
             assigned_recruiter, target_date, job_type, job_status,
             work_experience, industry, salary, required_skills
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
-        job.title, job.description, job.client_name, job.contact_name, job.account_manager,
+        job.title, job.description, job.client_name, job.contact_name, job.client_phone, job.account_manager,
         job.assigned_recruiter, job.target_date, job.job_type, job.job_status,
         job.work_experience, job.industry, job.salary, job.required_skills
     ))
@@ -1480,7 +1612,8 @@ def create_job(job: JobCreate, request: Request):
     counts = {r['status']: r['cnt'] for r in cur.fetchall()}
     updated_job['matched_count'] = counts.get('matched', 0)
     updated_job['selected_count'] = counts.get('selected', 0)
-    conn.close()
+    username = request.headers.get("x-user-username")
+    log_activity_db(username or "unknown", f"posted a Job Description for '{job.title}'")
     
     return updated_job
 
@@ -1490,12 +1623,12 @@ def update_job(job_id: int, job: JobCreate, request: Request):
     cur = conn.cursor()
     cur.execute("""
         UPDATE jobs SET 
-            title = ?, description = ?, client_name = ?, contact_name = ?, account_manager = ?,
+            title = ?, description = ?, client_name = ?, contact_name = ?, client_phone = ?, account_manager = ?,
             assigned_recruiter = ?, target_date = ?, job_type = ?, job_status = ?,
             work_experience = ?, industry = ?, salary = ?, required_skills = ?
         WHERE id = ?
     """, (
-        job.title, job.description, job.client_name, job.contact_name, job.account_manager,
+        job.title, job.description, job.client_name, job.contact_name, job.client_phone, job.account_manager,
         job.assigned_recruiter, job.target_date, job.job_type, job.job_status,
         job.work_experience, job.industry, job.salary, job.required_skills,
         job_id
@@ -1527,12 +1660,15 @@ def update_job(job_id: int, job: JobCreate, request: Request):
 
 @app.delete("/api/jobs/{job_id}")
 def delete_job(job_id: int, request: Request):
+    username = request.headers.get("x-user-username")
+    job_title = get_job_title(job_id)
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
     cur.execute("DELETE FROM job_candidates WHERE job_id = ?", (job_id,))
     cur.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
     conn.commit()
     conn.close()
+    log_activity_db(username or "unknown", f"deleted Job Description '{job_title}'")
     return {"message": "Job deleted"}
 
 @app.get("/api/jobs/{job_id}/candidates")
@@ -1701,24 +1837,30 @@ def reset_all(request: Request):
 # ── Auth & Admin Endpoints ───────────────────────────────────────────────────────
 @app.post("/api/auth/register")
 def register(req: RegisterRequest):
-    if not has_digit(req.username):
-        raise HTTPException(status_code=400, detail="Username must contain at least one digit")
     if not has_digit(req.password):
         raise HTTPException(status_code=400, detail="Password must contain at least one digit")
         
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
+    username_exists = False
     try:
-        cur.execute("INSERT INTO users (full_name, username, password, role) VALUES (?, ?, ?, 'user')",
-                    (req.full_name, req.username, req.password))
-        conn.commit()
+        cur.execute("SELECT 1 FROM users WHERE LOWER(username) = LOWER(?)", (req.username,))
+        if cur.fetchone():
+            username_exists = True
+        else:
+            cur.execute("INSERT INTO users (full_name, username, password, role) VALUES (?, ?, ?, 'user')",
+                        (req.full_name, req.username, req.password))
+            conn.commit()
     except sqlite3.IntegrityError:
-        conn.close()
-        raise HTTPException(status_code=400, detail="Username already exists")
+        username_exists = True
     except Exception as e:
         conn.close()
         raise HTTPException(status_code=500, detail=str(e))
     conn.close()
+    
+    if username_exists:
+        raise HTTPException(status_code=400, detail="Username already exists")
+        
     return {"status": "registered", "username": req.username}
 
 @app.post("/api/auth/login")
@@ -1726,7 +1868,7 @@ def login(req: LoginRequest):
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
-    cur.execute("SELECT * FROM users WHERE username = ? AND password = ?", (req.username, req.password))
+    cur.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?) AND password = ?", (req.username, req.password))
     user = cur.fetchone()
     conn.close()
     if not user:
@@ -1784,6 +1926,27 @@ def update_user_role_endpoint(user_id: int, body: UserRoleUpdate, request: Reque
     conn.commit()
     conn.close()
     return {"status": "updated"}
+
+@app.delete("/api/admin/users/{user_id}")
+def delete_user_endpoint(user_id: int, request: Request):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+        
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    # Prevent self-deletion
+    cur.execute("SELECT username FROM users WHERE id = ?", (user_id,))
+    row = cur.fetchone()
+    if row and row[0].lower() == username.lower():
+        conn.close()
+        raise HTTPException(status_code=400, detail="You cannot delete yourself.")
+        
+    cur.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    return {"status": "deleted"}
 
 @app.post("/api/admin/requests/{request_id}/approve")
 def approve_change_request(request_id: int, request: Request, background_tasks: BackgroundTasks):

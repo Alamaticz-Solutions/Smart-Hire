@@ -591,6 +591,42 @@ body,
   color: rgba(var(--sky-dim-rgb), 0.5);
 }
 
+.password-input-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.password-input-container .form-input {
+  padding-right: 42px;
+}
+
+.password-toggle-btn {
+  position: absolute;
+  right: 12px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.password-toggle-btn:hover {
+  color: var(--gold);
+  background: rgba(var(--gold-rgb), 0.1);
+}
+
+.password-toggle-btn:focus {
+  outline: none;
+  color: var(--gold);
+}
+
 .form-link {
   background: none;
   border: none;

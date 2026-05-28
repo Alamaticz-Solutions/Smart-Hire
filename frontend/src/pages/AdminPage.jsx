@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
-import { Shield, CheckCircle, XCircle, UserCheck } from 'lucide-react'
+import { Shield, CheckCircle, XCircle, UserCheck, Trash2 } from 'lucide-react'
 
 export default function AdminPage() {
     const [activeTab, setActiveTab] = useState('requests') // requests | users
@@ -21,8 +21,8 @@ export default function AdminPage() {
         setLoading(true)
         setError(null)
         try {
-            const res = await axios.get('/api/admin/change-requests')
-            setRequests(res.data.requests || [])
+            const res = await axios.get('/api/admin/requests')
+            setRequests(res.data || [])
         } catch (err) {
             setError(err.response?.data?.detail || 'Failed to load change requests.')
         } finally {
@@ -35,7 +35,7 @@ export default function AdminPage() {
         setError(null)
         try {
             const res = await axios.get('/api/admin/users')
-            setUsers(res.data.users || [])
+            setUsers(res.data || [])
         } catch (err) {
             setError(err.response?.data?.detail || 'Failed to load users.')
         } finally {
@@ -45,7 +45,7 @@ export default function AdminPage() {
 
     const handleApprove = async (id) => {
         try {
-            await axios.post(`/api/admin/change-requests/${id}/approve`)
+            await axios.post(`/api/admin/requests/${id}/approve`)
             fetchRequests()
         } catch (err) {
             alert(err.response?.data?.detail || 'Failed to approve request')
@@ -54,7 +54,7 @@ export default function AdminPage() {
 
     const handleReject = async (id) => {
         try {
-            await axios.post(`/api/admin/change-requests/${id}/reject`)
+            await axios.post(`/api/admin/requests/${id}/reject`)
             fetchRequests()
         } catch (err) {
             alert(err.response?.data?.detail || 'Failed to reject request')
@@ -68,6 +68,16 @@ export default function AdminPage() {
             fetchUsers()
         } catch (err) {
             alert(err.response?.data?.detail || 'Failed to update user role')
+        }
+    }
+
+    const handleDeleteUser = async (id, username) => {
+        if (!window.confirm(`Are you sure you want to delete user "${username}"?`)) return
+        try {
+            await axios.delete(`/api/admin/users/${id}`)
+            fetchUsers()
+        } catch (err) {
+            alert(err.response?.data?.detail || 'Failed to delete user')
         }
     }
 
@@ -118,20 +128,31 @@ export default function AdminPage() {
                         requests.map(req => (
                             <div key={req.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span style={{ fontWeight: 'bold', fontSize: '1.1rem', textTransform: 'capitalize' }}>{req.action} Request</span>
-                                    <span style={{ background: 'rgba(var(--sky-dim-rgb), 0.1)', padding: '0.2rem 0.6rem', borderRadius: '4px', fontSize: '0.8rem' }}>
-                                        {req.entity_type}
+                                    <span style={{ fontWeight: 'bold', fontSize: '1.1rem', textTransform: 'capitalize' }}>
+                                        {req.action_type ? req.action_type.replace('_', ' ') : 'Change'} Request
                                     </span>
+                                    {req.target_id && (
+                                        <span style={{ background: 'rgba(var(--sky-dim-rgb), 0.1)', padding: '0.2rem 0.6rem', borderRadius: '4px', fontSize: '0.8rem' }}>
+                                            ID: {req.target_id}
+                                        </span>
+                                    )}
                                 </div>
                                 <div style={{ color: 'var(--text-dim)', fontSize: '0.9rem' }}>
-                                    <strong>Requested by:</strong> {req.requested_by}
+                                    <strong>Requested by:</strong> {req.username}
                                 </div>
+                                {req.description && (
+                                    <div style={{ color: 'var(--text)', fontSize: '0.9rem' }}>
+                                        <strong>Description:</strong> {req.description}
+                                    </div>
+                                )}
                                 <div style={{ color: 'var(--text-dim)', fontSize: '0.9rem' }}>
                                     <strong>Created At:</strong> {new Date(req.created_at).toLocaleString()}
                                 </div>
-                                <div style={{ background: 'var(--bg-darker)', padding: '0.8rem', borderRadius: '6px', fontSize: '0.85rem', overflowX: 'auto' }}>
-                                    <pre style={{ margin: 0 }}>{JSON.stringify(JSON.parse(req.details), null, 2)}</pre>
-                                </div>
+                                {req.payload && (
+                                    <div style={{ background: 'var(--bg-darker)', padding: '0.8rem', borderRadius: '6px', fontSize: '0.85rem', overflowX: 'auto' }}>
+                                        <pre style={{ margin: 0 }}>{JSON.stringify(JSON.parse(req.payload), null, 2)}</pre>
+                                    </div>
+                                )}
                                 <div style={{ display: 'flex', gap: '1rem', marginTop: 'auto', paddingTop: '1rem' }}>
                                     <button className="btn btn-primary" style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '0.5rem' }} onClick={() => handleApprove(req.id)}>
                                         <CheckCircle size={16} /> Approve
@@ -173,13 +194,22 @@ export default function AdminPage() {
                                         </span>
                                     </td>
                                     <td style={{ padding: '1rem', textAlign: 'right' }}>
-                                        <button 
-                                            className="btn btn-secondary" 
-                                            style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
-                                            onClick={() => toggleRole(u.id, u.role)}
-                                        >
-                                            <UserCheck size={14} /> Make {u.role === 'admin' ? 'User' : 'Admin'}
-                                        </button>
+                                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                            <button 
+                                                className="btn btn-secondary" 
+                                                style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+                                                onClick={() => toggleRole(u.id, u.role)}
+                                            >
+                                                <UserCheck size={14} /> Make {u.role === 'admin' ? 'User' : 'Admin'}
+                                            </button>
+                                            <button 
+                                                className="btn btn-danger" 
+                                                style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', background: '#e74c3c' }}
+                                                onClick={() => handleDeleteUser(u.id, u.username)}
+                                            >
+                                                <Trash2 size={14} /> Delete
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}

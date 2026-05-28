@@ -1,7 +1,148 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
-import { Briefcase, Plus, Trash2, Search, UserCheck, Loader, ChevronRight, Edit, Calendar, User, Building, DollarSign, Award, Target } from 'lucide-react';
+import { Briefcase, Plus, Trash2, Search, UserCheck, Loader, ChevronRight, Edit, Calendar, User, Building, DollarSign, Award, Target, X, Phone, Eye, Filter, Check, FileText, Download } from 'lucide-react';
+import { exportToExcel, formatCandidatesForExcel } from '../utils/excelUtils';
 const API_URL = import.meta.env.VITE_API_URL || '';
+const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+/* ─── Single chip ─────────────────────────────────────────────────────────── */
+function Chip({ text }) {
+    return (
+        <span style={{
+            background: 'rgba(var(--sky-rgb), 0.12)', border: '1px solid rgba(var(--sky-rgb), 0.25)',
+            borderRadius: 5, padding: '2px 7px', fontSize: '0.73rem',
+            color: 'var(--sky-dim)', whiteSpace: 'nowrap', lineHeight: '1.7',
+            display: 'inline-block', maxWidth: '100%', overflow: 'hidden',
+            textOverflow: 'ellipsis',
+        }}>{text}</span>
+    )
+}
+
+/* ─── Collapsible popup cell ──────────────────────────────────────────────── */
+function ExpandableCell({ value, onEdit }) {
+    const [open, setOpen] = useState(false)
+    const btnRef = useRef(null)
+
+    const items = value ? String(value).split(',').map(s => s.trim()).filter(Boolean) : []
+
+    const openPopup = (e) => {
+        e.stopPropagation()
+        setOpen(true)
+    }
+
+    if (items.length === 0) return <span style={{ opacity: 0.35 }}>—</span>
+
+    return (
+        <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, overflow: 'hidden' }}>
+                <span style={{
+                    background: 'rgba(var(--sky-rgb), 0.12)', border: '1px solid rgba(var(--sky-rgb), 0.25)',
+                    borderRadius: 5, padding: '2px 7px', fontSize: '0.73rem',
+                    color: 'var(--sky-dim)', whiteSpace: 'nowrap', overflow: 'hidden',
+                    textOverflow: 'ellipsis', lineHeight: '1.7', maxWidth: 'calc(100% - 64px)',
+                    display: 'inline-block',
+                }}>{items[0]}</span>
+
+                {items.length > 1 && (
+                    <span ref={btnRef}
+                        onClick={openPopup}
+                        style={{
+                            background: 'rgba(var(--gold-rgb), 0.13)', border: '1px solid rgba(var(--gold-rgb), 0.35)',
+                            borderRadius: 5, padding: '2px 7px', fontSize: '0.7rem',
+                            color: 'var(--gold)', cursor: 'pointer', whiteSpace: 'nowrap',
+                            lineHeight: '1.7', fontFamily: 'var(--fh)', fontWeight: 700,
+                            flexShrink: 0,
+                        }}>
+                        +{items.length - 1}
+                    </span>
+                )}
+            </div>
+
+            {open && (
+                <div 
+                    onClick={() => setOpen(false)}
+                    style={{
+                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                        background: 'rgba(0, 0, 0, 0.45)', zIndex: 99999,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        backdropFilter: 'blur(2px)'
+                    }}
+                >
+                    <div
+                        onClick={e => e.stopPropagation()}
+                        style={{
+                            position: 'relative',
+                            background: 'var(--card-bg)', border: '1px solid var(--border)',
+                            borderRadius: 12, padding: '16px 20px', width: 340, maxWidth: '90%',
+                            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.45)',
+                        }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                            <span style={{
+                                fontSize: '0.78rem', color: 'var(--gold)', fontFamily: 'var(--fh)',
+                                fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05rem'
+                            }}>
+                                All ({items.length})
+                            </span>
+                            <button onClick={() => setOpen(false)}
+                                style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center' }}>
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 200, overflowY: 'auto' }}>
+                            {items.map((s, i) => <Chip key={i} text={s} />)}
+                        </div>
+
+                        <div style={{
+                            marginTop: 12, borderTop: '1px solid var(--border)',
+                            paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                        }}>
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)', opacity: 0.7 }}>
+                                Double-click cell to edit full text
+                            </span>
+                            <button onClick={() => { setOpen(false); onEdit() }}
+                                style={{
+                                    background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
+                                    borderRadius: 6, color: 'var(--gold)', fontSize: '0.75rem', cursor: 'pointer',
+                                    padding: '4px 12px', fontFamily: 'var(--fh)', fontWeight: 700
+                                }}>
+                                ✏ Edit
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
+    )
+}
+
+/* ─── Column config ───────────────────────────────────────────────────────── */
+const BASE_WIDTHS = {
+    full_name: '150px', total_experience: '90px', pega_experience: '90px',
+    cdh_exp: '90px', ctc: '100px', expected_ctc: '100px', percentage_hike: '90px',
+    candidate_interview_status: '130px', candidate_status: '130px', availability_in_days: '100px', notice_period: '90px',
+    phone: '130px', email: '180px', linkedin: '120px', current_location: '120px',
+    pref_locations: '120px', current_organization: '150px', current_client: '150px',
+    domain: '120px', tier: '90px', certification_version: '100px',
+    skills: '200px', certifications: '180px', notescomments: '180px',
+    ai_reason: '320px'
+}
+
+const TH = {
+    padding: '11px 10px',
+    textAlign: 'left',
+    fontFamily: 'var(--fh)', fontWeight: 800, fontSize: '0.73rem',
+    color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.05rem',
+    borderBottom: '2px solid var(--border)', background: 'rgba(var(--navy-rgb), 0.97)',
+    overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+}
+
+const TD_BASE = {
+    padding: '10px 10px',
+    verticalAlign: 'top',
+    borderBottom: '1px solid rgba(var(--sky-rgb), 0.07)',
+    overflow: 'hidden',
+}
 
 export default function JobsPage() {
     const [jobs, setJobs] = useState([]);
@@ -12,6 +153,7 @@ export default function JobsPage() {
         title: '',
         description: '',
         client_name: '',
+        client_phone: '',
         contact_name: '',
         account_manager: '',
         assigned_recruiter: '',
@@ -34,12 +176,15 @@ export default function JobsPage() {
     const [editCurrentLocation, setEditCurrentLocation] = useState('');
     const [editPrefLocations, setEditPrefLocations] = useState('');
     const [isSavingEdit, setIsSavingEdit] = useState(false);
+    const [statusFilter, setStatusFilter] = useState('All');
+    const [viewingPdf, setViewingPdf] = useState(null);
 
     const [editingJob, setEditingJob] = useState(null);
     const [editJobForm, setEditJobForm] = useState({
         title: '',
         description: '',
         client_name: '',
+        client_phone: '',
         contact_name: '',
         account_manager: '',
         assigned_recruiter: '',
@@ -53,7 +198,63 @@ export default function JobsPage() {
     });
     const [isSavingJob, setIsSavingJob] = useState(false);
 
+    // Dynamic Spreadsheet States
+    const [searchQuery, setSearchQuery] = useState('');
+    const [cols, setCols] = useState([]);
+    const [showColVisibility, setShowColVisibility] = useState(false);
+    const [hiddenColumnKeys, setHiddenColumnKeys] = useState([]);
+    const [draggedColKey, setDraggedColKey] = useState(null);
+    const [dragOverColKey, setDragOverColKey] = useState(null);
+    const [columnFilters, setColumnFilters] = useState({});
+    const [editCell, setEditCell] = useState(null);
+    const [editVal, setEditVal] = useState('');
+
     const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500) }
+
+    const loadCols = () => axios.get(`${API_URL}/api/columns`).then(r => {
+        const base = (r.data.base || []).map(c => ({ key: c.col_key, label: c.col_label, pct: BASE_WIDTHS[c.col_key] || '120px', col_key: c.col_key, col_label: c.col_label }))
+        
+        const filteredBase = base.filter(c => c.key !== 'full_name' && c.key !== 'candidate_status');
+        const nameCol = base.find(c => c.key === 'full_name') || { key: 'full_name', label: 'Name', pct: '150px' };
+        const aiReasonCol = { key: 'ai_reason', label: 'AI Match Reason', pct: '320px' };
+        const statusCol = base.find(c => c.key === 'candidate_status') || { key: 'candidate_status', label: 'Candidate Status', pct: '130px' };
+        
+        const custom = (r.data.custom || []).map(c => ({ key: c.col_key, label: c.col_label, pct: '120px', col_key: c.col_key, col_label: c.col_label, isCustom: true }))
+        
+        const allLoaded = [
+            nameCol,
+            aiReasonCol,
+            statusCol,
+            ...filteredBase,
+            ...custom,
+            { key: '_actions', label: 'Actions', pct: '260px' }
+        ]
+        
+        const savedOrder = localStorage.getItem('hire_ai_job_col_order')
+        if (savedOrder) {
+            try {
+                const keys = JSON.parse(savedOrder).filter(k => k !== '_actions')
+                const ordered = []
+                keys.forEach(k => {
+                    const found = allLoaded.find(c => c.key === k)
+                    if (found) ordered.push(found)
+                })
+                allLoaded.forEach(c => {
+                    if (!ordered.find(o => o.key === c.key)) {
+                        if (c.key === '_actions') return
+                        ordered.push(c)
+                    }
+                })
+                const actionsCol = allLoaded.find(c => c.key === '_actions')
+                if (actionsCol) {
+                    ordered.push(actionsCol)
+                }
+                setCols(ordered)
+                return
+            } catch (e) { }
+        }
+        setCols(allLoaded)
+    }).catch(() => { })
 
     const loadJobs = async () => {
         try {
@@ -79,10 +280,14 @@ export default function JobsPage() {
 
     useEffect(() => {
         loadJobs();
+        loadCols();
     }, []);
 
     useEffect(() => {
-        if (selectedJob) loadCandidates(selectedJob.id);
+        if (selectedJob) {
+            loadCandidates(selectedJob.id);
+            loadCols();
+        }
     }, [selectedJob]);
 
     const handleCreateJob = async () => {
@@ -95,6 +300,7 @@ export default function JobsPage() {
                 title: '',
                 description: '',
                 client_name: '',
+                client_phone: '',
                 contact_name: '',
                 account_manager: '',
                 assigned_recruiter: '',
@@ -224,7 +430,151 @@ export default function JobsPage() {
         }
     }
 
-    const filteredCandidates = candidates.filter(c => c.job_status === activeTab);
+    // Column visibility handlers
+    const toggleColumnVisibility = (key) => {
+        setHiddenColumnKeys(prev => 
+            prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+        )
+    }
+
+    const handleShowAllColumns = () => {
+        setHiddenColumnKeys([])
+    }
+
+    const handleHideAllColumns = () => {
+        setHiddenColumnKeys(cols.filter(c => c.key !== '_actions' && c.key !== 'full_name').map(c => c.key))
+    }
+
+    // Drag-and-drop handlers
+    const handleDragStart = (e, key) => {
+        setDraggedColKey(key);
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', key);
+    };
+
+    const handleDragOver = (e, key) => {
+        if (key === '_actions') return;
+        e.preventDefault();
+    };
+
+    const handleDragEnter = (e, key) => {
+        if (key === '_actions') return;
+        setDragOverColKey(key);
+    };
+
+    const handleDragEnd = () => {
+        setDraggedColKey(null);
+        setDragOverColKey(null);
+    };
+
+    const handleDrop = (e, targetKey) => {
+        e.preventDefault();
+        if (!draggedColKey || draggedColKey === targetKey || targetKey === '_actions' || draggedColKey === '_actions') {
+            setDraggedColKey(null);
+            setDragOverColKey(null);
+            return;
+        }
+
+        const dragIdx = cols.findIndex(c => c.key === draggedColKey);
+        const targetIdx = cols.findIndex(c => c.key === targetKey);
+
+        if (dragIdx !== -1 && targetIdx !== -1) {
+            const updatedCols = [...cols];
+            const [draggedItem] = updatedCols.splice(dragIdx, 1);
+            updatedCols.splice(targetIdx, 0, draggedItem);
+            setCols(updatedCols);
+        }
+        setDraggedColKey(null);
+        setDragOverColKey(null);
+    };
+
+    useEffect(() => {
+        if (cols.length > 0) {
+            localStorage.setItem('hire_ai_job_col_order', JSON.stringify(cols.map(c => c.key).filter(k => k !== '_actions')))
+        }
+    }, [cols])
+
+    useEffect(() => {
+        if (!showColVisibility) return;
+        const clickAway = () => setShowColVisibility(false);
+        const timer = setTimeout(() => {
+            document.addEventListener('click', clickAway);
+        }, 10);
+        return () => {
+            clearTimeout(timer);
+            document.removeEventListener('click', clickAway);
+        };
+    }, [showColVisibility]);
+
+    const activeCols = cols.filter(c => c.key === '_actions' || !hiddenColumnKeys.includes(c.key))
+
+    const getTableWidth = () => {
+        let total = 0
+        activeCols.forEach(c => {
+            const w = c.pct
+            if (w && typeof w === 'string' && w.endsWith('px')) {
+                total += parseInt(w, 10)
+            } else {
+                total += 120
+            }
+        })
+        return total
+    }
+
+    // Inline edit cell handlers
+    const startEdit = (ri, col, val) => { setEditCell({ row: ri, col }); setEditVal(String(val || '')) }
+    const saveEdit = async (ri) => {
+        const c = candidates[ri]; if (!c?.id) { setEditCell(null); return }
+        
+        let finalVal = editVal;
+        if (editCell.col === 'notice_period' || editCell.col === 'availability_in_days') {
+            if (finalVal !== '' && isNaN(finalVal)) {
+                showToast(`${editCell.col} must be a number`, 'error');
+                return;
+            }
+            finalVal = finalVal !== '' ? parseInt(finalVal, 10) : '';
+        }
+        if (editCell.col === 'total_experience' || editCell.col === 'pega_experience' || editCell.col === 'cdh_exp') {
+            if (finalVal !== '' && isNaN(finalVal)) {
+                showToast('Experience must be a number', 'error');
+                return;
+            }
+            finalVal = finalVal !== '' ? parseFloat(finalVal) : '';
+        }
+
+        try {
+            if (editCell.col === 'ai_reason') {
+                await axios.put(`${API_URL}/api/jobs/${selectedJob.id}/candidates/${c.id}`, { ai_reason: finalVal });
+                setCandidates(prev => prev.map((row, i) => i === ri ? { ...row, ai_reason: finalVal } : row));
+            } else {
+                await axios.put(`${API_URL}/api/candidates/${c.id}`, { [editCell.col]: finalVal });
+                setCandidates(prev => prev.map((row, i) => i === ri ? { ...row, [editCell.col]: finalVal } : row));
+            }
+            showToast('Saved!');
+        } catch (e) { showToast(e.response?.data?.detail || 'Save failed', 'error') }
+        setEditCell(null);
+    }
+
+    // Job Status Filtering & Sidebar/Dashboard search
+    const filteredJobs = jobs.filter(j => {
+        const matchesStatus = statusFilter === 'All' || j.job_status === statusFilter;
+        const matchesSearch = searchQuery === '' || 
+            j.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+            (j.client_name || '').toLowerCase().includes(searchQuery.toLowerCase());
+        return matchesStatus && matchesSearch;
+    });
+
+    const filteredCandidates = candidates.filter(c => {
+        if (c.job_status !== activeTab) return false;
+        
+        for (const [colKey, filterVal] of Object.entries(columnFilters)) {
+            if (filterVal) {
+                const cVal = String(c[colKey] || '').toLowerCase();
+                if (!cVal.includes(filterVal.toLowerCase())) return false;
+            }
+        }
+        return true;
+    });
 
     return (
         <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
@@ -239,13 +589,29 @@ export default function JobsPage() {
                     </button>
                 </div>
                 
+                {/* Status Filter */}
+                <div style={{ padding: '0.8rem 1rem', borderBottom: '1px solid var(--border)' }}>
+                    <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px', fontWeight: 600 }}>Filter by Job Status</label>
+                    <select 
+                        value={statusFilter} 
+                        onChange={e => setStatusFilter(e.target.value)} 
+                        style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', fontSize: '0.82rem' }}
+                    >
+                        <option value="All">All Jobs</option>
+                        <option value="In-progress">In-progress</option>
+                        <option value="On-hold">On-hold</option>
+                        <option value="Filled">Filled</option>
+                        <option value="Closed">Closed</option>
+                    </select>
+                </div>
+                
                 <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
-                    {jobs.length === 0 && (
+                    {filteredJobs.length === 0 && (
                         <div style={{ textAlign: 'center', color: 'var(--text-dim)', marginTop: '2rem' }}>
-                            No Job Descriptions yet.<br/>Click "New Job Description" to add one.
+                            No jobs found matching<br/>the selected status.
                         </div>
                     )}
-                    {jobs.map(job => (
+                    {filteredJobs.map(job => (
                         <div 
                             key={job.id} 
                             onClick={() => { setSelectedJob(job); setShowNewForm(false); }}
@@ -286,6 +652,10 @@ export default function JobsPage() {
                             <div>
                                 <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Client Name</label>
                                 <input value={newJob.client_name} onChange={e => setNewJob({...newJob, client_name: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }} placeholder="e.g. My company" />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Client Phone</label>
+                                <input value={newJob.client_phone} onChange={e => setNewJob({...newJob, client_phone: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }} placeholder="e.g. +1 555-0199" />
                             </div>
                             <div>
                                 <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Contact Name</label>
@@ -420,6 +790,7 @@ export default function JobsPage() {
                                             title: selectedJob.title || '',
                                             description: selectedJob.description || '',
                                             client_name: selectedJob.client_name || '',
+                                            client_phone: selectedJob.client_phone || '',
                                             contact_name: selectedJob.contact_name || '',
                                             account_manager: selectedJob.account_manager || '',
                                             assigned_recruiter: selectedJob.assigned_recruiter || '',
@@ -451,6 +822,12 @@ export default function JobsPage() {
                                 borderRadius: '12px',
                                 marginBottom: '1.5rem'
                             }}>
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Client Phone</span>
+                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <Phone size={14} style={{ color: 'var(--gold)' }} /> {selectedJob.client_phone || '--'}
+                                    </span>
+                                </div>
                                 <div>
                                     <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Contact Name</span>
                                     <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -574,71 +951,752 @@ export default function JobsPage() {
                             </button>
                         </div>
  
-                        {/* Candidates List */}
-                        <div style={{ flex: 1, overflowY: 'auto', padding: '2rem' }}>
+                        {/* Candidates List Spreadsheet Table */}
+                        <div style={{ flex: 1, overflowY: 'auto', padding: '2rem', display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', marginBottom: '15px' }}>
+                                {/* Columns Selector Popover */}
+                                <div style={{ position: 'relative' }}>
+                                    <button 
+                                        className="btn btn-secondary" 
+                                        onClick={() => setShowColVisibility(!showColVisibility)} 
+                                        style={{ gap: 6, color: 'var(--text)', borderColor: 'var(--border)', padding: '6px 12px', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center' }}
+                                    >
+                                        <Eye size={14} /> Columns
+                                    </button>
+                                    
+                                    {showColVisibility && (
+                                        <div 
+                                            onClick={e => e.stopPropagation()}
+                                            style={{
+                                                position: 'absolute', top: '100%', right: 0, marginTop: '8px', zIndex: 100,
+                                                background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '10px',
+                                                boxShadow: '0 10px 25px rgba(0,0,0,0.35)', padding: '12px', width: '250px',
+                                                display: 'flex', flexDirection: 'column', gap: '10px'
+                                            }}
+                                        >
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                                                <span style={{ fontWeight: 'bold', fontSize: '0.85rem', color: 'var(--gold)' }}>Visible Columns</span>
+                                                <button 
+                                                    onClick={() => setShowColVisibility(false)} 
+                                                    style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: 0 }}
+                                                >
+                                                    <X size={14} />
+                                                </button>
+                                            </div>
+                                            
+                                            <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
+                                                <button 
+                                                    onClick={handleShowAllColumns}
+                                                    style={{ 
+                                                        flex: 1, padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px',
+                                                        border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', cursor: 'pointer' 
+                                                    }}
+                                                >
+                                                    Show All
+                                                </button>
+                                                <button 
+                                                    onClick={handleHideAllColumns}
+                                                    style={{ 
+                                                        flex: 1, padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px',
+                                                        border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', cursor: 'pointer' 
+                                                    }}
+                                                >
+                                                    Hide All
+                                                </button>
+                                            </div>
+                                            
+                                            <div style={{ maxHeight: '250px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                {cols.filter(c => c.key !== '_actions').map(c => {
+                                                    const isChecked = !hiddenColumnKeys.includes(c.key);
+                                                    return (
+                                                        <label 
+                                                            key={c.key} 
+                                                            style={{ 
+                                                                display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', 
+                                                                color: isChecked ? 'var(--text)' : 'var(--text-dim)', cursor: 'pointer',
+                                                                padding: '4px 6px', borderRadius: '4px', transition: 'all 0.15s',
+                                                                background: isChecked ? 'transparent' : 'rgba(var(--sky-rgb), 0.02)'
+                                                            }}
+                                                        >
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={isChecked}
+                                                                onChange={() => toggleColumnVisibility(c.key)}
+                                                                style={{ cursor: 'pointer' }}
+                                                            />
+                                                            <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{c.label}</span>
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                                <button
+                                    className="btn btn-secondary"
+                                    style={{ gap: 6, padding: '6px 12px', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center' }}
+                                    onClick={() => exportToExcel(formatCandidatesForExcel(filteredCandidates, activeCols.filter(c => c.key !== '_actions')), `job_${selectedJob.title.replace(/\s+/g, '_')}_candidates.xlsx`)}
+                                >
+                                    <Download size={14} /> Download Excel
+                                </button>
+                            </div>
+ 
                             {filteredCandidates.length === 0 ? (
-                                <div style={{ textAlign: 'center', color: 'var(--text-dim)', marginTop: '2rem' }}>
-                                    {activeTab === 'matched' ? 'No candidates matched yet. Click "Match Job Description" to find perfect matches in your database.' : 'No candidates selected yet. Select them from the Matched tab.'}
+                                <div style={{ textAlign: 'center', color: 'var(--text-dim)', marginTop: '2rem', padding: '3rem', border: '1px dashed var(--border)', borderRadius: '12px' }}>
+                                    <Search size={32} style={{ opacity: 0.3, marginBottom: '10px' }} />
+                                    <p style={{ margin: 0 }}>
+                                        {activeTab === 'matched' ? 'No candidates matched yet. Click "Match Job Description" to find perfect matches in your database.' : 'No candidates selected yet. Select them from the Matched tab.'}
+                                    </p>
                                 </div>
                             ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                                    {filteredCandidates.map(c => (
-                                        <div key={c.id} className="card" style={{ padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <div style={{ flex: 1 }}>
-                                                <h3 style={{ margin: '0 0 8px 0', color: 'var(--sky)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                    {c.full_name || c.filename}
-                                                    {c.is_qualified ? <span style={{fontSize: '0.8rem', background: 'rgba(var(--gold-rgb), 0.2)', padding: '2px 8px', borderRadius: '12px', color: 'var(--gold)'}}>⭐ Qualified</span> : null}
-                                                </h3>
-                                                <div style={{ display: 'flex', gap: '15px', fontSize: '0.85rem', color: 'var(--text)', marginBottom: '10px', flexWrap: 'wrap' }}>
-                                                    <span><strong>Exp:</strong> {c.total_experience || 0} yrs</span>
-                                                    <span><strong>Skills:</strong> {c.skills || 'N/A'}</span>
-                                                    {c.current_location && <span><strong>Current Location:</strong> {c.current_location}</span>}
-                                                    {c.pref_locations && <span><strong>Pref Locations:</strong> {c.pref_locations}</span>}
+                                <>
+                                    <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-darker)' }}>
+                                        <table style={{ width: getTableWidth(), tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
+                                            <colgroup>
+                                                {activeCols.map(c => <col key={c.key} style={{ width: c.pct }} />)}
+                                            </colgroup>
+                                            <thead>
+                                                <tr>
+                                                    {activeCols.map(c => {
+                                                        const isActions = c.key === '_actions';
+                                                        const isDragged = draggedColKey === c.key;
+                                                        const isDragTarget = dragOverColKey === c.key;
+                                                        
+                                                        let backgroundStyle = isActions ? 'var(--table-header-bg)' : TH.background;
+                                                        if (isDragTarget && !isDragged) {
+                                                            backgroundStyle = 'rgba(var(--gold-rgb), 0.18)';
+                                                        }
+                                                        
+                                                        return (
+                                                            <th 
+                                                                key={c.key} 
+                                                                draggable={!isActions}
+                                                                onDragStart={(e) => !isActions && handleDragStart(e, c.key)}
+                                                                onDragOver={(e) => !isActions && handleDragOver(e, c.key)}
+                                                                onDragEnter={(e) => !isActions && handleDragEnter(e, c.key)}
+                                                                onDragLeave={() => !isActions && setDragOverColKey(null)}
+                                                                onDragEnd={() => !isActions && handleDragEnd()}
+                                                                onDrop={(e) => !isActions && handleDrop(e, c.key)}
+                                                                style={{ 
+                                                                    ...TH, 
+                                                                    position: isActions ? 'sticky' : undefined, 
+                                                                    right: isActions ? 0 : undefined, 
+                                                                    zIndex: isActions ? 11 : undefined,
+                                                                    background: backgroundStyle,
+                                                                    boxShadow: isActions ? '-3px 0 6px rgba(0,0,0,0.15)' : undefined,
+                                                                    cursor: isActions ? 'default' : (isDragged ? 'grabbing' : 'grab'),
+                                                                    opacity: isDragged ? 0.4 : 1,
+                                                                    borderLeft: (isDragTarget && !isDragged) ? '2px dashed var(--gold)' : '2px dashed transparent',
+                                                                    borderRight: (isDragTarget && !isDragged) ? '2px dashed var(--gold)' : '2px dashed transparent',
+                                                                    transition: 'all 0.2s ease-in-out'
+                                                                }} 
+                                                                title={isActions ? c.label : `${c.label} (Drag to reorder)`}
+                                                            >
+                                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '6px' }}>
+                                                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.label}</span>
+                                                                    {!isActions && (
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.preventDefault();
+                                                                                e.stopPropagation();
+                                                                                if (window.confirm(`Are you sure you want to hide the "${c.label}" column?`)) {
+                                                                                    toggleColumnVisibility(c.key);
+                                                                                }
+                                                                            }}
+                                                                            style={{
+                                                                                background: 'none',
+                                                                                border: 'none',
+                                                                                color: 'var(--text-dim)',
+                                                                                cursor: 'pointer',
+                                                                                padding: '2px',
+                                                                                display: 'inline-flex',
+                                                                                alignItems: 'center',
+                                                                                transition: 'transform 0.15s, color 0.15s',
+                                                                                opacity: 0.5,
+                                                                            }}
+                                                                            onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.15)'; e.currentTarget.style.opacity = 1; e.currentTarget.style.color = 'var(--gold)'; }}
+                                                                            onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.opacity = 0.5; e.currentTarget.style.color = 'var(--text-dim)'; }}
+                                                                            title="Hide Column"
+                                                                        >
+                                                                            <X size={12} />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </th>
+                                                        );
+                                                    })}
+                                                </tr>
+                                                <tr style={{ background: 'rgba(var(--navy-dark-rgb), 0.5)' }}>
+                                                    {activeCols.map(c => {
+                                                        const isActions = c.key === '_actions';
+                                                        if (isActions) {
+                                                            const hasAnyFilter = Object.values(columnFilters).some(v => v);
+                                                            return (
+                                                                <th
+                                                                    key="filter-_actions"
+                                                                    style={{
+                                                                        padding: '6px 10px',
+                                                                        borderBottom: '2px solid var(--border)',
+                                                                        position: 'sticky',
+                                                                        right: 0,
+                                                                        zIndex: 11,
+                                                                        background: 'rgba(var(--navy-dark-rgb), 0.95)',
+                                                                        boxShadow: '-3px 0 6px rgba(0,0,0,0.15)',
+                                                                        textAlign: 'center'
+                                                                    }}
+                                                                >
+                                                                    {hasAnyFilter && (
+                                                                        <button
+                                                                            onClick={() => setColumnFilters({})}
+                                                                            style={{
+                                                                                background: 'rgba(239, 35, 60, 0.15)',
+                                                                                border: '1px solid #ef233c',
+                                                                                borderRadius: '4px',
+                                                                                color: '#ef233c',
+                                                                                cursor: 'pointer',
+                                                                                fontSize: '0.7rem',
+                                                                                fontWeight: 'bold',
+                                                                                padding: '4px 8px',
+                                                                                width: '100%',
+                                                                                transition: 'all 0.2s',
+                                                                                display: 'inline-flex',
+                                                                                alignItems: 'center',
+                                                                                justifyContent: 'center',
+                                                                                gap: '4px'
+                                                                            }}
+                                                                            title="Clear all column filters"
+                                                                        >
+                                                                            <X size={10} /> Clear
+                                                                        </button>
+                                                                    )}
+                                                                </th>
+                                                            );
+                                                        }
+ 
+                                                        return (
+                                                            <th
+                                                                key={`filter-${c.key}`}
+                                                                style={{
+                                                                    padding: '6px 10px',
+                                                                    borderBottom: '2px solid var(--border)',
+                                                                    background: 'rgba(var(--navy-rgb), 0.97)',
+                                                                }}
+                                                            >
+                                                                <input
+                                                                    type="text"
+                                                                    value={columnFilters[c.key] || ''}
+                                                                    onChange={e => setColumnFilters(prev => ({
+                                                                        ...prev,
+                                                                        [c.key]: e.target.value
+                                                                    }))}
+                                                                    placeholder="Search..."
+                                                                    style={{
+                                                                        width: '100%',
+                                                                        padding: '5px 8px',
+                                                                        borderRadius: '5px',
+                                                                        border: '1px solid var(--border)',
+                                                                        background: 'var(--input-bg)',
+                                                                        color: 'var(--text)',
+                                                                        fontSize: '0.75rem',
+                                                                        outline: 'none',
+                                                                        transition: 'all 0.2s'
+                                                                    }}
+                                                                    onFocus={e => {
+                                                                        e.target.style.border = '1px solid var(--gold)';
+                                                                        e.target.style.boxShadow = '0 0 4px rgba(var(--gold-rgb), 0.3)';
+                                                                    }}
+                                                                    onBlur={e => {
+                                                                        e.target.style.border = '1px solid rgba(var(--sky-rgb), 0.25)';
+                                                                        e.target.style.boxShadow = 'none';
+                                                                    }}
+                                                                />
+                                                            </th>
+                                                        );
+                                                    })}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {filteredCandidates.map((row, ri) => (
+                                                    <tr key={row.id || ri}
+                                                        style={{ background: ri % 2 === 0 ? 'rgba(var(--navy-rgb), 0.25)' : 'transparent', transition: 'background 0.15s' }}
+                                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.07)'}
+                                                        onMouseLeave={e => e.currentTarget.style.background = ri % 2 === 0 ? 'rgba(var(--navy-rgb), 0.25)' : 'transparent'}
+                                                    >
+                                                        {activeCols.map(({ key }) => {
+                                                            /* ── Actions column ── */
+                                                            if (key === '_actions') return (
+                                                                <td 
+                                                                    key={key} 
+                                                                    style={{ 
+                                                                        ...TD_BASE, 
+                                                                        textAlign: 'center',
+                                                                        position: 'sticky',
+                                                                        right: 0,
+                                                                        zIndex: 10,
+                                                                        background: ri % 2 === 0 ? 'var(--input-bg)' : 'var(--card-bg)',
+                                                                        boxShadow: '-3px 0 6px rgba(0,0,0,0.15)',
+                                                                        overflow: 'visible',
+                                                                        verticalAlign: 'middle'
+                                                                    }}
+                                                                >
+                                                                    <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+                                                                        {activeTab === 'matched' ? (
+                                                                            <button className="btn btn-primary" onClick={() => handleStatusChange(row.id, 'selected')} style={{ fontSize: '0.73rem', padding: '5px 9px' }} title="Select candidate for job">
+                                                                                Select <ChevronRight size={12}/>
+                                                                            </button>
+                                                                        ) : (
+                                                                            <button className="btn btn-secondary" onClick={() => handleStatusChange(row.id, 'matched')} style={{ fontSize: '0.73rem', padding: '5px 9px', borderColor: 'var(--border)' }} title="Remove Selection">
+                                                                                Deselect
+                                                                            </button>
+                                                                        )}
+                                                                        <button className="btn btn-secondary" onClick={() => {
+                                                                            setEditingCandidate(row);
+                                                                            setEditName(row.full_name || row.filename || '');
+                                                                            setEditExp(row.total_experience || '0');
+                                                                            setEditSkills(row.skills || '');
+                                                                            setEditReason(row.ai_reason || '');
+                                                                            setEditCurrentLocation(row.current_location || '');
+                                                                            setEditPrefLocations(row.pref_locations || '');
+                                                                        }} style={{ fontSize: '0.73rem', padding: '5px 9px', borderColor: 'rgba(var(--gold-rgb), 0.3)', color: 'var(--gold)' }} title="Edit candidate details">
+                                                                            <Edit size={12}/> Edit
+                                                                        </button>
+                                                                        <button className="btn btn-secondary" onClick={() => handleRemoveFromJob(row.id)} style={{ fontSize: '0.73rem', padding: '5px 9px', borderColor: 'rgba(var(--sky-rgb), 0.3)', color: 'var(--sky)' }} title="Remove candidate from this job description mapping">
+                                                                            Remove
+                                                                        </button>
+                                                                        <button className="btn btn-danger" onClick={() => handleDeleteCandidate(row.id)} style={{ fontSize: '0.73rem', padding: '5px 9px' }} title="Delete candidate permanently from database">
+                                                                            <Trash2 size={12}/> Delete
+                                                                        </button>
+                                                                    </div>
+                                                                </td>
+                                                            )
+ 
+                                                            const isEditing = editCell?.row === ri && editCell?.col === key
+                                                            const val = row[key] ?? ''
+                                                            const isExp = key === 'total_experience' || key === 'pega_experience' || key === 'cdh_exp'
+                                                            const isExpandable = key === 'skills' || key === 'certifications'
+ 
+                                                            /* ── Inline edit mode ── */
+                                                            if (isEditing) {
+                                                                 if (key === 'candidate_status') {
+                                                                     const statusOptions = ['New', 'In-Review', 'Available', 'Selected', 'Rejected', 'Engaged', 'Offered', 'Hired'];
+                                                                     return (
+                                                                         <td key={key} style={TD_BASE}>
+                                                                             <select
+                                                                                 autoFocus
+                                                                                 value={editVal || 'New'}
+                                                                                 onChange={async (e) => {
+                                                                                     const newVal = e.target.value;
+                                                                                     setEditVal(newVal);
+                                                                                     try {
+                                                                                         await axios.put(`${API_URL}/api/candidates/${row.id}`, { candidate_status: newVal });
+                                                                                         setCandidates(prev => prev.map((r, i) => i === ri ? { ...r, candidate_status: newVal } : r));
+                                                                                         showToast('Saved!');
+                                                                                     } catch (err) {
+                                                                                         showToast(err.response?.data?.detail || 'Save failed', 'error');
+                                                                                     }
+                                                                                     setEditCell(null);
+                                                                                 }}
+                                                                                 onBlur={() => setEditCell(null)}
+                                                                                 onKeyDown={e => { if (e.key === 'Escape') setEditCell(null); }}
+                                                                                 style={{
+                                                                                     background: 'var(--input-bg)', border: '1px solid var(--gold)',
+                                                                                     borderRadius: 6, padding: '4px 8px', color: 'var(--text)', width: '100%',
+                                                                                     fontFamily: 'var(--fb)', fontSize: '0.82rem', outline: 'none'
+                                                                                 }}
+                                                                             >
+                                                                                 {statusOptions.map(opt => (
+                                                                                     <option key={opt} value={opt} style={{ background: 'var(--card-bg)', color: 'var(--text)' }}>
+                                                                                         {opt}
+                                                                                     </option>
+                                                                                 ))}
+                                                                             </select>
+                                                                         </td>
+                                                                     );
+                                                                 }
+                                                                 
+                                                                 return (
+                                                                     <td key={key} style={TD_BASE}>
+                                                                         <input autoFocus value={editVal}
+                                                                             onChange={e => setEditVal(e.target.value)}
+                                                                             onBlur={() => saveEdit(ri)}
+                                                                             onKeyDown={e => { if (e.key === 'Enter') saveEdit(ri); if (e.key === 'Escape') setEditCell(null) }}
+                                                                             style={{
+                                                                                 background: 'var(--input-bg)', border: '1px solid var(--gold)',
+                                                                                 borderRadius: 6, padding: '4px 8px', color: 'var(--text)', width: '100%',
+                                                                                 fontFamily: 'var(--fb)', fontSize: '0.82rem', outline: 'none'
+                                                                             }}
+                                                                         />
+                                                                     </td>
+                                                                 );
+                                                            }
+ 
+                                                            /* ── Expandable (skills / certs) ── */
+                                                            if (isExpandable) return (
+                                                                <td key={key} style={{ ...TD_BASE, verticalAlign: 'middle' }} onDoubleClick={() => startEdit(ri, key, val)}>
+                                                                    <ExpandableCell value={val} onEdit={() => startEdit(ri, key, val)} />
+                                                                </td>
+                                                            )
+ 
+                                                            /* ── Regular cells ── */
+                                                            let display;
+                                                            if (key === 'candidate_status') {
+                                                                 const s = String(val || 'New').trim();
+                                                                 let color = '#38bdf8';
+                                                                 let bg = 'rgba(56, 189, 248, 0.12)';
+                                                                 let border = '1px solid rgba(56, 189, 248, 0.25)';
+                                                                 
+                                                                 const lowerS = s.toLowerCase();
+                                                                 if (lowerS === 'in-review') {
+                                                                     color = '#fbbf24'; bg = 'rgba(251, 191, 36, 0.12)'; border = '1px solid rgba(251, 191, 36, 0.25)';
+                                                                 } else if (lowerS === 'available') {
+                                                                     color = '#34d399'; bg = 'rgba(52, 211, 153, 0.12)'; border = '1px solid rgba(52, 211, 153, 0.25)';
+                                                                 } else if (lowerS === 'selected') {
+                                                                     color = '#2dd4bf'; bg = 'rgba(45, 212, 191, 0.12)'; border = '1px solid rgba(45, 212, 191, 0.25)';
+                                                                 } else if (lowerS === 'rejected') {
+                                                                     color = '#f87171'; bg = 'rgba(248, 113, 113, 0.12)'; border = '1px solid rgba(248, 113, 113, 0.25)';
+                                                                 } else if (lowerS === 'engaged') {
+                                                                     color = '#c084fc'; bg = 'rgba(192, 132, 252, 0.12)'; border = '1px solid rgba(192, 132, 252, 0.25)';
+                                                                 } else if (lowerS === 'offered') {
+                                                                     color = '#f43f5e'; bg = 'rgba(244, 63, 94, 0.12)'; border = '1px solid rgba(244, 63, 94, 0.25)';
+                                                                 } else if (lowerS === 'hired') {
+                                                                     color = '#4ade80'; bg = 'rgba(74, 222, 128, 0.15)'; border = '1px solid rgba(74, 222, 128, 0.35)';
+                                                                 }
+                                                                 
+                                                                 display = (
+                                                                     <span style={{
+                                                                         background: bg, color: color, border: border,
+                                                                         borderRadius: 5, padding: '2px 8px', fontSize: '0.73rem',
+                                                                         fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-block',
+                                                                         textTransform: 'capitalize'
+                                                                     }}>
+                                                                         {s}
+                                                                     </span>
+                                                                 );
+                                                            } else if (isExp) {
+                                                                display = (val !== '' && val != null ? `${val} yrs` : '—');
+                                                            } else if (key === 'notice_period' || key === 'availability_in_days') {
+                                                                display = (val === 0 || val === '0') ? 'Immediate' : (val !== null && val !== '' && !isNaN(val) ? `${val} days` : (val || '—'));
+                                                            } else {
+                                                                display = (val !== '' && val != null ? val : '—');
+                                                            }
+ 
+                                                            return (
+                                                                <td key={key} onClick={() => {
+                                                                         if (key === 'candidate_status') startEdit(ri, key, val);
+                                                                     }}
+                                                                     onDoubleClick={() => {
+                                                                         if (key !== 'candidate_status') startEdit(ri, key, val);
+                                                                     }} style={{
+                                                                    ...TD_BASE,
+                                                                    color: key === 'full_name' ? 'var(--gold)' : key === 'email' ? 'var(--sky-dim)' : 'var(--text)',
+                                                                    fontWeight: key === 'full_name' ? 700 : undefined,
+                                                                    whiteSpace: key === 'full_name' || key === 'current_organization' || key === 'email'
+                                                                        ? 'normal' : 'nowrap',
+                                                                    wordBreak: key === 'email' ? 'break-all' : undefined,
+                                                                    cursor: key === 'candidate_status' ? 'pointer' : 'text',
+                                                                    verticalAlign: 'middle'
+                                                                }}>
+                                                                    {key === 'full_name' && row.filename && !row.filename.toLowerCase().endsWith('.xlsx') && !row.filename.toLowerCase().endsWith('.xls') && !row.filename.toLowerCase().endsWith('.csv') ? (
+                                                                        <span
+                                                                            onClick={() => setViewingPdf({ url: `${BACKEND_URL}/static/${row.filename}`, name: row.full_name })}
+                                                                            style={{
+                                                                                display: 'inline-flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '6px',
+                                                                                color: 'var(--gold)',
+                                                                                textDecoration: 'underline',
+                                                                                cursor: 'pointer',
+                                                                                fontWeight: 700,
+                                                                                transition: 'color 0.2s'
+                                                                            }}
+                                                                            title={`View ${row.filename}`}
+                                                                        >
+                                                                            <FileText size={14} style={{ flexShrink: 0, color: 'var(--gold)' }} />
+                                                                            {display}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <>
+                                                                            {display}
+                                                                            {key === 'full_name' && row.is_qualified ? (
+                                                                                <span style={{ fontSize: '0.72rem', background: 'rgba(var(--gold-rgb), 0.2)', padding: '2px 6px', borderRadius: '10px', color: 'var(--gold)', marginLeft: '6px' }} title="Qualified candidate">
+                                                                                    ⭐ Qualified
+                                                                                </span>
+                                                                            ) : null}
+                                                                        </>
+                                                                    )}
+                                                                </td>
+                                                            )
+                                                        })}
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <p style={{ marginTop: '0.6rem', fontSize: '0.75rem', color: 'rgba(var(--sky-dim-rgb), 0.38)' }}>
+                                        💡 Click <strong style={{ color: 'var(--gold)' }}>+N</strong> to expand Skills / Certs · Double-click any cell to edit
+                                    </p>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                ) : (
+                    <div style={{ padding: '2rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '1.5rem', overflowY: 'auto' }}>
+                        {/* Dashboard Header */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '20px', flexWrap: 'wrap', borderBottom: '1px solid var(--border)', paddingBottom: '1.5rem' }}>
+                            <div>
+                                <h2 style={{ fontFamily: 'var(--fh)', color: 'var(--gold)', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <Briefcase size={28} /> Job Status Grid Dashboard
+                                </h2>
+                                <p style={{ color: 'var(--text-dim)', margin: '4px 0 0', fontSize: '0.9rem' }}>
+                                    Overview of all open jobs and their candidate funnel status.
+                                </p>
+                            </div>
+                            
+                            {/* Dashboard Search */}
+                            <div style={{ position: 'relative', width: '300px' }}>
+                                <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)' }} />
+                                <input
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={e => setSearchQuery(e.target.value)}
+                                    placeholder="Search by title or client name..."
+                                    style={{
+                                        width: '100%',
+                                        padding: '10px 12px 10px 38px',
+                                        background: 'var(--input-bg)',
+                                        border: '1px solid var(--border)',
+                                        borderRadius: '8px',
+                                        color: 'var(--text)',
+                                        fontSize: '0.88rem',
+                                        outline: 'none',
+                                        transition: 'all 0.2s'
+                                    }}
+                                    onFocus={e => e.target.style.borderColor = 'var(--gold)'}
+                                    onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                                />
+                                {searchQuery && (
+                                    <button 
+                                        onClick={() => setSearchQuery('')}
+                                        style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer' }}
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Status Stats Overview Row */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginTop: '0.5rem' }}>
+                            {['In-progress', 'On-hold', 'Filled', 'Closed'].map(status => {
+                                const count = jobs.filter(j => j.job_status === status).length;
+                                const isActive = statusFilter === status;
+                                
+                                return (
+                                    <div 
+                                        key={status}
+                                        onClick={() => setStatusFilter(status)}
+                                        style={{
+                                            padding: '1.25rem',
+                                            borderRadius: '12px',
+                                            background: isActive ? 'rgba(var(--gold-rgb), 0.12)' : 'rgba(var(--navy-dark-rgb), 0.3)',
+                                            border: `1px solid ${isActive ? 'var(--gold)' : 'var(--border)'}`,
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s',
+                                            textAlign: 'center',
+                                            transform: isActive ? 'scale(1.03)' : 'scale(1)'
+                                        }}
+                                        onMouseEnter={e => { if (!isActive) e.currentTarget.style.borderColor = 'rgba(var(--sky-rgb), 0.5)' }}
+                                        onMouseLeave={e => { if (!isActive) e.currentTarget.style.borderColor = 'var(--border)' }}
+                                    >
+                                        <span style={{ display: 'block', fontSize: '0.8rem', color: isActive ? 'var(--gold)' : 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05rem', fontWeight: 600 }}>
+                                            {status}
+                                        </span>
+                                        <span style={{ display: 'block', fontSize: '2rem', fontWeight: 800, color: '#fff', marginTop: '6px' }}>
+                                            {count}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                            <div 
+                                onClick={() => setStatusFilter('All')}
+                                style={{
+                                    padding: '1.25rem',
+                                    borderRadius: '12px',
+                                    background: statusFilter === 'All' ? 'rgba(var(--gold-rgb), 0.12)' : 'rgba(var(--navy-dark-rgb), 0.3)',
+                                    border: `1px solid ${statusFilter === 'All' ? 'var(--gold)' : 'var(--border)'}`,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                    textAlign: 'center',
+                                    transform: statusFilter === 'All' ? 'scale(1.03)' : 'scale(1)'
+                                }}
+                                onMouseEnter={e => { if (statusFilter !== 'All') e.currentTarget.style.borderColor = 'rgba(var(--sky-rgb), 0.5)' }}
+                                onMouseLeave={e => { if (statusFilter !== 'All') e.currentTarget.style.borderColor = 'var(--border)' }}
+                            >
+                                <span style={{ display: 'block', fontSize: '0.8rem', color: statusFilter === 'All' ? 'var(--gold)' : 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05rem', fontWeight: 600 }}>
+                                    Total Jobs
+                                </span>
+                                <span style={{ display: 'block', fontSize: '2rem', fontWeight: 800, color: '#fff', marginTop: '6px' }}>
+                                    {jobs.length}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Jobs Grid */}
+                        <div style={{ flex: 1, marginTop: '0.5rem' }}>
+                            {filteredJobs.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '5rem 2rem', color: 'var(--text-dim)', background: 'rgba(var(--navy-dark-rgb), 0.1)', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                                    <Briefcase size={40} style={{ opacity: 0.3, marginBottom: '1rem' }} />
+                                    <h4 style={{ color: '#fff', margin: '0 0 8px 0' }}>No jobs match your selection</h4>
+                                    <p style={{ margin: 0, fontSize: '0.88rem' }}>Try clearing filters or search to view other job postings, or create a new job profile.</p>
+                                    {(statusFilter !== 'All' || searchQuery) && (
+                                        <button 
+                                            className="btn btn-secondary" 
+                                            style={{ marginTop: '1.2rem' }}
+                                            onClick={() => { setStatusFilter('All'); setSearchQuery(''); }}
+                                        >
+                                            Reset Filters
+                                        </button>
+                                    )}
+                                </div>
+                            ) : (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
+                                    {filteredJobs.map(job => (
+                                        <div 
+                                            key={job.id}
+                                            style={{
+                                                background: 'var(--bg-darker)',
+                                                border: '1px solid var(--border)',
+                                                borderRadius: '12px',
+                                                padding: '1.5rem',
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                gap: '1rem',
+                                                transition: 'all 0.25s',
+                                                cursor: 'pointer',
+                                                position: 'relative',
+                                                overflow: 'hidden'
+                                            }}
+                                            onClick={() => setSelectedJob(job)}
+                                            onMouseEnter={e => {
+                                                e.currentTarget.style.transform = 'translateY(-4px)';
+                                                e.currentTarget.style.borderColor = 'var(--gold)';
+                                                e.currentTarget.style.boxShadow = '0 10px 20px rgba(0,0,0,0.3)';
+                                            }}
+                                            onMouseLeave={e => {
+                                                e.currentTarget.style.transform = 'translateY(0)';
+                                                e.currentTarget.style.borderColor = 'var(--border)';
+                                                e.currentTarget.style.boxShadow = 'none';
+                                            }}
+                                        >
+                                            {/* Status and Type Badges top row */}
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span style={{
+                                                    fontSize: '0.72rem',
+                                                    fontWeight: 700,
+                                                    padding: '3px 8px',
+                                                    borderRadius: '12px',
+                                                    textTransform: 'uppercase',
+                                                    background: job.job_status === 'In-progress' ? 'rgba(34, 197, 94, 0.12)' :
+                                                                job.job_status === 'On-hold' ? 'rgba(249, 115, 22, 0.12)' :
+                                                                job.job_status === 'Closed' ? 'rgba(239, 68, 68, 0.12)' : 'rgba(33, 158, 188, 0.12)',
+                                                    color: job.job_status === 'In-progress' ? '#4ade80' :
+                                                           job.job_status === 'On-hold' ? '#fdba74' :
+                                                           job.job_status === 'Closed' ? '#fca5a5' : '#38bdf8',
+                                                    border: `1px solid ${
+                                                        job.job_status === 'In-progress' ? 'rgba(34, 197, 94, 0.2)' :
+                                                        job.job_status === 'On-hold' ? 'rgba(249, 115, 22, 0.2)' :
+                                                        job.job_status === 'Closed' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(33, 158, 188, 0.2)'
+                                                    }`
+                                                }}>
+                                                    ● {job.job_status || 'In-progress'}
+                                                </span>
+                                                <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)', background: 'rgba(var(--sky-rgb), 0.08)', padding: '2px 8px', borderRadius: '4px' }}>
+                                                    {job.job_type || 'Full time'}
+                                                </span>
+                                            </div>
+
+                                            {/* Job Title and Client */}
+                                            <div>
+                                                <h4 style={{ margin: 0, color: 'var(--gold)', fontSize: '1.15rem', fontFamily: 'var(--fh)', fontWeight: 800 }}>{job.title}</h4>
+                                                <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)', display: 'block', marginTop: '4px' }}>
+                                                    Client: <strong style={{ color: '#fff' }}>{job.client_name || 'N/A'}</strong>
+                                                </span>
+                                            </div>
+
+                                            {/* Required Skills tags */}
+                                            {job.required_skills && (
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                                    {job.required_skills.split(',').slice(0, 3).map((skill, index) => {
+                                                        const s = skill.trim();
+                                                        if (!s) return null;
+                                                        return (
+                                                            <span key={index} style={{ fontSize: '0.72rem', background: 'rgba(var(--sky-rgb), 0.08)', color: 'var(--sky-dim)', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(var(--sky-rgb), 0.15)' }}>
+                                                                {s}
+                                                            </span>
+                                                        );
+                                                    })}
+                                                    {job.required_skills.split(',').length > 3 && (
+                                                        <span style={{ fontSize: '0.72rem', color: 'var(--gold)', background: 'rgba(var(--gold-rgb), 0.08)', padding: '2px 6px', borderRadius: '4px' }}>
+                                                            +{job.required_skills.split(',').length - 3} more
+                                                        </span>
+                                                    )}
                                                 </div>
-                                                <div style={{ fontSize: '0.9rem', color: 'var(--text-dim)', background: 'var(--input-bg)', padding: '10px', borderRadius: '8px', borderLeft: '3px solid var(--gold)' }}>
-                                                    <strong>🤖 AI Analysis:</strong> {c.ai_reason}
+                                            )}
+
+                                            {/* Counters Funnel */}
+                                            <div style={{ 
+                                                display: 'grid', 
+                                                gridTemplateColumns: '1fr 1fr', 
+                                                gap: '8px', 
+                                                padding: '10px', 
+                                                background: 'rgba(var(--navy-dark-rgb), 0.4)', 
+                                                border: '1px solid var(--border)', 
+                                                borderRadius: '8px',
+                                                textAlign: 'center',
+                                                marginTop: 'auto'
+                                            }}>
+                                                <div>
+                                                    <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.02rem' }}>Matched</span>
+                                                    <strong style={{ fontSize: '1.1rem', color: '#fff', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                                                        <Search size={13} style={{ color: 'var(--gold)' }} /> {job.matched_count}
+                                                    </strong>
+                                                </div>
+                                                <div style={{ borderLeft: '1px solid var(--border)' }}>
+                                                    <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.02rem' }}>Selected</span>
+                                                    <strong style={{ fontSize: '1.1rem', color: '#fff', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                                                        <UserCheck size={13} style={{ color: 'var(--primary)' }} /> {job.selected_count}
+                                                    </strong>
                                                 </div>
                                             </div>
-                                            <div style={{ marginLeft: '2rem', display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '150px' }}>
-                                                {activeTab === 'matched' ? (
-                                                    <button className="btn btn-primary" onClick={() => handleStatusChange(c.id, 'selected')} style={{ fontSize: '0.8rem', padding: '6px 12px' }}>
-                                                        Select for Job <ChevronRight size={14}/>
-                                                    </button>
-                                                ) : (
-                                                    <button className="btn btn-secondary" onClick={() => handleStatusChange(c.id, 'matched')} style={{ fontSize: '0.8rem', padding: '6px 12px' }}>
-                                                        Remove Selection
-                                                    </button>
-                                                )}
-                                                <button className="btn btn-secondary" onClick={() => {
-                                                    setEditingCandidate(c);
-                                                    setEditName(c.full_name || c.filename || '');
-                                                    setEditExp(c.total_experience || '0');
-                                                    setEditSkills(c.skills || '');
-                                                    setEditReason(c.ai_reason || '');
-                                                    setEditCurrentLocation(c.current_location || '');
-                                                    setEditPrefLocations(c.pref_locations || '');
-                                                }} style={{ fontSize: '0.8rem', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center', borderColor: 'rgba(var(--gold-rgb), 0.3)', color: 'var(--gold)' }}>
-                                                    <Edit size={12}/> Edit Details
+
+                                            {/* Details Button and Delete Icon */}
+                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', paddingTop: '0.5rem', borderTop: '1px solid var(--border)' }}>
+                                                <button 
+                                                    className="btn btn-primary" 
+                                                    style={{ flex: 1, padding: '7px 12px', fontSize: '0.8rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '4px' }}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setSelectedJob(job);
+                                                    }}
+                                                >
+                                                    Open Details <ChevronRight size={14} />
                                                 </button>
-                                                <button className="btn btn-secondary" onClick={() => handleRemoveFromJob(c.id)} style={{ fontSize: '0.8rem', padding: '6px 12px', borderColor: 'rgba(var(--sky-rgb), 0.3)', color: 'var(--sky)' }}>
-                                                    Remove from Job
-                                                </button>
-                                                <button className="btn btn-danger" onClick={() => handleDeleteCandidate(c.id)} style={{ fontSize: '0.8rem', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
-                                                    <Trash2 size={12}/> Delete Candidate
+                                                <button
+                                                    className="btn btn-secondary"
+                                                    style={{ padding: '7px', borderColor: 'rgba(239, 68, 68, 0.3)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDeleteJob(job.id);
+                                                    }}
+                                                    title="Delete job description completely"
+                                                >
+                                                    <Trash2 size={15} />
                                                 </button>
                                             </div>
                                         </div>
                                     ))}
                                 </div>
                             )}
-                        </div>
-                    </div>
-                ) : (
-                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)' }}>
-                        <div style={{ textAlign: 'center' }}>
-                            <Briefcase size={48} style={{ opacity: 0.5, marginBottom: '1rem' }} />
-                            <h3>Select a Job Description</h3>
-                            <p>Or create a new one to get started</p>
                         </div>
                     </div>
                 )}
@@ -731,7 +1789,6 @@ export default function JobsPage() {
                     </div>
                 </div>
             )}
-
             {editingJob && (
                 <div style={{
                     position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', 
@@ -758,6 +1815,16 @@ export default function JobsPage() {
                                     type="text" 
                                     value={editJobForm.client_name} 
                                     onChange={e => setEditJobForm({...editJobForm, client_name: e.target.value})} 
+                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none' }}
+                                />
+                            </div>
+                            
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Client Phone</label>
+                                <input 
+                                    type="text" 
+                                    value={editJobForm.client_phone} 
+                                    onChange={e => setEditJobForm({...editJobForm, client_phone: e.target.value})} 
                                     style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none' }}
                                 />
                             </div>
@@ -904,12 +1971,53 @@ export default function JobsPage() {
                     </div>
                 </div>
             )}
-
-            {toast && (
-                <div className="toast-container">
-                    <div className={`toast ${toast.type}`}>{toast.msg}</div>
+            
+            {/* Resume Viewer Modal */}
+            {viewingPdf && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(0,0,0,0.85)', zIndex: 99999,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    backdropFilter: 'blur(5px)'
+                }} onClick={() => setViewingPdf(null)}>
+                    <div className="card" onClick={e => e.stopPropagation()} style={{ 
+                        width: '95%', maxWidth: 1000, height: '90vh', 
+                        display: 'flex', flexDirection: 'column', padding: 0, 
+                        overflow: 'hidden', border: '1px solid var(--border)',
+                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+                    }}>
+                        <div style={{ 
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
+                            padding: '16px 24px', background: 'rgba(var(--navy-rgb), 0.98)', borderBottom: '1px solid var(--border)' 
+                        }}>
+                            <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', display: 'flex', alignItems: 'center', gap: 10, fontSize: '1.05rem' }}>
+                                <span style={{fontSize: '1.2rem', opacity: 0.8}}>📄</span> {viewingPdf.name}
+                            </h3>
+                            <button onClick={() => setViewingPdf(null)} style={{ 
+                                background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)', 
+                                color: 'var(--gold)', cursor: 'pointer', padding: 6, borderRadius: '8px', 
+                                display: 'flex', transition: 'all 0.2s' 
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.2)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.1)'}
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <iframe 
+                            src={`${viewingPdf.url}#view=FitH`} 
+                            style={{ width: '100%', flex: 1, border: 'none', background: '#525659' }} 
+                            title="Resume Viewer"
+                        />
+                    </div>
                 </div>
             )}
+ 
+             {toast && (
+                 <div className="toast-container">
+                     <div className={`toast ${toast.type}`}>{toast.msg}</div>
+                 </div>
+             )}
         </div>
     );
 }
