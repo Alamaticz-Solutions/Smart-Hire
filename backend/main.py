@@ -381,6 +381,20 @@ def create_activity_log(req: ActivityCreate):
     log_activity_db(req.username, req.action)
     return {"status": "logged"}
 
+@app.delete("/api/activity")
+def clear_activity_logs(request: Request):
+    username = request.headers.get("x-user-username")
+    try:
+        conn = sqlite3.connect(STATS_DB, timeout=30.0)
+        cur = conn.cursor()
+        cur.execute("DELETE FROM activity_logs")
+        conn.commit()
+        conn.close()
+        log_activity_db(username or "unknown", "cleared the activity feed")
+        return {"status": "cleared"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ── Authorization Helpers ──────────────────────────────────────────────────────
 def get_user_role(username: Optional[str]) -> str:
     if not username:

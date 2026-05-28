@@ -114,25 +114,65 @@ export default function Layout({ user, onLogout, theme, toggleTheme }) {
                 <div style={{
                     padding: '20px 16px 12px',
                     borderBottom: '1px solid var(--border)',
-                    background: 'rgba(var(--navy-dark-rgb), 0.4)'
+                    background: 'rgba(var(--navy-dark-rgb), 0.4)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
                 }}>
-                    <h3 style={{
-                        margin: 0,
-                        color: 'var(--gold)',
-                        fontFamily: 'var(--fh)',
-                        fontSize: '0.9rem',
-                        fontWeight: 800,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.06rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px'
-                    }}>
-                        <span>⚡</span> Activity Feed
-                    </h3>
-                    <p style={{ margin: '4px 0 0', fontSize: '0.72rem', color: 'var(--text-dim)', opacity: 0.8 }}>
-                        Live updates from your team
-                    </p>
+                    <div>
+                        <h3 style={{
+                            margin: 0,
+                            color: 'var(--gold)',
+                            fontFamily: 'var(--fh)',
+                            fontSize: '0.9rem',
+                            fontWeight: 800,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.06rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                        }}>
+                            <span>⚡</span> Activity Feed
+                        </h3>
+                        <p style={{ margin: '4px 0 0', fontSize: '0.72rem', color: 'var(--text-dim)', opacity: 0.8 }}>
+                            Live updates from your team
+                        </p>
+                    </div>
+                    {activities.length > 0 && (
+                        <button
+                            onClick={async () => {
+                                if (window.confirm("Are you sure you want to clear the activity feed?")) {
+                                    try {
+                                        await axios.delete('/api/activity');
+                                        fetchActivities();
+                                    } catch (e) {
+                                        console.error("Failed to clear activity feed", e);
+                                    }
+                                }
+                            }}
+                            style={{
+                                background: 'rgba(239, 68, 68, 0.1)',
+                                border: '1px solid rgba(239, 68, 68, 0.3)',
+                                color: '#ef4444',
+                                borderRadius: '6px',
+                                fontSize: '0.7rem',
+                                padding: '4px 8px',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s',
+                                fontWeight: 'bold'
+                            }}
+                            onMouseEnter={e => {
+                                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+                                e.currentTarget.style.borderColor = '#ef4444';
+                            }}
+                            onMouseLeave={e => {
+                                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
+                                e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+                            }}
+                        >
+                            🗑️ Clear
+                        </button>
+                    )}
                 </div>
                 
                 <div style={{
