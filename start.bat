@@ -30,7 +30,7 @@ for /f "tokens=5" %%a in ('netstat -aon ^| findstr :5173') do taskkill /f /pid %
 
 :: Start FastAPI backend in its own window (Removed --reload to prevent crash on file upload)
 echo Starting FastAPI backend on port 8000...
-Start "Hire AI - Backend" /D "%~dp0" .\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+Start "Hire AI - Backend" /D "%~dp0" .\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
 
 :: Give backend 4 seconds to start
 ping -n 5 127.0.0.1 >nul
