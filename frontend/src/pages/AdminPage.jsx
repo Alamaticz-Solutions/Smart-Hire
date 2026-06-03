@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import axios from 'axios'
-import { Shield, CheckCircle, XCircle, UserCheck, Trash2, UserPlus, Check } from 'lucide-react'
+import { Shield, CheckCircle, XCircle, UserCheck, Trash2, UserPlus, Check, Users, Search } from 'lucide-react'
 
 export default function AdminPage() {
     const { user, onUpdateUser } = useOutletContext()
@@ -12,6 +12,9 @@ export default function AdminPage() {
     const [newMemberName, setNewMemberName] = useState('')
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState(null)
+    const [userSearchQuery, setUserSearchQuery] = useState('')
+    const [keywords, setKeywords] = useState([])
+    const [newKeyword, setNewKeyword] = useState('')
 
     useEffect(() => {
         if (activeTab === 'requests') {
@@ -20,6 +23,8 @@ export default function AdminPage() {
             fetchUsers()
         } else if (activeTab === 'matrix') {
             fetchTeamMembers()
+        } else if (activeTab === 'keywords') {
+            fetchKeywords()
         }
     }, [activeTab])
 
@@ -67,13 +72,56 @@ export default function AdminPage() {
         }
     }
 
-    const toggleRole = async (id, currentRole) => {
-        const newRole = currentRole === 'admin' ? 'user' : 'admin'
+    const togglePermission = async (id, field, currentValue) => {
+        const targetUser = users.find(u => u.id === id)
+        if (!targetUser) return
+
+        if (targetUser.username === user.username && field === 'is_admin' && currentValue === 1) {
+            if (!window.confirm("WARNING: If you remove your Admin permission, you will lose access to the Admin Portal. Are you sure you want to proceed?")) {
+                return
+            }
+        }
+
+        let isHrValue = targetUser.is_hr
+        let isAdminValue = targetUser.is_admin
+        let isExternalValue = targetUser.is_external || 0
+
+        if (field === 'is_hr') {
+            isHrValue = currentValue === 1 ? 0 : 1
+            if (isHrValue === 1) {
+                isExternalValue = 0
+            }
+        } else if (field === 'is_admin') {
+            isAdminValue = currentValue === 1 ? 0 : 1
+            if (isAdminValue === 1) {
+                isExternalValue = 0
+            }
+        } else if (field === 'is_external') {
+            isExternalValue = currentValue === 1 ? 0 : 1
+            if (isExternalValue === 1) {
+                isHrValue = 0
+                isAdminValue = 0
+            }
+        }
+
         try {
-            await axios.put(`/api/admin/users/${id}/role`, { role: newRole })
+            await axios.put(`/api/admin/users/${id}/permissions`, { 
+                is_hr: isHrValue, 
+                is_admin: isAdminValue,
+                is_external: isExternalValue
+            })
+            if (targetUser.username === user.username) {
+                onUpdateUser({ 
+                    ...user, 
+                    is_hr: isHrValue, 
+                    is_admin: isAdminValue,
+                    is_external: isExternalValue,
+                    role: isAdminValue === 1 ? 'admin' : 'user'
+                })
+            }
             fetchUsers()
         } catch (err) {
-            alert(err.response?.data?.detail || 'Failed to update user role')
+            alert(err.response?.data?.detail || 'Failed to update user permissions')
         }
     }
 
@@ -84,6 +132,44 @@ export default function AdminPage() {
             fetchUsers()
         } catch (err) {
             alert(err.response?.data?.detail || 'Failed to delete user')
+        }
+    }
+
+    const fetchKeywords = async () => {
+        setLoading(true)
+        setError(null)
+        try {
+            const res = await axios.get('/api/admin/masked-keywords')
+            setKeywords(res.data || [])
+        } catch (err) {
+            setError(err.response?.data?.detail || 'Failed to load masked keywords.')
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const handleAddKeyword = async (e) => {
+        e.preventDefault()
+        const kw = newKeyword.trim()
+        if (!kw) return
+        setError(null)
+        try {
+            await axios.post('/api/admin/masked-keywords', { keyword: kw })
+            setNewKeyword('')
+            fetchKeywords()
+        } catch (err) {
+            setError(err.response?.data?.detail || 'Failed to add masked keyword.')
+        }
+    }
+
+    const handleDeleteKeyword = async (kw) => {
+        if (!window.confirm(`Are you sure you want to remove "${kw}" from masked keywords?`)) return
+        setError(null)
+        try {
+            await axios.delete(`/api/admin/masked-keywords/${encodeURIComponent(kw)}`)
+            fetchKeywords()
+        } catch (err) {
+            setError(err.response?.data?.detail || 'Failed to delete masked keyword.')
         }
     }
 
@@ -181,15 +267,15 @@ export default function AdminPage() {
                     User Management
                 </button>
                 <button 
-                    onClick={() => setActiveTab('matrix')}
+                    onClick={() => setActiveTab('keywords')}
                     style={{
                         padding: '0.8rem 1.5rem', background: 'none', border: 'none', cursor: 'pointer',
-                        color: activeTab === 'matrix' ? 'var(--gold)' : 'var(--text-dim)',
-                        borderBottom: activeTab === 'matrix' ? '2px solid var(--gold)' : '2px solid transparent',
-                        fontWeight: activeTab === 'matrix' ? 'bold' : 'normal', fontSize: '1rem'
+                        color: activeTab === 'keywords' ? 'var(--gold)' : 'var(--text-dim)',
+                        borderBottom: activeTab === 'keywords' ? '2px solid var(--gold)' : '2px solid transparent',
+                        fontWeight: activeTab === 'keywords' ? 'bold' : 'normal', fontSize: '1rem'
                     }}
                 >
-                    Recruiter Persona Matrix
+                    Masked Keywords
                 </button>
             </div>
 
@@ -246,259 +332,270 @@ export default function AdminPage() {
 
             {/* Users Tab */}
             {!loading && activeTab === 'users' && (
-                <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                        <thead style={{ background: 'var(--bg-darker)', borderBottom: '1px solid var(--border)' }}>
-                            <tr>
-                                <th style={{ padding: '1rem' }}>Username</th>
-                                <th style={{ padding: '1rem' }}>Full Name</th>
-                                <th style={{ padding: '1rem' }}>Role</th>
-                                <th style={{ padding: '1rem', textAlign: 'right' }}>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {users.map(u => (
-                                <tr key={u.username} style={{ borderBottom: '1px solid var(--border)' }}>
-                                    <td style={{ padding: '1rem', fontWeight: '500' }}>{u.username}</td>
-                                    <td style={{ padding: '1rem', color: 'var(--text-dim)' }}>{u.full_name}</td>
-                                    <td style={{ padding: '1rem' }}>
-                                        <span style={{ 
-                                            padding: '0.2rem 0.6rem', borderRadius: '4px', fontSize: '0.8rem', fontWeight: 'bold',
-                                            background: u.role === 'admin' ? 'rgba(var(--gold-rgb), 0.2)' : 'rgba(var(--sky-dim-rgb), 0.1)',
-                                            color: u.role === 'admin' ? 'var(--gold)' : 'var(--text-dim)'
-                                        }}>
-                                            {u.role.toUpperCase()}
-                                        </span>
-                                    </td>
-                                    <td style={{ padding: '1rem', textAlign: 'right' }}>
-                                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                                            <button 
-                                                className="btn btn-secondary" 
-                                                style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
-                                                onClick={() => toggleRole(u.id, u.role)}
-                                            >
-                                                <UserCheck size={14} /> Make {u.role === 'admin' ? 'User' : 'Admin'}
-                                            </button>
-                                            <button 
-                                                className="btn btn-danger" 
-                                                style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', background: '#e74c3c' }}
-                                                onClick={() => handleDeleteUser(u.id, u.username)}
-                                            >
-                                                <Trash2 size={14} /> Delete
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                            {users.length === 0 && (
-                                <tr><td colSpan="4" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-dim)' }}>No users found.</td></tr>
-                            )}
-                        </tbody>
-                    </table>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    {/* KPI mini-cards */}
+                    <div className="user-stats-grid">
+                        <div className="user-stat-card">
+                            <div className="user-stat-icon-container">
+                                <Users size={20} />
+                            </div>
+                            <div className="user-stat-info">
+                                <span className="user-stat-value">{users.length}</span>
+                                <span className="user-stat-label">Total Registered</span>
+                            </div>
+                        </div>
+                        <div className="user-stat-card">
+                            <div className="user-stat-icon-container" style={{ color: '#219EBC', background: 'rgba(33, 158, 188, 0.1)', borderColor: 'rgba(33, 158, 188, 0.3)' }}>
+                                <UserCheck size={20} />
+                            </div>
+                            <div className="user-stat-info">
+                                <span className="user-stat-value">{users.filter(u => u.is_hr === 1).length}</span>
+                                <span className="user-stat-label">HR Managers</span>
+                            </div>
+                        </div>
+                        <div className="user-stat-card">
+                            <div className="user-stat-icon-container" style={{ color: '#FB8500', background: 'rgba(251, 133, 0, 0.1)', borderColor: 'rgba(251, 133, 0, 0.3)' }}>
+                                <Shield size={20} />
+                            </div>
+                            <div className="user-stat-info">
+                                <span className="user-stat-value">{users.filter(u => u.is_admin === 1).length}</span>
+                                <span className="user-stat-label">System Admins</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Filter and Table Control Card */}
+                    <div className="user-table-card">
+                        <div style={{ 
+                            padding: '1.2rem 1.5rem', 
+                            borderBottom: '1px solid var(--border)', 
+                            display: 'flex', 
+                            justifyContent: 'space-between', 
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                            gap: '1rem',
+                            background: 'rgba(var(--navy-dark-rgb), 0.3)'
+                        }}>
+                            <div>
+                                <h3 style={{ margin: 0, fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 700 }}>Registered Users</h3>
+                                <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-dim)' }}>Update permissions and manage access credentials.</p>
+                            </div>
+                            <div style={{ position: 'relative', width: '260px' }}>
+                                <input
+                                    type="text"
+                                    className="form-input"
+                                    placeholder="Search users..."
+                                    style={{ margin: 0, paddingLeft: '34px', fontSize: '0.85rem' }}
+                                    value={userSearchQuery}
+                                    onChange={e => setUserSearchQuery(e.target.value)}
+                                />
+                                <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)', opacity: 0.7 }} />
+                            </div>
+                        </div>
+
+                        <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                                <thead style={{ background: 'rgba(var(--navy-rgb), 0.25)', borderBottom: '1px solid var(--border)' }}>
+                                    <tr>
+                                        <th style={{ padding: '1rem 1.5rem', fontSize: '0.78rem' }}>User Profile</th>
+                                        <th style={{ padding: '1rem', textAlign: 'center', fontSize: '0.78rem' }}>HR</th>
+                                        <th style={{ padding: '1rem', textAlign: 'center', fontSize: '0.78rem' }}>Admin</th>
+                                        <th style={{ padding: '1rem', textAlign: 'center', fontSize: '0.78rem' }}>External</th>
+                                        <th style={{ padding: '1rem 1.5rem', textAlign: 'right', fontSize: '0.78rem' }}>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {users.filter(u => 
+                                        u.username.toLowerCase().includes(userSearchQuery.toLowerCase()) || 
+                                        u.full_name.toLowerCase().includes(userSearchQuery.toLowerCase())
+                                    ).map(u => {
+                                        const isSelf = u.username.toLowerCase() === user.username.toLowerCase();
+                                        
+                                        // Generate beautiful initials and avatar colors
+                                        const initials = (u.full_name || u.username).split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+                                        let avatarBg = 'linear-gradient(135deg, #64748b, #475569)'; // slate
+                                        if (u.is_admin === 1 && u.is_hr === 1) {
+                                            avatarBg = 'linear-gradient(135deg, #a855f7, #ec4899)'; // purple-pink (super-user)
+                                        } else if (u.is_admin === 1) {
+                                            avatarBg = 'linear-gradient(135deg, #f97316, #ef4444)'; // orange-red (admin)
+                                        } else if (u.is_hr === 1) {
+                                            avatarBg = 'linear-gradient(135deg, #0ea5e9, #059669)'; // sky-emerald (HR manager)
+                                        } else if (u.is_external === 1) {
+                                            avatarBg = 'linear-gradient(135deg, #94a3b8, #64748b)'; // slate grey (external)
+                                        }
+
+                                        return (
+                                            <tr key={u.username} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.2s' }} className="table-user-row">
+                                                <td style={{ padding: '1rem 1.5rem' }}>
+                                                    <div className="user-cell-profile">
+                                                        <div className="user-avatar-circle" style={{ background: avatarBg }}>
+                                                            {initials}
+                                                        </div>
+                                                        <div className="user-info-text">
+                                                            <span className="user-info-name">{u.full_name || 'Anonymous User'}</span>
+                                                            <span className="user-info-username">@{u.username}</span>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td style={{ padding: '1rem', textAlign: 'center' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                                        <label className="switch-container">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                className="switch-input"
+                                                                checked={u.is_hr === 1}
+                                                                disabled={isSelf}
+                                                                onChange={() => togglePermission(u.id, 'is_hr', u.is_hr)}
+                                                            />
+                                                            <span className="switch-slider"></span>
+                                                        </label>
+                                                        <span className={`switch-label-tag ${u.is_hr === 1 ? 'active' : 'inactive'}`}>
+                                                            {u.is_hr === 1 ? 'HR' : 'Off'}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td style={{ padding: '1rem', textAlign: 'center' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                                        <label className="switch-container">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                className="switch-input"
+                                                                checked={u.is_admin === 1}
+                                                                disabled={isSelf}
+                                                                onChange={() => togglePermission(u.id, 'is_admin', u.is_admin)}
+                                                            />
+                                                            <span className="switch-slider"></span>
+                                                        </label>
+                                                        <span className={`switch-label-tag ${u.is_admin === 1 ? 'active' : 'inactive'}`}>
+                                                            {u.is_admin === 1 ? 'Admin' : 'Off'}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td style={{ padding: '1rem', textAlign: 'center' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                                        <label className="switch-container">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                className="switch-input"
+                                                                checked={u.is_external === 1}
+                                                                disabled={isSelf}
+                                                                onChange={() => togglePermission(u.id, 'is_external', u.is_external)}
+                                                            />
+                                                            <span className="switch-slider"></span>
+                                                        </label>
+                                                        <span className={`switch-label-tag ${u.is_external === 1 ? 'active' : 'inactive'}`}>
+                                                            {u.is_external === 1 ? 'External' : 'Off'}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td style={{ padding: '1rem 1.5rem', textAlign: 'right' }}>
+                                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                                                        {isSelf ? (
+                                                            <span className="current-user-badge">
+                                                                <Check size={12} strokeWidth={3} /> You
+                                                            </span>
+                                                        ) : (
+                                                            <button 
+                                                                className="btn btn-danger" 
+                                                                style={{ padding: '0.45rem 0.9rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', borderRadius: '8px' }}
+                                                                onClick={() => handleDeleteUser(u.id, u.username)}
+                                                            >
+                                                                <Trash2 size={13} /> Delete
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                                                    {users.filter(u => 
+                                        u.username.toLowerCase().includes(userSearchQuery.toLowerCase()) || 
+                                        u.full_name.toLowerCase().includes(userSearchQuery.toLowerCase())
+                                    ).length === 0 && (
+                                        <tr>
+                                            <td colSpan="5" style={{ padding: '3rem 2rem', textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.9rem' }}>
+                                                No users found matching your search.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             )}
 
-            {/* Matrix Tab */}
-            {!loading && activeTab === 'matrix' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                    {/* Add Recruiter Card Form */}
-                    <div className="card" style={{
-                        maxWidth: '500px',
-                        background: 'rgba(var(--navy-dark-rgb), 0.25)',
-                        border: '1px solid var(--border)',
-                        borderRadius: '12px',
-                        padding: '20px'
-                    }}>
-                        <h3 style={{ margin: '0 0 12px 0', fontSize: '1.05rem', color: 'var(--gold)' }}>
-                            ➕ Add Recruiter to Matrix
-                        </h3>
-                        <form onSubmit={handleAddTeamMember} style={{ display: 'flex', gap: '10px' }}>
-                            <input
+            {/* Masked Keywords Tab */}
+            {!loading && activeTab === 'keywords' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: '800px' }}>
+                    <div className="card" style={{ padding: '2rem' }}>
+                        <h3 style={{ margin: '0 0 0.5rem 0', fontFamily: 'var(--fh)', fontSize: '1.2rem', color: 'var(--gold)' }}>Add Masked Keyword</h3>
+                        <p style={{ margin: '0 0 1.5rem 0', fontSize: '0.85rem', color: 'var(--text-dim)' }}>
+                            Add keywords/certifications (e.g. "CSSA", "LSA") to be masked with <code>****</code> in candidate profiles for non-admin and non-HR users.
+                        </p>
+                        <form onSubmit={handleAddKeyword} style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                            <input 
                                 type="text"
                                 className="form-input"
+                                placeholder="Enter keyword to mask (e.g. CSSA)"
+                                value={newKeyword}
+                                onChange={e => setNewKeyword(e.target.value)}
                                 style={{ flex: 1, margin: 0 }}
-                                placeholder="Recruiter name (e.g. Sekhar)"
-                                value={newMemberName}
-                                onChange={e => setNewMemberName(e.target.value)}
                             />
-                            <button type="submit" className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                                <UserPlus size={16} /> Add
+                            <button type="submit" className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap' }}>
+                                <UserPlus size={16} /> Add Keyword
                             </button>
                         </form>
                     </div>
 
-                    {/* Persona Grid Matrix */}
-                    <div>
-                        <h3 style={{ margin: '0 0 16px 0', fontSize: '1.1rem', color: 'var(--text)' }}>
-                            ⚡ Recruiter Personas
-                        </h3>
-                        
-                        {teamMembers.length === 0 ? (
-                            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-dim)' }}>
-                                No recruiter personas found. Add one above!
+                    <div className="card" style={{ padding: '2rem' }}>
+                        <h3 style={{ margin: '0 0 1.5rem 0', fontFamily: 'var(--fh)', fontSize: '1.2rem' }}>Currently Masked Keywords</h3>
+                        {keywords.length === 0 ? (
+                            <div style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '2rem 0', fontSize: '0.9rem' }}>
+                                No masked keywords defined. Non-admin/non-HR users will see all details.
                             </div>
                         ) : (
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '20px' }}>
-                                {teamMembers.map(member => {
-                                    const isActive = user?.active_persona === member.name;
-                                    return (
-                                        <div
-                                            key={member.id}
-                                            onClick={() => handleSelectPersona(member.name)}
-                                            style={{
-                                                background: isActive ? 'rgba(251, 133, 0, 0.08)' : 'rgba(255, 255, 255, 0.03)',
-                                                border: isActive ? '2.5px solid #FB8500' : '1px solid var(--border)',
-                                                borderRadius: '16px',
-                                                padding: '24px 20px',
-                                                textAlign: 'center',
-                                                cursor: 'pointer',
-                                                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                                                position: 'relative',
-                                                boxShadow: isActive ? '0 10px 25px rgba(251, 133, 0, 0.25)' : '0 4px 15px rgba(0, 0, 0, 0.05)',
-                                                transform: isActive ? 'scale(1.02)' : 'none'
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                                {keywords.map(kw => (
+                                    <div key={kw} style={{ 
+                                        display: 'flex', 
+                                        justifyContent: 'space-between', 
+                                        alignItems: 'center', 
+                                        padding: '0.8rem 1.2rem', 
+                                        background: 'rgba(var(--navy-rgb), 0.2)', 
+                                        border: '1px solid var(--border)', 
+                                        borderRadius: '8px' 
+                                    }}>
+                                        <span style={{ fontFamily: 'monospace', fontWeight: 'bold', fontSize: '1rem', color: 'var(--text)' }}>
+                                            {kw}
+                                        </span>
+                                        <button 
+                                            className="btn btn-danger" 
+                                            style={{ 
+                                                padding: '0.4rem 0.8rem', 
+                                                fontSize: '0.8rem', 
+                                                display: 'inline-flex', 
+                                                alignItems: 'center', 
+                                                gap: '0.4rem', 
+                                                background: 'rgba(231, 76, 60, 0.1)',
+                                                border: '1px solid rgba(231, 76, 60, 0.3)',
+                                                color: '#e74c3c',
+                                                borderRadius: '6px',
+                                                cursor: 'pointer'
                                             }}
-                                            onMouseEnter={e => {
-                                                if (!isActive) {
-                                                    e.currentTarget.style.borderColor = 'var(--gold)';
-                                                    e.currentTarget.style.transform = 'translateY(-4px)';
-                                                    e.currentTarget.style.boxShadow = '0 12px 30px rgba(0, 0, 0, 0.15)';
-                                                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
-                                                }
-                                            }}
-                                            onMouseLeave={e => {
-                                                if (!isActive) {
-                                                    e.currentTarget.style.borderColor = 'var(--border)';
-                                                    e.currentTarget.style.transform = 'none';
-                                                    e.currentTarget.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.05)';
-                                                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
-                                                }
-                                            }}
+                                            onClick={() => handleDeleteKeyword(kw)}
                                         >
-                                            {/* Delete Button */}
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleDeleteTeamMember(member.id, member.name);
-                                                }}
-                                                style={{
-                                                    position: 'absolute',
-                                                    top: '12px',
-                                                    right: '12px',
-                                                    background: 'rgba(239, 68, 68, 0.1)',
-                                                    border: '1px solid rgba(239, 68, 68, 0.2)',
-                                                    color: '#ef4444',
-                                                    borderRadius: '6px',
-                                                    width: '28px',
-                                                    height: '28px',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    cursor: 'pointer',
-                                                    transition: 'all 0.2s'
-                                                }}
-                                                onMouseEnter={e => {
-                                                    e.currentTarget.style.background = 'rgba(239, 68, 68, 0.25)';
-                                                    e.currentTarget.style.borderColor = '#ef4444';
-                                                }}
-                                                onMouseLeave={e => {
-                                                    e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
-                                                    e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.2)';
-                                                }}
-                                                title="Remove recruiter from matrix"
-                                            >
-                                                <Trash2 size={13} />
-                                            </button>
-
-                                            {/* Avatar Badge */}
-                                            <div style={{
-                                                width: '56px',
-                                                height: '56px',
-                                                borderRadius: '50%',
-                                                background: isActive ? 'linear-gradient(135deg, #FB8500, #FFB703)' : 'rgba(255, 255, 255, 0.08)',
-                                                color: isActive ? '#fff' : 'var(--text)',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                margin: '0 auto 16px',
-                                                fontWeight: '800',
-                                                fontSize: '1.4rem',
-                                                border: isActive ? 'none' : '1px solid rgba(255, 255, 255, 0.15)',
-                                                boxShadow: isActive ? '0 0 15px rgba(251, 133, 0, 0.4)' : 'none',
-                                                transition: 'all 0.3s ease'
-                                            }}>
-                                                {member.name[0]?.toUpperCase()}
-                                            </div>
-
-                                            {/* Name */}
-                                            <h4 style={{
-                                                margin: '0 0 8px 0',
-                                                fontSize: '1.15rem',
-                                                fontWeight: '800',
-                                                color: isActive ? 'var(--gold)' : 'var(--text)',
-                                                transition: 'all 0.3s ease'
-                                            }}>
-                                                {member.name}
-                                            </h4>
-
-                                            {/* Status Indicator */}
-                                            <div style={{
-                                                display: 'inline-flex',
-                                                alignItems: 'center',
-                                                gap: '6px',
-                                                padding: '4px 10px',
-                                                borderRadius: '12px',
-                                                background: isActive ? 'rgba(251, 133, 0, 0.15)' : 'rgba(255, 255, 255, 0.05)',
-                                                marginTop: '4px',
-                                                transition: 'all 0.3s ease'
-                                            }}>
-                                                <span style={{
-                                                    width: '6px',
-                                                    height: '6px',
-                                                    borderRadius: '50%',
-                                                    background: isActive ? '#FB8500' : 'var(--text-dim)',
-                                                    display: 'inline-block',
-                                                    opacity: isActive ? 1 : 0.6
-                                                }}></span>
-                                                <span style={{
-                                                    fontSize: '0.72rem',
-                                                    fontWeight: '700',
-                                                    textTransform: 'uppercase',
-                                                    letterSpacing: '0.04rem',
-                                                    color: isActive ? 'var(--gold)' : 'var(--text-dim)',
-                                                    opacity: isActive ? 1 : 0.7
-                                                }}>
-                                                    {isActive ? 'Active Persona' : 'Inactive'}
-                                                </span>
-                                            </div>
-
-                                            {isActive && (
-                                                <div style={{
-                                                    position: 'absolute',
-                                                    bottom: '-10px',
-                                                    left: '50%',
-                                                    transform: 'translateX(-50%)',
-                                                    background: '#FB8500',
-                                                    borderRadius: '10px',
-                                                    padding: '2px 8px',
-                                                    fontSize: '0.62rem',
-                                                    fontWeight: 'bold',
-                                                    color: '#fff',
-                                                    boxShadow: '0 2px 5px rgba(251, 133, 0, 0.3)',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '2px'
-                                                }}>
-                                                    <Check size={9} strokeWidth={4} /> ACTING RECRUITER
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
+                                            <Trash2 size={13} /> Remove
+                                        </button>
+                                    </div>
+                                ))}
                             </div>
                         )}
                     </div>
                 </div>
             )}
+
+
         </div>
     )
 }

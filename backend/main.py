@@ -97,7 +97,7 @@ PROJECT_ROOT = os.path.dirname(BASE_DIR)
 
 CHROMA_PATH  = os.path.join(BASE_DIR, "chroma_db")
 UPLOAD_DIR   = os.path.join(BASE_DIR, "static")
-STATS_DB     = os.path.join(BASE_DIR, "stats.db")
+STATS_DB     = os.getenv("STATS_DB_PATH", os.path.join(BASE_DIR, "stats.db"))
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -210,7 +210,9 @@ def init_db():
             full_name TEXT NOT NULL,
             username TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL,
-            role TEXT DEFAULT 'user'
+            role TEXT DEFAULT 'user',
+            is_hr INTEGER DEFAULT 0,
+            is_admin INTEGER DEFAULT 0
         )
     ''')
     cur.execute('''
@@ -240,12 +242,31 @@ def init_db():
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS job_shares (
+            job_id INTEGER,
+            username TEXT,
+            PRIMARY KEY (job_id, username),
+            FOREIGN KEY (job_id) REFERENCES jobs(id),
+            FOREIGN KEY (username) REFERENCES users(username)
+        )
+    ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS masked_keywords (
+            keyword TEXT PRIMARY KEY
+        )
+    ''')
+    cur.execute("SELECT COUNT(*) FROM masked_keywords")
+    if cur.fetchone()[0] == 0:
+        for kw in ["CSSA", "LSA"]:
+            cur.execute("INSERT OR IGNORE INTO masked_keywords (keyword) VALUES (?)", (kw,))
 
     # Migration: add missing columns to candidate_metadata
     cur.execute("PRAGMA table_info(candidate_metadata)")
     existing = [c[1] for c in cur.fetchall()]
     new_cols = {
         'candidate_status': "TEXT DEFAULT 'New'",
+        'source': "TEXT DEFAULT 'Resume Upload'",
         'cdh_exp': 'REAL DEFAULT 0.0',
         'expected_ctc': 'TEXT',
         'percentage_hike': 'TEXT',
@@ -289,25 +310,51 @@ def init_db():
         if col not in existing_jobs:
             cur.execute(f"ALTER TABLE jobs ADD COLUMN {col} {dtype}")
             
+    # Migration: add missing columns to users
+    cur.execute("PRAGMA table_info(users)")
+    existing_users_cols = [c[1] for c in cur.fetchall()]
+    if 'is_hr' not in existing_users_cols:
+        cur.execute("ALTER TABLE users ADD COLUMN is_hr INTEGER DEFAULT 0")
+    if 'is_admin' not in existing_users_cols:
+        cur.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0")
+    if 'is_external' not in existing_users_cols:
+        cur.execute("ALTER TABLE users ADD COLUMN is_external INTEGER DEFAULT 0")
+
     # Seed default users if empty (do NOT wipe the table to preserve registered users!)
-    cur.execute("SELECT COUNT(*) FROM users WHERE username = 'admin'")
+    cur.execute("SELECT COUNT(*) FROM users WHERE LOWER(username) = 'admin'")
     if cur.fetchone()[0] == 0:
-        cur.execute("INSERT INTO users (full_name, username, password, role) VALUES (?, ?, ?, ?)",
-                    ("System Admin", "admin", "admin", "admin"))
+        cur.execute("INSERT INTO users (full_name, username, password, role, is_hr, is_admin) VALUES (?, ?, ?, ?, ?, ?)",
+                    ("System Admin", "admin", "admin", "admin", 1, 1))
     else:
         # Guarantee admin password is 'admin' as requested by the user
-        cur.execute("UPDATE users SET password = ?, role = 'admin' WHERE username = 'admin'", ("admin",))
+        cur.execute("UPDATE users SET password = ?, role = 'admin', is_hr = 1, is_admin = 1 WHERE LOWER(username) = 'admin'", ("admin",))
 
-    cur.execute("SELECT COUNT(*) FROM users WHERE username = 'user'")
+    cur.execute("SELECT COUNT(*) FROM users WHERE LOWER(username) = 'user'")
     if cur.fetchone()[0] == 0:
-        cur.execute("INSERT INTO users (full_name, username, password, role) VALUES (?, ?, ?, ?)",
-                    ("Test User", "user", "user", "user"))
+        cur.execute("INSERT INTO users (full_name, username, password, role, is_hr, is_admin) VALUES (?, ?, ?, ?, ?, ?)",
+                    ("Test User", "user", "user", "user", 0, 0))
+
+    # Seed the 4 recruiters in user management if they do not exist
+    for m in ["Boopathi", "Praveen", "Harish", "Sabari"]:
+        uname = m.lower()
+        role = "admin" if uname == "sabari" else "user"
+        is_admin = 1 if uname == "sabari" else 0
+        is_hr = 1 if uname == "sabari" else 0
+        cur.execute("SELECT COUNT(*) FROM users WHERE LOWER(username) = ?", (uname,))
+        if cur.fetchone()[0] == 0:
+            cur.execute("INSERT INTO users (full_name, username, password, role, is_hr, is_admin) VALUES (?, ?, ?, ?, ?, ?)",
+                        (m, uname, uname, role, is_hr, is_admin))
+        else:
+            cur.execute("UPDATE users SET is_hr = ?, is_admin = ?, role = ? WHERE LOWER(username) = ?", (is_hr, is_admin, role, uname))
         
     cur.execute("SELECT COUNT(*) FROM team_members")
     if cur.fetchone()[0] == 0:
         for m in ["Boopathi", "Praveen", "Harish", "Sabari"]:
             cur.execute("INSERT OR IGNORE INTO team_members (name) VALUES (?)", (m,))
         
+    # Delete legacy resume approval requests to clean up the Admin Portal
+    cur.execute("DELETE FROM change_requests WHERE action_type = 'approve_resume'")
+
     conn.commit()
     conn.close()
 
@@ -322,6 +369,38 @@ def get_candidates_list() -> list:
         rows = []
     conn.close()
     return rows
+
+def get_masked_keywords() -> list:
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT keyword FROM masked_keywords")
+        keywords = [row[0] for row in cur.fetchall()]
+    except Exception:
+        keywords = []
+    conn.close()
+    return keywords
+
+def mask_text_with_keywords(text: str, keywords: list) -> str:
+    if not text or not keywords:
+        return text
+    result = str(text)
+    for kw in keywords:
+        if not kw.strip():
+            continue
+        pattern = re.compile(re.escape(kw), re.IGNORECASE)
+        result = pattern.sub("****", result)
+    return result
+
+def mask_candidate_record(candidate: dict, keywords: list) -> dict:
+    masked = {}
+    for k, v in candidate.items():
+        if isinstance(v, str):
+            masked[k] = mask_text_with_keywords(v, keywords)
+        else:
+            masked[k] = v
+    return masked
+
 
 def log_candidate(data: dict):
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
@@ -478,11 +557,14 @@ def get_user_role(username: Optional[str]) -> str:
         return "user"
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
-    cur.execute("SELECT role FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+    cur.execute("SELECT role, is_admin FROM users WHERE LOWER(username) = LOWER(?)", (username,))
     row = cur.fetchone()
     conn.close()
     if row:
-        return row[0]
+        role, is_admin = row
+        if is_admin == 1 or role == "admin":
+            return "admin"
+        return role
     return "user"
 
 def create_change_request(username: str, action_type: str, target_id: Optional[str] = None, payload: Optional[str] = None, description: Optional[str] = None):
@@ -522,6 +604,11 @@ def list_candidates(request: Request):
         for k, v in row.items():
             if v is None:
                 row[k] = ""
+
+    if not is_admin_or_hr(username):
+        keywords = get_masked_keywords()
+        rows = [mask_candidate_record(row, keywords) for row in rows]
+        
     return rows
 
 class CustomColumn(BaseModel):
@@ -563,6 +650,7 @@ def get_columns():
     base_cols = [
         {"col_key": "full_name", "col_label": "Name"},
         {"col_key": "candidate_status", "col_label": "Candidate Status"},
+        {"col_key": "source", "col_label": "Source"},
         {"col_key": "total_experience", "col_label": "Total Exp"},
         {"col_key": "pega_experience", "col_label": "Pega Exp"},
         {"col_key": "cdh_exp", "col_label": "CDH Exp"},
@@ -674,6 +762,21 @@ def delete_candidate(candidate_id: int, request: Request):
     log_activity_db(username or "unknown", f"deleted candidate '{cname}'")
     return {"status": "deleted"}
 
+@app.get("/api/candidates/{candidate_id}/jobs")
+def get_candidate_jobs(candidate_id: int):
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT j.*, jc.status as match_status, jc.ai_reason
+        FROM jobs j
+        JOIN job_candidates jc ON j.id = jc.job_id
+        WHERE jc.candidate_id = ?
+    """, (candidate_id,))
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return rows
+
 # ── Upload & Extract ────────────────────────────────────────────────────────────
 EXTRACT_PROMPT = """You are an expert resume parser. Extract EVERY piece of information from the resume below.
 Be extremely thorough — search all sections: Summary, Experience, Skills, Education, Certifications, Contact, Headers, Footers.
@@ -704,7 +807,8 @@ Return ONLY a valid JSON object with these exact keys (no extra text, no markdow
   "tier": "<Tier1, Tier2, or Tier3 based on their college/university or companies. Guess if possible, or empty. Matching column heading: 'Tier (Tier1 Tier2 Tier3)'>",
   "certification_version": "<Version of Pega certifications, e.g. 8.6, 8.8. Empty if not found. Matching column heading: 'Certification Version'>",
   "skills": "<All technical skills comma-separated. Matching column heading: 'Skills'>",
-  "certifications": "<All certifications and courses comma-separated. Matching column heading: 'Certifications'>"{custom_fields}
+  "certifications": "<All certifications and courses comma-separated. Matching column heading: 'Certifications'>",
+  "source": "<Extract source of candidate profile if mentioned in resume, e.g. 'LinkedIn', 'Naukri', 'Resume Upload'. If none is found, return 'Resume Upload'. Matching column heading: 'Source'>"{custom_fields}
 }}
 
 Rules:
@@ -1121,7 +1225,10 @@ def process_excel_file_logic(safe_name: str, path: str, username: str):
             'interview status': 'candidate_interview_status',
             'availability': 'availability_in_days',
             'availability in days': 'availability_in_days',
-            'availability_in_days': 'availability_in_days'
+            'availability_in_days': 'availability_in_days',
+            'source': 'source',
+            'candidate source': 'source',
+            'how did you find us': 'source'
         }
         
         # Load existing candidates from DB
@@ -1242,6 +1349,8 @@ def process_excel_file_logic(safe_name: str, path: str, username: str):
                 cur.execute("PRAGMA table_info(candidate_metadata)")
                 allowed_cols = {c[1] for c in cur.fetchall()}
                 db_data = {k: v for k, v in row_data.items() if k in allowed_cols and k != 'id'}
+                if 'source' not in db_data or not db_data['source']:
+                    db_data['source'] = 'Excel Import'
                 
                 if match_id:
                     # Update existing record
@@ -1647,18 +1756,39 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
-class UserRoleUpdate(BaseModel):
-    role: str
+class UserPermissionsUpdate(BaseModel):
+    is_hr: int
+    is_admin: int
+    is_external: Optional[int] = 0
 
 def has_digit(s: str) -> bool:
     return any(c.isdigit() for c in s)
 
 @app.get("/api/jobs")
-def list_jobs():
+def list_jobs(request: Request):
+    username = request.headers.get("x-user-username")
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
-    cur.execute("SELECT * FROM jobs ORDER BY id DESC")
+    
+    # Check if requesting user is external
+    is_external = False
+    if username:
+        cur.execute("SELECT is_external FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+        row = cur.fetchone()
+        if row and row['is_external'] == 1:
+            is_external = True
+            
+    if is_external:
+        cur.execute("""
+            SELECT j.* FROM jobs j
+            JOIN job_shares js ON j.id = js.job_id
+            WHERE LOWER(js.username) = LOWER(?)
+            ORDER BY j.id DESC
+        """, (username,))
+    else:
+        cur.execute("SELECT * FROM jobs ORDER BY id DESC")
+        
     jobs = [dict(r) for r in cur.fetchall()]
     for job in jobs:
         job_id = job['id']
@@ -1763,7 +1893,7 @@ def delete_job(job_id: int, request: Request):
     return {"message": "Job deleted"}
 
 @app.get("/api/jobs/{job_id}/candidates")
-def get_job_candidates(job_id: int):
+def get_job_candidates(job_id: int, request: Request):
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
@@ -1775,7 +1905,84 @@ def get_job_candidates(job_id: int):
     """, (job_id,))
     candidates = [dict(row) for row in cur.fetchall()]
     conn.close()
+    
+    # Replace None values with empty string
+    for row in candidates:
+        for k, v in row.items():
+            if v is None:
+                row[k] = ""
+
+    username = request.headers.get("x-user-username")
+    if not is_admin_or_hr(username):
+        keywords = get_masked_keywords()
+        candidates = [mask_candidate_record(row, keywords) for row in candidates]
+        
     return candidates
+
+@app.get("/api/jobs/{job_id}/unmatched-candidates")
+def get_unmatched_candidates(job_id: int, request: Request):
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT * FROM candidate_metadata 
+        WHERE id NOT IN (
+            SELECT candidate_id FROM job_candidates WHERE job_id = ?
+        )
+        ORDER BY full_name ASC
+    """, (job_id,))
+    candidates = [dict(row) for row in cur.fetchall()]
+    conn.close()
+
+    # Replace None values with empty string
+    for row in candidates:
+        for k, v in row.items():
+            if v is None:
+                row[k] = ""
+
+    username = request.headers.get("x-user-username")
+    if not is_admin_or_hr(username):
+        keywords = get_masked_keywords()
+        candidates = [mask_candidate_record(row, keywords) for row in candidates]
+        
+    return candidates
+
+@app.post("/api/jobs/{job_id}/candidates/{candidate_id}")
+def add_job_candidate(job_id: int, candidate_id: int, request: Request):
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    
+    # Check if already mapped
+    cur.execute("SELECT 1 FROM job_candidates WHERE job_id = ? AND candidate_id = ?", (job_id, candidate_id))
+    if cur.fetchone():
+        conn.close()
+        raise HTTPException(status_code=400, detail="Candidate is already matched to this job.")
+        
+    cur.execute("""
+        INSERT INTO job_candidates (job_id, candidate_id, ai_reason, status)
+        VALUES (?, ?, 'Manually associated by recruiter.', 'matched')
+    """, (job_id, candidate_id))
+    
+    # Fetch candidate name for logging
+    cur.execute("SELECT full_name FROM candidate_metadata WHERE id = ?", (candidate_id,))
+    cand_row = cur.fetchone()
+    cand_name = cand_row[0] if cand_row else f"ID {candidate_id}"
+    
+    # Fetch job title for logging
+    cur.execute("SELECT title FROM jobs WHERE id = ?", (job_id,))
+    job_row = cur.fetchone()
+    job_title = job_row[0] if job_row else f"ID {job_id}"
+    
+    conn.commit()
+    conn.close()
+    
+    # Try to log activity
+    try:
+        log_activity_db("recruiter", f"manually matched candidate '{cand_name}' to job '{job_title}'")
+    except Exception as e:
+        print("Failed to log activity:", e)
+        
+    return {"message": "Candidate associated with job successfully"}
 
 @app.put("/api/jobs/{job_id}/candidates/{candidate_id}")
 def update_job_candidate_status(job_id: int, candidate_id: int, update: JobStatusUpdate, request: Request):
@@ -1916,6 +2123,8 @@ def match_candidates_for_job_endpoint(job_id: int, request: Request):
 def reset_all(request: Request):
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     conn.execute("DELETE FROM candidate_metadata")
+    conn.execute("DELETE FROM change_requests")
+    conn.execute("DELETE FROM activity_logs")
     conn.commit()
     conn.close()
     try:
@@ -1968,7 +2177,48 @@ def login(req: LoginRequest):
     return {
         "username": user_dict["username"],
         "full_name": user_dict["full_name"],
-        "role": user_dict["role"]
+        "role": user_dict["role"],
+        "is_hr": user_dict.get("is_hr", 0),
+        "is_admin": user_dict.get("is_admin", 0),
+        "is_external": user_dict.get("is_external", 0)
+    }
+
+class FirebaseSyncRequest(BaseModel):
+    email: str
+    full_name: str
+    username: str
+
+@app.post("/api/auth/firebase-sync")
+def firebase_sync(req: FirebaseSyncRequest):
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    
+    cur.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (req.username,))
+    user = cur.fetchone()
+    
+    if not user:
+        try:
+            cur.execute("INSERT INTO users (full_name, username, password, role) VALUES (?, ?, ?, ?)",
+                        (req.full_name, req.username, "firebase_auth_managed", "user"))
+            conn.commit()
+            
+            cur.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (req.username,))
+            user = cur.fetchone()
+            log_activity_db(req.username, "registered an account via Firebase")
+        except Exception as e:
+            conn.close()
+            raise HTTPException(status_code=500, detail=f"Database synchronization error: {str(e)}")
+            
+    conn.close()
+    user_dict = dict(user)
+    return {
+        "username": user_dict["username"],
+        "full_name": user_dict["full_name"],
+        "role": user_dict["role"],
+        "is_hr": user_dict.get("is_hr", 0),
+        "is_admin": user_dict.get("is_admin", 0),
+        "is_external": user_dict.get("is_external", 0)
     }
 
 @app.get("/api/admin/requests")
@@ -1996,27 +2246,147 @@ def list_users(request: Request):
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
-    cur.execute("SELECT id, full_name, username, role FROM users")
+    cur.execute("SELECT id, full_name, username, role, is_hr, is_admin, is_external FROM users")
     rows = [dict(r) for r in cur.fetchall()]
     conn.close()
     return rows
 
-@app.put("/api/admin/users/{user_id}/role")
-def update_user_role_endpoint(user_id: int, body: UserRoleUpdate, request: Request):
+def is_admin_or_hr(username: str) -> bool:
+    if not username:
+        return False
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    cur.execute("SELECT is_admin, is_hr FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+    row = cur.fetchone()
+    conn.close()
+    if row:
+        is_admin, is_hr = row
+        return is_admin == 1 or is_hr == 1
+    return False
+
+@app.put("/api/admin/users/{user_id}/permissions")
+def update_user_permissions_endpoint(user_id: int, body: UserPermissionsUpdate, request: Request):
     username = request.headers.get("x-user-username")
     role = get_user_role(username)
     if role != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")
         
-    if body.role not in ["admin", "user"]:
-        raise HTTPException(status_code=400, detail="Invalid role")
-        
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
-    cur.execute("UPDATE users SET role = ? WHERE id = ?", (body.role, user_id))
+    
+    is_external_val = body.is_external if body.is_external is not None else 0
+    is_hr_val = body.is_hr
+    is_admin_val = body.is_admin
+    
+    if is_external_val == 1:
+        is_hr_val = 0
+        is_admin_val = 0
+        
+    new_role = "admin" if is_admin_val == 1 else "user"
+    cur.execute("UPDATE users SET is_hr = ?, is_admin = ?, is_external = ?, role = ? WHERE id = ?", 
+                (is_hr_val, is_admin_val, is_external_val, new_role, user_id))
     conn.commit()
     conn.close()
     return {"status": "updated"}
+
+class JobShareRequest(BaseModel):
+    usernames: list[str]
+
+@app.post("/api/jobs/{job_id}/share")
+def share_job(job_id: int, req: JobShareRequest, request: Request):
+    username = request.headers.get("x-user-username")
+    if not is_admin_or_hr(username):
+        raise HTTPException(status_code=403, detail="Forbidden")
+        
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    
+    # Verify job exists
+    cur.execute("SELECT 1 FROM jobs WHERE id = ?", (job_id,))
+    if not cur.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    # Clear existing shares
+    cur.execute("DELETE FROM job_shares WHERE job_id = ?", (job_id,))
+    
+    # Insert new shares
+    for u in req.usernames:
+        cur.execute("INSERT INTO job_shares (job_id, username) VALUES (?, ?)", (job_id, u))
+        
+    conn.commit()
+    conn.close()
+    
+    # Log activity
+    job_title = get_job_title(job_id)
+    log_activity_db(username or "unknown", f"shared Job Description '{job_title}' with {len(req.usernames)} external users")
+    
+    return {"status": "shared"}
+
+@app.get("/api/jobs/{job_id}/shares")
+def get_job_shares(job_id: int, request: Request):
+    username = request.headers.get("x-user-username")
+    if not is_admin_or_hr(username):
+        raise HTTPException(status_code=403, detail="Forbidden")
+        
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    cur.execute("SELECT username FROM job_shares WHERE job_id = ?", (job_id,))
+    rows = cur.fetchall()
+    conn.close()
+    
+    return [r[0] for r in rows]
+
+class MaskedKeywordCreate(BaseModel):
+    keyword: str
+
+@app.get("/api/admin/masked-keywords")
+def get_admin_masked_keywords(request: Request):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return get_masked_keywords()
+
+@app.post("/api/admin/masked-keywords")
+def add_admin_masked_keyword(req: MaskedKeywordCreate, request: Request):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    kw = req.keyword.strip()
+    if not kw:
+        raise HTTPException(status_code=400, detail="Keyword cannot be empty")
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    try:
+        cur.execute("INSERT OR IGNORE INTO masked_keywords (keyword) VALUES (?)", (kw,))
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+    conn.close()
+    log_activity_db(username, f"added masked keyword '{kw}'")
+    return {"status": "added", "keyword": kw}
+
+@app.delete("/api/admin/masked-keywords/{keyword}")
+def delete_admin_masked_keyword(keyword: str, request: Request):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    kw = keyword.strip()
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM masked_keywords WHERE keyword = ?", (kw,))
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+    conn.close()
+    log_activity_db(username, f"deleted masked keyword '{kw}'")
+    return {"status": "deleted", "keyword": kw}
 
 @app.delete("/api/admin/users/{user_id}")
 def delete_user_endpoint(user_id: int, request: Request):

@@ -2,6 +2,8 @@ import { useState } from 'react'
 import axios from 'axios'
 import { Eye, EyeOff, Check } from 'lucide-react'
 import alamaticzLogo from '../assets/alamaticz-logo.jpg'
+import { auth } from '../firebase'
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth'
 
 export default function LoginPage({ onLogin }) {
     const [mode, setMode] = useState('login')   // login | register | forgot | team-selection
@@ -29,15 +31,22 @@ export default function LoginPage({ onLogin }) {
         setSelectedMember(null)
     }
 
-        const handleLogin = async (e) => {
+    const handleLogin = async (e) => {
         e.preventDefault()
         setError(''); setInfo('')
         if (!cred || !pass) { setError('Please enter your Username and Password.'); return }
         
         try {
-            const res = await axios.post('/api/auth/login', { username: cred, password: pass })
+            const email = cred.includes('@') ? cred : `${cred.trim().toLowerCase()}@hireai.local`
+            const userCredential = await signInWithEmailAndPassword(auth, email, pass)
+            const fbUser = userCredential.user
             
-            // Log login activity
+            const res = await axios.post('/api/auth/firebase-sync', {
+                email: fbUser.email,
+                full_name: fbUser.displayName || cred,
+                username: cred.trim().toLowerCase()
+            })
+            
             try {
                 await axios.post('/api/activity', { 
                     username: res.data.username, 
@@ -49,13 +58,18 @@ export default function LoginPage({ onLogin }) {
 
             onLogin(res.data)
         } catch (err) {
+            console.error("Login error:", err);
             const detail = err.response?.data?.detail;
-            if (Array.isArray(detail)) {
-                setError(detail.map(d => d.msg).join(', '));
-            } else if (typeof detail === 'string') {
-                setError(detail);
+            if (detail) {
+                if (Array.isArray(detail)) {
+                    setError(detail.map(d => d.msg).join(', '));
+                } else if (typeof detail === 'string') {
+                    setError(detail);
+                }
+            } else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+                setError('Invalid username or password.');
             } else {
-                setError('Invalid username or password. (Is the backend server running?)');
+                setError(err.message || 'Login failed. (Is the backend server running?)');
             }
         }
     }
@@ -67,12 +81,15 @@ export default function LoginPage({ onLogin }) {
         if (pass !== pass2) { setError('Passwords do not match!'); return }
         
         try {
-            await axios.post('/api/auth/register', {
-                username: cred,
-                password: pass,
+            const email = cred.includes('@') ? cred : `${cred.trim().toLowerCase()}@hireai.local`
+            await createUserWithEmailAndPassword(auth, email, pass)
+            
+            await axios.post('/api/auth/firebase-sync', {
+                email: email,
                 full_name: name,
-                mobile: mobile
+                username: cred.trim().toLowerCase()
             })
+            
             setInfo(`Account created for ${name}! Please sign in.`)
             setTimeout(() => {
                 changeMode('login')
@@ -80,13 +97,20 @@ export default function LoginPage({ onLogin }) {
                 setPass2('')
             }, 2000)
         } catch (err) {
+            console.error("Register error:", err);
             const detail = err.response?.data?.detail;
-            if (Array.isArray(detail)) {
-                setError(detail.map(d => d.msg).join(', '));
-            } else if (typeof detail === 'string') {
-                setError(detail);
+            if (detail) {
+                if (Array.isArray(detail)) {
+                    setError(detail.map(d => d.msg).join(', '));
+                } else if (typeof detail === 'string') {
+                    setError(detail);
+                }
+            } else if (err.code === 'auth/email-already-in-use') {
+                setError('Username or email already in use.');
+            } else if (err.code === 'auth/weak-password') {
+                setError('Password is too weak. (Must be at least 6 characters)');
             } else {
-                setError('Registration failed. (Is the backend server running?)');
+                setError(err.message || 'Registration failed. (Is the backend server running?)');
             }
         }
     }

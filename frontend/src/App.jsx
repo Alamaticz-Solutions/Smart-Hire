@@ -45,10 +45,10 @@ export default function App() {
                 <Route path="/login" element={user ? <Navigate to="/" /> : <LoginPage onLogin={login} />} />
                 <Route element={user ? <Layout user={user} onLogout={logout} theme={theme} toggleTheme={toggleTheme} onUpdateUser={updateUser} /> : <Navigate to="/login" />}>
                     <Route path="/" element={<DashboardPage />} />
-                    <Route path="/jobs" element={<JobsPage />} />
+                    <Route path="/jobs" element={(user?.is_hr === 1 || user?.is_external === 1) ? <JobsPage /> : <Navigate to="/" />} />
                     <Route path="/upload" element={<UploadPage />} />
                     <Route path="/chat" element={<ChatPage />} />
-                    <Route path="/admin" element={user?.role === 'admin' ? <AdminPage /> : <Navigate to="/" />} />
+                    <Route path="/admin" element={(user?.is_admin === 1 || user?.role === 'admin') && user?.is_external !== 1 ? <AdminPage /> : <Navigate to="/" />} />
                 </Route>
                 <Route path="*" element={<Navigate to="/" />} />
             </Routes>

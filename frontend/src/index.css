@@ -240,8 +240,10 @@ body,
 .main-content {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .topbar {
@@ -1228,4 +1230,207 @@ tbody tr:last-child td {
   border-radius: 4px;
   font-family: monospace;
   font-size: 0.85em;
+}
+
+/* ── Modern User Management Toggles & UI ──────────────── */
+.user-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.2rem;
+  margin-bottom: 2rem;
+}
+
+.user-stat-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.2rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  box-shadow: var(--shadow);
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+}
+
+.user-stat-card:hover {
+  border-color: var(--border-gold);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4), var(--glow);
+}
+
+.user-stat-icon-container {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gold);
+  background: rgba(var(--gold-rgb), 0.1);
+  border: 1px solid var(--border-gold);
+  font-size: 1.2rem;
+}
+
+.user-stat-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.user-stat-value {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.1;
+  font-family: var(--fh);
+}
+
+.user-stat-label {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05rem;
+  font-weight: 600;
+}
+
+.user-table-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  backdrop-filter: blur(12px);
+}
+
+.user-cell-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.user-avatar-circle {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--fh);
+  font-weight: 800;
+  font-size: 1rem;
+  color: #fff;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+.user-info-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.user-info-name {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.user-info-username {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  opacity: 0.75;
+}
+
+/* Beautiful Switch Toggle CSS */
+.switch-container {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  position: relative;
+  user-select: none;
+}
+
+.switch-input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.switch-slider {
+  width: 46px;
+  height: 24px;
+  background-color: rgba(var(--white-rgb), 0.1);
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  position: relative;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.switch-slider::before {
+  content: '';
+  position: absolute;
+  height: 16px;
+  width: 16px;
+  left: 3px;
+  bottom: 2.5px;
+  background-color: var(--text-dim);
+  border-radius: 50%;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.switch-input:checked + .switch-slider {
+  background-color: rgba(var(--primary-rgb), 0.15);
+  border-color: var(--primary);
+}
+
+.switch-input:checked + .switch-slider::before {
+  transform: translateX(20px);
+  background-color: var(--primary);
+  box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.6);
+}
+
+.switch-label-tag {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05rem;
+  padding: 2px 8px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.switch-label-tag.active {
+  background: rgba(var(--primary-rgb), 0.15);
+  color: var(--primary);
+  border: 1px solid rgba(var(--primary-rgb), 0.3);
+}
+
+.switch-label-tag.inactive {
+  background: rgba(var(--white-rgb), 0.05);
+  color: var(--text-dim);
+  border: 1px solid transparent;
+  opacity: 0.6;
+}
+
+.current-user-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(var(--green-rgb), 0.12);
+  color: #4ade80;
+  border: 1px solid rgba(var(--green-rgb), 0.3);
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04rem;
+}
+
+/* Fix Chromium rendering bug where cards inside fixed modal overlays become completely transparent/invisible due to nested backdrop blurs */
+div[style*="position: fixed"] .card,
+div[style*="position:fixed"] .card {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }

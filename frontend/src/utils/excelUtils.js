@@ -106,6 +106,7 @@ export const formatCandidatesForExcel = (candidates, columns = []) => {
             row['Full Name'] = c.full_name || '—';
             row['Total Experience (yrs)'] = c.total_experience || 0;
             row['Pega Experience (yrs)'] = c.pega_experience || 0;
+            row['Source'] = c.source || '—';
             row['Skills'] = c.skills || '—';
             row['Certifications'] = c.certifications || '—';
             row['CTC'] = c.ctc || '—';

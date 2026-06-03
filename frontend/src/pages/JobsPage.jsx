@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
-import { Briefcase, Plus, Trash2, Search, UserCheck, Loader, ChevronRight, Edit, Calendar, User, Building, DollarSign, Award, Target, X, Phone, Eye, Filter, Check, FileText, Download } from 'lucide-react';
+import { Briefcase, Plus, Trash2, Search, UserCheck, Loader, ChevronRight, Edit, Calendar, User, Building, DollarSign, Award, Target, X, Phone, Eye, Filter, Check, FileText, Download, MoreVertical, Share2 } from 'lucide-react';
+import { useOutletContext } from 'react-router-dom';
 import { exportToExcel, formatCandidatesForExcel } from '../utils/excelUtils';
 const API_URL = import.meta.env.VITE_API_URL || '';
-const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
 /* ─── Single chip ─────────────────────────────────────────────────────────── */
 function Chip({ text }) {
@@ -116,6 +117,401 @@ function ExpandableCell({ value, onEdit }) {
     )
 }
 
+/* ─── Candidate Details Modal ────────────────────────────────────────────── */
+function CandidateDetailsModal({ candidate, onClose, onViewPdf, onToggleStatus }) {
+    const [activeTab, setActiveTab] = React.useState('profile');
+    const [jobs, setJobs] = React.useState([]);
+    const [loadingJobs, setLoadingJobs] = React.useState(false);
+    const [jobStatus, setJobStatus] = React.useState(candidate?.job_status || '');
+
+    React.useEffect(() => {
+        if (candidate?.id) {
+            setLoadingJobs(true);
+            axios.get(`${import.meta.env.VITE_API_URL || ''}/api/candidates/${candidate.id}/jobs`)
+                .then(res => setJobs(res.data || []))
+                .catch(err => console.error("Failed to load candidate matched jobs", err))
+                .finally(() => setLoadingJobs(false));
+        }
+    }, [candidate]);
+
+    const isImmediate = (val) => {
+        if (val === 0 || val === '0') return true;
+        return String(val || '').toLowerCase().includes('immediate');
+    };
+
+    return (
+        <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.75)', zIndex: 99998,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            backdropFilter: 'blur(4px)'
+        }} onClick={onClose}>
+            <div className="card" onClick={e => e.stopPropagation()} style={{
+                width: '95%', maxWidth: '800px', maxHeight: '90vh',
+                display: 'flex', flexDirection: 'column', padding: 0,
+                overflow: 'hidden', border: '1px solid var(--border)',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+                background: 'var(--navy-dark)'
+            }}>
+                {/* Header */}
+                <div style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '16px 24px', background: 'rgba(var(--navy-rgb), 0.95)',
+                    borderBottom: '1px solid var(--border)'
+                }}>
+                    <div>
+                        <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.25rem', fontWeight: 800 }}>
+                            {candidate.full_name || 'Candidate Details'}
+                        </h3>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)', marginTop: '4px', display: 'flex', gap: '15px' }}>
+                            <span>Source: <strong style={{ color: 'var(--gold)' }}>{candidate.source || 'Resume Upload'}</strong></span>
+                            {candidate.timestamp && <span>Analyzed: {new Date(candidate.timestamp).toLocaleDateString()}</span>}
+                        </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                        {onToggleStatus && jobStatus && (
+                            <button 
+                                onClick={async () => {
+                                    const nextStatus = jobStatus === 'selected' ? 'matched' : 'selected';
+                                    try {
+                                        await onToggleStatus(candidate.id, nextStatus);
+                                        setJobStatus(nextStatus);
+                                        // Also update local copy in object
+                                        candidate.job_status = nextStatus;
+                                    } catch (err) {
+                                        console.error("Failed to toggle status", err);
+                                    }
+                                }}
+                                style={{
+                                    background: jobStatus === 'selected' ? 'rgba(45, 212, 191, 0.15)' : 'rgba(var(--gold-rgb), 0.15)',
+                                    border: jobStatus === 'selected' ? '1px solid rgba(45, 212, 191, 0.35)' : '1px solid rgba(var(--gold-rgb), 0.35)',
+                                    color: jobStatus === 'selected' ? '#2dd4bf' : 'var(--gold)',
+                                    cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
+                                    fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 700,
+                                    display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s',
+                                    outline: 'none'
+                                }}
+                            >
+                                {jobStatus === 'selected' ? '✓ Selected for Job' : '➕ Select Candidate'}
+                            </button>
+                        )}
+                        {candidate.filename && !candidate.filename.toLowerCase().endsWith('.xlsx') && !candidate.filename.toLowerCase().endsWith('.xls') && !candidate.filename.toLowerCase().endsWith('.csv') && (
+                            <button 
+                                onClick={() => onViewPdf(candidate.filename, candidate.full_name)}
+                                style={{
+                                    background: 'rgba(var(--sky-rgb), 0.15)', border: '1px solid rgba(var(--sky-rgb), 0.3)',
+                                    color: 'var(--sky-dim)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
+                                    fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 700,
+                                    display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s'
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.25)'}
+                                onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.15)'}
+                            >
+                                <FileText size={14} /> View Resume
+                            </button>
+                        )}
+                        <button onClick={onClose} style={{
+                            background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
+                            color: 'var(--gold)', cursor: 'pointer', padding: '6px', borderRadius: '8px',
+                            display: 'flex', transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.2)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.1)'}
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
+                </div>
+
+                {/* Tabs Selector */}
+                <div style={{ display: 'flex', background: 'rgba(var(--navy-rgb), 0.3)', padding: '0 24px', borderBottom: '1px solid var(--border)' }}>
+                    <button 
+                        onClick={() => setActiveTab('profile')}
+                        style={{
+                            padding: '12px 20px', background: 'transparent', border: 'none',
+                            borderBottom: `3px solid ${activeTab === 'profile' ? 'var(--gold)' : 'transparent'}`,
+                            color: activeTab === 'profile' ? 'var(--gold)' : 'var(--text-dim)',
+                            fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
+                            transition: 'all 0.2s', outline: 'none'
+                        }}
+                    >
+                        👤 Profile Details
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('jobs')}
+                        style={{
+                            padding: '12px 20px', background: 'transparent', border: 'none',
+                            borderBottom: `3px solid ${activeTab === 'jobs' ? 'var(--gold)' : 'transparent'}`,
+                            color: activeTab === 'jobs' ? 'var(--gold)' : 'var(--text-dim)',
+                            fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
+                            transition: 'all 0.2s', outline: 'none'
+                        }}
+                    >
+                        💼 Matched & Selected Jobs ({jobs.length})
+                    </button>
+                </div>
+
+                {/* Content */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '24px', color: 'var(--text)' }}>
+                    {activeTab === 'profile' ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                            {/* Grid fields */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Name</span>
+                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.full_name || '—'}</span>
+                                </div>
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Source</span>
+                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--gold)', background: 'rgba(var(--gold-rgb), 0.1)', padding: '2px 8px', borderRadius: '6px', display: 'inline-block' }}>
+                                        {candidate.source || 'Resume Upload'}
+                                    </span>
+                                </div>
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Total Experience</span>
+                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.total_experience ? `${candidate.total_experience} yrs` : '—'}</span>
+                                </div>
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Pega Experience</span>
+                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.pega_experience ? `${candidate.pega_experience} yrs` : '—'}</span>
+                                </div>
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>CDH Experience</span>
+                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.cdh_exp ? `${candidate.cdh_exp} yrs` : '—'}</span>
+                                </div>
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Current CTC / salary</span>
+                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.ctc || '—'}</span>
+                                </div>
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Expected CTC</span>
+                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.expected_ctc || '—'}</span>
+                                </div>
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Percentage Hike</span>
+                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.percentage_hike || '—'}</span>
+                                </div>
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Notice Period</span>
+                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>
+                                        <span className={`badge ${isImmediate(candidate.notice_period) ? 'badge-green' : 'badge-sky'}`}>
+                                            {candidate.notice_period === 0 || candidate.notice_period === '0' ? 'Immediate' : (candidate.notice_period ? `${candidate.notice_period} days` : '—')}
+                                        </span>
+                                    </span>
+                                </div>
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Current Location</span>
+                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.current_location || '—'}</span>
+                                </div>
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Preferred Location</span>
+                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.pref_locations || '—'}</span>
+                                </div>
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Current Employment</span>
+                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.current_organization || '—'}</span>
+                                </div>
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Phone Number</span>
+                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.phone || '—'}</span>
+                                </div>
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Email Address</span>
+                                    {candidate.email ? (
+                                        <a 
+                                            href={`https://mail.google.com/mail/?view=cm&fs=1&to=${candidate.email}`} 
+                                            target="_blank" 
+                                            rel="noreferrer" 
+                                            style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--sky-dim)', textDecoration: 'underline', wordBreak: 'break-all' }}
+                                            title="Click to compose in Gmail"
+                                        >
+                                            ✉️ {candidate.email}
+                                        </a>
+                                    ) : '—'}
+                                </div>
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>LinkedIn Profile</span>
+                                    {candidate.linkedin ? (
+                                        <a href={candidate.linkedin.startsWith('http') ? candidate.linkedin : `https://${candidate.linkedin}`} target="_blank" rel="noreferrer" style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--gold)', textDecoration: 'underline' }}>
+                                            View LinkedIn
+                                        </a>
+                                    ) : '—'}
+                                </div>
+                            </div>
+
+                            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '10px 0' }} />
+
+                            {/* Long Text Areas */}
+                            <div>
+                                <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Skills</span>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                    {candidate.skills ? String(candidate.skills).split(',').map((s, idx) => (
+                                        <span key={idx} style={{
+                                            background: 'rgba(var(--sky-rgb), 0.12)', border: '1px solid rgba(var(--sky-rgb), 0.25)',
+                                            borderRadius: 5, padding: '3px 8px', fontSize: '0.75rem', color: 'var(--sky-dim)'
+                                        }}>{s.trim()}</span>
+                                    )) : <span style={{ opacity: 0.35 }}>—</span>}
+                                </div>
+                            </div>
+
+                            <div>
+                                <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Certifications</span>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                    {candidate.certifications ? String(candidate.certifications).split(',').map((c, idx) => (
+                                        <span key={idx} style={{
+                                            background: 'rgba(var(--gold-rgb), 0.12)', border: '1px solid rgba(var(--gold-rgb), 0.25)',
+                                            borderRadius: 5, padding: '3px 8px', fontSize: '0.75rem', color: 'var(--gold)'
+                                        }}>{c.trim()}</span>
+                                    )) : <span style={{ opacity: 0.35 }}>—</span>}
+                                </div>
+                            </div>
+
+                            {candidate.notescomments && (
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Notes / Recruiter Comments</span>
+                                    <div style={{ padding: '12px', background: 'rgba(var(--navy-dark-rgb), 0.3)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.88rem', whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>
+                                        {candidate.notescomments}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div>
+                            {loadingJobs ? (
+                                <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
+                                    <Loader className="spin" size={24} style={{ color: 'var(--gold)' }} />
+                                </div>
+                            ) : jobs.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-dim)', border: '1px dashed var(--border)', borderRadius: '12px' }}>
+                                    No associated job mappings found for this candidate.
+                                </div>
+                            ) : (
+                                <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem', textAlign: 'left' }}>
+                                        <thead>
+                                            <tr style={{ background: 'rgba(var(--navy-rgb), 0.85)', borderBottom: '2px solid var(--border)' }}>
+                                                <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800 }}>Job Title</th>
+                                                <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800 }}>Client</th>
+                                                <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800 }}>Status</th>
+                                                <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800, width: '45%' }}>AI Match Reason</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {jobs.map((job, idx) => {
+                                                const s = String(job.match_status || 'matched').trim();
+                                                const isSelected = s === 'selected';
+                                                
+                                                return (
+                                                    <tr key={idx} style={{ 
+                                                        borderBottom: '1px solid rgba(var(--sky-rgb), 0.08)',
+                                                        background: idx % 2 === 0 ? 'rgba(var(--navy-rgb), 0.15)' : 'transparent'
+                                                    }}>
+                                                        <td style={{ padding: '10px 12px', fontWeight: 'bold' }}>{job.title}</td>
+                                                        <td style={{ padding: '10px 12px' }}>{job.client_name || '—'}</td>
+                                                        <td style={{ padding: '10px 12px' }}>
+                                                            <span style={{
+                                                                background: isSelected ? 'rgba(45, 212, 191, 0.12)' : 'rgba(56, 189, 248, 0.12)',
+                                                                color: isSelected ? '#2dd4bf' : '#38bdf8',
+                                                                border: isSelected ? '1px solid rgba(45, 212, 191, 0.25)' : '1px solid rgba(56, 189, 248, 0.25)',
+                                                                borderRadius: 5, padding: '2px 8px', fontSize: '0.72rem', fontWeight: 700,
+                                                                textTransform: 'uppercase', display: 'inline-block'
+                                                            }}>
+                                                                {s}
+                                                            </span>
+                                                        </td>
+                                                        <td style={{ padding: '10px 12px', color: 'var(--text-dim)', fontSize: '0.8rem', lineHeight: '1.45' }}>
+                                                            {job.ai_reason || '—'}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/* ─── Cell Text Modal ─────────────────────────────────────────────────────── */
+function CellTextModal({ data, onClose }) {
+    const [copied, setCopied] = React.useState(false);
+    
+    const handleCopy = () => {
+        navigator.clipboard.writeText(data.text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    return (
+        <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.75)', zIndex: 99999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            backdropFilter: 'blur(4px)'
+        }} onClick={onClose}>
+            <div className="card" onClick={e => e.stopPropagation()} style={{
+                width: '90%', maxWidth: '600px', maxHeight: '80vh',
+                display: 'flex', flexDirection: 'column', padding: 0,
+                border: '1px solid var(--border)',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+                background: 'var(--navy-dark)'
+            }}>
+                <div style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '16px 24px', background: 'rgba(var(--navy-rgb), 0.95)',
+                    borderBottom: '1px solid var(--border)'
+                }}>
+                    <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 800 }}>
+                        🔍 View {data.title}
+                    </h3>
+                    <button onClick={onClose} style={{
+                        background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
+                        color: 'var(--gold)', cursor: 'pointer', padding: 6, borderRadius: '8px',
+                        display: 'flex', transition: 'all 0.2s'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.2)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.1)'}
+                    >
+                        <X size={18} />
+                    </button>
+                </div>
+                <div style={{
+                    flex: 1, padding: '24px', overflowY: 'auto',
+                    color: 'var(--text)', fontSize: '0.92rem', lineHeight: '1.5',
+                    whiteSpace: 'pre-wrap', maxHeight: '50vh', background: 'rgba(0,0,0,0.2)'
+                }}>
+                    {data.text}
+                </div>
+                <div style={{
+                    padding: '12px 24px', borderTop: '1px solid var(--border)',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    background: 'rgba(var(--navy-rgb), 0.3)'
+                }}>
+                    <button 
+                        onClick={handleCopy}
+                        className="btn btn-secondary"
+                        style={{ padding: '6px 12px', fontSize: '0.8rem', gap: '6px', borderColor: 'var(--border)' }}
+                    >
+                        {copied ? '✅ Copied!' : '📋 Copy to Clipboard'}
+                    </button>
+                    <button 
+                        onClick={onClose}
+                        className="btn btn-primary"
+                        style={{ padding: '6px 16px', fontSize: '0.8rem' }}
+                    >
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 /* ─── Column config ───────────────────────────────────────────────────────── */
 const BASE_WIDTHS = {
     full_name: '150px', total_experience: '90px', pega_experience: '90px',
@@ -125,7 +521,7 @@ const BASE_WIDTHS = {
     pref_locations: '120px', current_organization: '150px', current_client: '150px',
     domain: '120px', tier: '90px', certification_version: '100px',
     skills: '200px', certifications: '180px', notescomments: '180px',
-    ai_reason: '320px'
+    ai_reason: '320px', source: '120px'
 }
 
 const TH = {
@@ -145,6 +541,9 @@ const TD_BASE = {
 }
 
 export default function JobsPage() {
+    const { user } = useOutletContext();
+    const isExternal = user?.is_external === 1;
+
     const [jobs, setJobs] = useState([]);
     const [selectedJob, setSelectedJob] = useState(null);
     const [candidates, setCandidates] = useState([]);
@@ -178,6 +577,14 @@ export default function JobsPage() {
     const [isSavingEdit, setIsSavingEdit] = useState(false);
     const [statusFilter, setStatusFilter] = useState('All');
     const [viewingPdf, setViewingPdf] = useState(null);
+    const [selectedCandidateForDetails, setSelectedCandidateForDetails] = useState(null);
+    const [isEditingJdInline, setIsEditingJdInline] = useState(false);
+    const [jdInlineValue, setJdInlineValue] = useState('');
+    const [selectedCellText, setSelectedCellText] = useState(null);
+    const [showAddCandidateModal, setShowAddCandidateModal] = useState(false);
+    const [unmatchedCandidates, setUnmatchedCandidates] = useState([]);
+    const [loadingUnmatched, setLoadingUnmatched] = useState(false);
+    const [unmatchedSearchQuery, setUnmatchedSearchQuery] = useState('');
 
     const [editingJob, setEditingJob] = useState(null);
     const [editJobForm, setEditJobForm] = useState({
@@ -197,6 +604,13 @@ export default function JobsPage() {
         required_skills: ''
     });
     const [isSavingJob, setIsSavingJob] = useState(false);
+    
+    // Sharing & External Roles states
+    const [showDropdown, setShowDropdown] = useState(false);
+    const [showShareModal, setShowShareModal] = useState(false);
+    const [externalUsers, setExternalUsers] = useState([]);
+    const [sharedUsernames, setSharedUsernames] = useState([]);
+    const [loadingShares, setLoadingShares] = useState(false);
 
     // Dynamic Spreadsheet States
     const [searchQuery, setSearchQuery] = useState('');
@@ -278,6 +692,34 @@ export default function JobsPage() {
         }
     }
 
+    const handleOpenShareModal = async () => {
+        if (!selectedJob) return;
+        setLoadingShares(true);
+        setShowShareModal(true);
+        try {
+            const usersRes = await axios.get(`${API_URL}/api/admin/users`);
+            const external = (usersRes.data || []).filter(u => u.is_external === 1);
+            setExternalUsers(external);
+            
+            const sharesRes = await axios.get(`${API_URL}/api/jobs/${selectedJob.id}/shares`);
+            setSharedUsernames(sharesRes.data || []);
+        } catch (e) {
+            showToast('Failed to load sharing details', 'error');
+        } finally {
+            setLoadingShares(false);
+        }
+    }
+
+    const handleSaveShares = async () => {
+        try {
+            await axios.post(`${API_URL}/api/jobs/${selectedJob.id}/share`, { usernames: sharedUsernames });
+            showToast('Sharing permissions updated successfully!');
+            setShowShareModal(false);
+        } catch (e) {
+            showToast('Failed to save sharing permissions', 'error');
+        }
+    }
+
     useEffect(() => {
         loadJobs();
         loadCols();
@@ -345,9 +787,46 @@ export default function JobsPage() {
         setIsMatching(false);
     }
 
+    const handleOpenAddCandidateModal = async () => {
+        if (!selectedJob) return;
+        setLoadingUnmatched(true);
+        setUnmatchedSearchQuery('');
+        setShowAddCandidateModal(true);
+        try {
+            const r = await axios.get(`${API_URL}/api/jobs/${selectedJob.id}/unmatched-candidates`);
+            setUnmatchedCandidates(r.data || []);
+        } catch (e) {
+            showToast('Failed to load unmatched candidates', 'error');
+        } finally {
+            setLoadingUnmatched(false);
+        }
+    }
+
+    const handleAddCandidateManually = async (candidateId) => {
+        if (!selectedJob || !candidateId) return;
+        try {
+            await axios.post(`${API_URL}/api/jobs/${selectedJob.id}/candidates/${candidateId}`);
+            showToast('Candidate manually matched to job!');
+            loadCandidates(selectedJob.id);
+            loadJobs();
+            setShowAddCandidateModal(false);
+        } catch (e) {
+            showToast(e.response?.data?.detail || 'Failed to match candidate manually', 'error');
+        }
+    }
+
     const handleStatusChange = async (candidateId, newStatus) => {
         try {
             await axios.put(`${API_URL}/api/jobs/${selectedJob.id}/candidates/${candidateId}`, { status: newStatus });
+            
+            // Auto-sync: Update candidate profile status in metadata
+            const profileStatus = newStatus === 'selected' ? 'Selected' : 'New';
+            try {
+                await axios.put(`${API_URL}/api/candidates/${candidateId}`, { candidate_status: profileStatus });
+            } catch (err) {
+                console.error("Failed to sync candidate profile status", err);
+            }
+
             loadCandidates(selectedJob.id);
             loadJobs();
             showToast(`Candidate moved to ${newStatus}`);
@@ -584,9 +1063,11 @@ export default function JobsPage() {
                     <div style={{ fontFamily: 'var(--fh)', fontSize: '1.2rem', fontWeight: 800, color: 'var(--gold)' }}>
                         Job Descriptions
                     </div>
-                    <button className="btn btn-primary" style={{ padding: '6px 12px' }} onClick={() => setShowNewForm(true)}>
-                        <Plus size={16} /> New Job Description
-                    </button>
+                    {!isExternal && (
+                        <button className="btn btn-primary" style={{ padding: '6px 12px' }} onClick={() => setShowNewForm(true)}>
+                            <Plus size={16} /> New Job Description
+                        </button>
+                    )}
                 </div>
                 
                 {/* Status Filter */}
@@ -622,9 +1103,14 @@ export default function JobsPage() {
                                 transition: 'all 0.2s'
                             }}
                         >
-                            <div style={{ fontWeight: 700, color: selectedJob?.id === job.id ? 'var(--gold)' : 'var(--text)', marginBottom: '6px' }}>
+                            <div style={{ fontWeight: 700, color: selectedJob?.id === job.id ? 'var(--gold)' : 'var(--text)', marginBottom: '4px' }}>
                                 {job.title}
                             </div>
+                            {job.client_name && (
+                                <div style={{ fontSize: '0.76rem', color: 'var(--sky-dim)', marginBottom: '6px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    🏢 Client: {job.client_name}
+                                </div>
+                            )}
                             <div style={{ display: 'flex', gap: '15px', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
                                 <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                     <Search size={12}/> {job.matched_count} Matched
@@ -780,34 +1266,89 @@ export default function JobsPage() {
                                         </span>
                                     </div>
                                     <div style={{ color: 'var(--text-dim)', fontSize: '0.9rem' }}>
-                                        Client: <strong style={{ color: '#fff' }}>{selectedJob.client_name || 'N/A'}</strong>
+                                        Client: <strong style={{ color: 'var(--text)' }}>{selectedJob.client_name || 'N/A'}</strong>
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', gap: '10px' }}>
-                                    <button className="btn btn-secondary" onClick={() => {
-                                        setEditingJob(selectedJob);
-                                        setEditJobForm({
-                                            title: selectedJob.title || '',
-                                            description: selectedJob.description || '',
-                                            client_name: selectedJob.client_name || '',
-                                            client_phone: selectedJob.client_phone || '',
-                                            contact_name: selectedJob.contact_name || '',
-                                            account_manager: selectedJob.account_manager || '',
-                                            assigned_recruiter: selectedJob.assigned_recruiter || '',
-                                            target_date: selectedJob.target_date || '',
-                                            job_type: selectedJob.job_type || 'Full time',
-                                            job_status: selectedJob.job_status || 'In-progress',
-                                            work_experience: selectedJob.work_experience || 'None',
-                                            industry: selectedJob.industry || 'None',
-                                            salary: selectedJob.salary || '',
-                                            required_skills: selectedJob.required_skills || ''
-                                        });
-                                    }} style={{ borderColor: 'rgba(var(--gold-rgb), 0.3)', color: 'var(--gold)' }}>
-                                        <Edit size={16}/> Edit Job
-                                    </button>
-                                    <button className="btn btn-danger" onClick={() => handleDeleteJob(selectedJob.id)}>
-                                        <Trash2 size={16}/> Delete Job Description
-                                    </button>
+                                    {!isExternal && (
+                                        <div style={{ position: 'relative' }}>
+                                            <button 
+                                                onClick={() => setShowDropdown(!showDropdown)} 
+                                                style={{
+                                                    background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
+                                                    color: 'var(--gold)', cursor: 'pointer', padding: '8px', borderRadius: '8px',
+                                                    display: 'flex', transition: 'all 0.2s', outline: 'none'
+                                                }}
+                                                title="Job Actions"
+                                            >
+                                                <MoreVertical size={18} />
+                                            </button>
+                                            {showDropdown && (
+                                                <div style={{
+                                                    position: 'absolute', right: 0, top: '44px',
+                                                    background: 'var(--navy-dark)', border: '1px solid var(--border)',
+                                                    borderRadius: '8px', boxShadow: '0 8px 16px rgba(0,0,0,0.5)',
+                                                    zIndex: 100, width: '180px', overflow: 'hidden'
+                                                }}>
+                                                    <button 
+                                                        onClick={() => { setShowDropdown(false); handleOpenShareModal(); }}
+                                                        style={{
+                                                            width: '100%', padding: '10px 14px', background: 'none', border: 'none',
+                                                            color: 'var(--text)', textAlign: 'left', cursor: 'pointer', fontSize: '0.85rem',
+                                                            display: 'flex', alignItems: 'center', gap: '8px'
+                                                        }}
+                                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
+                                                        onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                                                    >
+                                                        <Share2 size={14} /> Share Job
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => {
+                                                            setShowDropdown(false);
+                                                            setEditingJob(selectedJob);
+                                                            setEditJobForm({
+                                                                title: selectedJob.title || '',
+                                                                description: selectedJob.description || '',
+                                                                client_name: selectedJob.client_name || '',
+                                                                client_phone: selectedJob.client_phone || '',
+                                                                contact_name: selectedJob.contact_name || '',
+                                                                account_manager: selectedJob.account_manager || '',
+                                                                assigned_recruiter: selectedJob.assigned_recruiter || '',
+                                                                target_date: selectedJob.target_date || '',
+                                                                job_type: selectedJob.job_type || 'Full time',
+                                                                job_status: selectedJob.job_status || 'In-progress',
+                                                                work_experience: selectedJob.work_experience || 'None',
+                                                                industry: selectedJob.industry || 'None',
+                                                                salary: selectedJob.salary || '',
+                                                                required_skills: selectedJob.required_skills || ''
+                                                            });
+                                                        }}
+                                                        style={{
+                                                            width: '100%', padding: '10px 14px', background: 'none', border: 'none',
+                                                            color: 'var(--text)', textAlign: 'left', cursor: 'pointer', fontSize: '0.85rem',
+                                                            display: 'flex', alignItems: 'center', gap: '8px'
+                                                        }}
+                                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
+                                                        onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                                                    >
+                                                        <Edit size={14} /> Edit Job
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => { setShowDropdown(false); handleDeleteJob(selectedJob.id); }}
+                                                        style={{
+                                                            width: '100%', padding: '10px 14px', background: 'none', border: 'none',
+                                                            color: '#fca5a5', textAlign: 'left', cursor: 'pointer', fontSize: '0.85rem',
+                                                            display: 'flex', alignItems: 'center', gap: '8px'
+                                                        }}
+                                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'}
+                                                        onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                                                    >
+                                                        <Trash2 size={14} /> Delete Job
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -824,49 +1365,49 @@ export default function JobsPage() {
                             }}>
                                 <div>
                                     <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Client Phone</span>
-                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                         <Phone size={14} style={{ color: 'var(--gold)' }} /> {selectedJob.client_phone || '--'}
                                     </span>
                                 </div>
                                 <div>
                                     <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Contact Name</span>
-                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                         <User size={14} style={{ color: 'var(--gold)' }} /> {selectedJob.contact_name || '--'}
                                     </span>
                                 </div>
                                 <div>
                                     <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Account Manager</span>
-                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                         <User size={14} style={{ color: 'var(--gold)' }} /> {selectedJob.account_manager || '--'}
                                     </span>
                                 </div>
                                 <div>
                                     <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Assigned Recruiter</span>
-                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                         <User size={14} style={{ color: 'var(--gold)' }} /> {selectedJob.assigned_recruiter || '--'}
                                     </span>
                                 </div>
                                 <div>
                                     <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Target Date</span>
-                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                         <Calendar size={14} style={{ color: 'var(--gold)' }} /> {selectedJob.target_date || '--'}
                                     </span>
                                 </div>
                                 <div>
                                     <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Work Experience</span>
-                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                         <Award size={14} style={{ color: 'var(--gold)' }} /> {selectedJob.work_experience || '--'}
                                     </span>
                                 </div>
                                 <div>
                                     <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Industry</span>
-                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                         <Briefcase size={14} style={{ color: 'var(--gold)' }} /> {selectedJob.industry || '--'}
                                     </span>
                                 </div>
                                 <div>
                                     <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Salary</span>
-                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                         <DollarSign size={14} style={{ color: 'var(--gold)' }} /> {selectedJob.salary || '--'}
                                     </span>
                                 </div>
@@ -898,75 +1439,151 @@ export default function JobsPage() {
                                 </div>
                             )}
 
-                            {/* Job Description Text Area (Collapsible) */}
                             <div style={{ marginBottom: '1.5rem' }}>
-                                <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Full Job Description</span>
-                                <div style={{ 
-                                    color: 'var(--text)', 
-                                    fontSize: '0.9rem', 
-                                    maxHeight: '120px', 
-                                    overflowY: 'auto',
-                                    padding: '12px',
-                                    background: 'rgba(var(--navy-dark-rgb), 0.2)',
-                                    border: '1px solid var(--border)',
-                                    borderRadius: '8px',
-                                    whiteSpace: 'pre-wrap'
-                                }}>
-                                    {selectedJob.description}
-                                </div>
+                                <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>
+                                    Full Job Description {isEditingJdInline ? '(Editing)' : (!isExternal ? '(Double-click text below to edit)' : '')}
+                                </span>
+                                {isEditingJdInline ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        <textarea
+                                            value={jdInlineValue}
+                                            onChange={e => setJdInlineValue(e.target.value)}
+                                            style={{
+                                                width: '100%', minHeight: '150px', padding: '12px',
+                                                background: 'var(--input-bg)', border: '1px solid var(--gold)',
+                                                color: 'var(--text)', borderRadius: '8px', resize: 'vertical',
+                                                outline: 'none', fontFamily: 'var(--fb)', fontSize: '0.9rem'
+                                            }}
+                                            autoFocus
+                                        />
+                                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                            <button 
+                                                className="btn btn-secondary" 
+                                                style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                                                onClick={() => setIsEditingJdInline(false)}
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button 
+                                                className="btn btn-primary" 
+                                                style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                                                onClick={async () => {
+                                                    try {
+                                                        const updatedJobForm = {
+                                                            title: selectedJob.title,
+                                                            description: jdInlineValue,
+                                                            client_name: selectedJob.client_name,
+                                                            client_phone: selectedJob.client_phone,
+                                                            contact_name: selectedJob.contact_name,
+                                                            account_manager: selectedJob.account_manager,
+                                                            assigned_recruiter: selectedJob.assigned_recruiter,
+                                                            target_date: selectedJob.target_date,
+                                                            job_type: selectedJob.job_type || 'Full time',
+                                                            job_status: selectedJob.job_status || 'In-progress',
+                                                            work_experience: selectedJob.work_experience || 'None',
+                                                            industry: selectedJob.industry || 'None',
+                                                            salary: selectedJob.salary,
+                                                            required_skills: selectedJob.required_skills
+                                                        };
+                                                        const r = await axios.put(`${API_URL}/api/jobs/${selectedJob.id}`, updatedJobForm);
+                                                        setJobs(jobs.map(j => j.id === selectedJob.id ? r.data : j));
+                                                        setSelectedJob(r.data);
+                                                        showToast('Job Description updated and re-matched successfully!');
+                                                        loadCandidates(selectedJob.id);
+                                                        setIsEditingJdInline(false);
+                                                    } catch (err) {
+                                                        showToast(err.response?.data?.detail || 'Failed to save job description', 'error');
+                                                    }
+                                                }}
+                                            >
+                                                Save
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div 
+                                        onDoubleClick={() => {
+                                            if (!isExternal) {
+                                                setJdInlineValue(selectedJob.description);
+                                                setIsEditingJdInline(true);
+                                            }
+                                        }}
+                                        title={!isExternal ? "Double-click to edit job description inline" : ""}
+                                        style={{ 
+                                            color: 'var(--text)', 
+                                            fontSize: '0.9rem', 
+                                            maxHeight: '150px', 
+                                            overflowY: 'auto',
+                                            padding: '12px',
+                                            background: 'rgba(var(--navy-dark-rgb), 0.2)',
+                                            border: '1px solid var(--border)',
+                                            borderRadius: '8px',
+                                            whiteSpace: 'pre-wrap',
+                                            cursor: !isExternal ? 'pointer' : 'default'
+                                        }}
+                                        onMouseEnter={e => { if (!isExternal) e.currentTarget.style.borderColor = 'var(--gold)'; }}
+                                        onMouseLeave={e => { if (!isExternal) e.currentTarget.style.borderColor = 'var(--border)'; }}
+                                    >
+                                        {selectedJob.description}
+                                    </div>
+                                )}
                             </div>
                             
-                            <button 
-                                className="btn btn-primary" 
-                                onClick={handleMatch}
-                                disabled={isMatching}
-                                style={{ width: 'fit-content' }}
-                            >
-                                {isMatching ? <Loader className="spin" size={16} /> : <Search size={16} />}
-                                {isMatching ? 'Finding Perfect Matches...' : 'Match Job Description'}
-                            </button>
+                            {!isExternal && (
+                                <button 
+                                    className="btn btn-primary" 
+                                    onClick={handleMatch}
+                                    disabled={isMatching}
+                                    style={{ width: 'fit-content' }}
+                                >
+                                    {isMatching ? <Loader className="spin" size={16} /> : <Search size={16} />}
+                                    {isMatching ? 'Finding Perfect Matches...' : 'Match Job Description'}
+                                </button>
+                            )}
                         </div>
- 
-                        {/* Tabs */}
-                        <div style={{ padding: '1rem 2rem 0', borderBottom: '1px solid var(--border)', display: 'flex', gap: '1rem' }}>
-                            <button 
-                                onClick={() => setActiveTab('matched')}
-                                style={{ 
-                                    padding: '10px 20px', background: 'transparent', border: 'none', borderBottom: `3px solid ${activeTab === 'matched' ? 'var(--gold)' : 'transparent'}`,
-                                    color: activeTab === 'matched' ? 'var(--gold)' : 'var(--text-dim)', fontWeight: activeTab === 'matched' ? 700 : 500, cursor: 'pointer',
-                                    fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s'
-                                }}
-                            >
-                                <Search size={16}/> Matched ({selectedJob.matched_count})
-                            </button>
-                            <button 
-                                onClick={() => setActiveTab('selected')}
-                                style={{ 
-                                    padding: '10px 20px', background: 'transparent', border: 'none', borderBottom: `3px solid ${activeTab === 'selected' ? 'var(--primary)' : 'transparent'}`,
-                                    color: activeTab === 'selected' ? 'var(--primary)' : 'var(--text-dim)', fontWeight: activeTab === 'selected' ? 700 : 500, cursor: 'pointer',
-                                    fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s'
-                                }}
-                            >
-                                <UserCheck size={16}/> Selected ({selectedJob.selected_count})
-                            </button>
-                        </div>
- 
-                        {/* Candidates List Spreadsheet Table */}
-                        <div style={{ flex: 1, overflowY: 'auto', padding: '2rem', display: 'flex', flexDirection: 'column' }}>
-                            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', marginBottom: '15px' }}>
-                                {/* Columns Selector Popover */}
-                                <div style={{ position: 'relative' }}>
+
+                        {!isExternal && (
+                            <>
+                                {/* Tabs */}
+                                <div style={{ padding: '1rem 2rem 0', borderBottom: '1px solid var(--border)', display: 'flex', gap: '1rem' }}>
                                     <button 
-                                        className="btn btn-secondary" 
-                                        onClick={() => setShowColVisibility(!showColVisibility)} 
-                                        style={{ gap: 6, color: 'var(--text)', borderColor: 'var(--border)', padding: '6px 12px', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center' }}
+                                        onClick={() => setActiveTab('matched')}
+                                        style={{ 
+                                            padding: '10px 20px', background: 'transparent', border: 'none', borderBottom: `3px solid ${activeTab === 'matched' ? 'var(--gold)' : 'transparent'}`,
+                                            color: activeTab === 'matched' ? 'var(--gold)' : 'var(--text-dim)', fontWeight: activeTab === 'matched' ? 700 : 500, cursor: 'pointer',
+                                            fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s'
+                                        }}
                                     >
-                                        <Eye size={14} /> Columns
+                                        <Search size={16}/> Matched ({selectedJob.matched_count})
                                     </button>
-                                    
-                                    {showColVisibility && (
-                                        <div 
-                                            onClick={e => e.stopPropagation()}
+                                    <button 
+                                        onClick={() => setActiveTab('selected')}
+                                        style={{ 
+                                            padding: '10px 20px', background: 'transparent', border: 'none', borderBottom: `3px solid ${activeTab === 'selected' ? 'var(--primary)' : 'transparent'}`,
+                                            color: activeTab === 'selected' ? 'var(--primary)' : 'var(--text-dim)', fontWeight: activeTab === 'selected' ? 700 : 500, cursor: 'pointer',
+                                            fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s'
+                                        }}
+                                    >
+                                        <UserCheck size={16}/> Selected ({selectedJob.selected_count})
+                                    </button>
+                                </div>
+
+                                {/* Candidates List Spreadsheet Table */}
+                                <div style={{ flex: 1, overflowY: 'auto', padding: '2rem', display: 'flex', flexDirection: 'column' }}>
+                                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', marginBottom: '15px' }}>
+                                        {/* Columns Selector Popover */}
+                                        <div style={{ position: 'relative' }}>
+                                            <button 
+                                                className="btn btn-secondary" 
+                                                onClick={() => setShowColVisibility(!showColVisibility)} 
+                                                style={{ gap: 6, color: 'var(--text)', borderColor: 'var(--border)', padding: '6px 12px', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center' }}
+                                            >
+                                                <Eye size={14} /> Columns
+                                            </button>
+                                            
+                                            {showColVisibility && (
+                                                <div 
+                                                    onClick={e => e.stopPropagation()}
                                             style={{
                                                 position: 'absolute', top: '100%', right: 0, marginTop: '8px', zIndex: 100,
                                                 background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '10px',
@@ -1245,9 +1862,26 @@ export default function JobsPage() {
                                                                                 Select <ChevronRight size={12}/>
                                                                             </button>
                                                                         ) : (
-                                                                            <button className="btn btn-secondary" onClick={() => handleStatusChange(row.id, 'matched')} style={{ fontSize: '0.73rem', padding: '5px 9px', borderColor: 'var(--border)' }} title="Remove Selection">
-                                                                                Deselect
-                                                                            </button>
+                                                                            <>
+                                                                                <button className="btn btn-secondary" onClick={() => handleStatusChange(row.id, 'matched')} style={{ fontSize: '0.73rem', padding: '5px 9px', borderColor: 'var(--border)' }} title="Remove Selection">
+                                                                                    Deselect
+                                                                                </button>
+                                                                                {row.email && (
+                                                                                    <button 
+                                                                                        className="btn btn-primary" 
+                                                                                        onClick={() => {
+                                                                                            const subject = encodeURIComponent(`Congratulations! You have been selected for ${selectedJob.title} at ${selectedJob.client_name || 'Alamaticz'}`);
+                                                                                            const body = encodeURIComponent(`Dear ${row.full_name},\n\nWe are pleased to inform you that you have been selected for the position of ${selectedJob.title} at ${selectedJob.client_name || 'our company'}.\n\nWe were highly impressed by your experience and credentials.\nOur recruitment team will contact you shortly with the official offer letter and next onboarding steps.\n\nBest regards,\nRecruitment Team\nAlamaticz Solutions`);
+                                                                                            const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${row.email}&su=${subject}&body=${body}`;
+                                                                                            window.open(gmailUrl, '_blank');
+                                                                                        }} 
+                                                                                        style={{ fontSize: '0.73rem', padding: '5px 9px', background: 'rgba(var(--sky-rgb), 0.15)', borderColor: 'rgba(var(--sky-rgb), 0.3)', color: 'var(--sky-dim)' }} 
+                                                                                        title="Send congratulations email via Gmail"
+                                                                                    >
+                                                                                        ✉ Send Gmail
+                                                                                    </button>
+                                                                                )}
+                                                                            </>
                                                                         )}
                                                                         <button className="btn btn-secondary" onClick={() => {
                                                                             setEditingCandidate(row);
@@ -1296,7 +1930,7 @@ export default function JobsPage() {
                                                                                      }
                                                                                      setEditCell(null);
                                                                                  }}
-                                                                                 onBlur={() => setEditCell(null)}
+                                                                                 onBlur={() => setTimeout(() => setEditCell(null), 200)}
                                                                                  onKeyDown={e => { if (e.key === 'Escape') setEditCell(null); }}
                                                                                  style={{
                                                                                      background: 'var(--input-bg)', border: '1px solid var(--gold)',
@@ -1385,7 +2019,14 @@ export default function JobsPage() {
                                                                          if (key === 'candidate_status') startEdit(ri, key, val);
                                                                      }}
                                                                      onDoubleClick={() => {
-                                                                         if (key !== 'candidate_status') startEdit(ri, key, val);
+                                                                         if (key !== 'candidate_status' && key !== 'full_name') {
+                                                                             const colLabel = cols.find(c => c.key === key)?.label || key;
+                                                                             if (String(val).length > 25 || key === 'ai_reason' || key === 'notescomments' || key === 'skills' || key === 'certifications') {
+                                                                                 setSelectedCellText({ title: colLabel, text: String(val || '') });
+                                                                             } else {
+                                                                                 startEdit(ri, key, val);
+                                                                             }
+                                                                         }
                                                                      }} style={{
                                                                     ...TD_BASE,
                                                                     color: key === 'full_name' ? 'var(--gold)' : key === 'email' ? 'var(--sky-dim)' : 'var(--text)',
@@ -1396,33 +2037,60 @@ export default function JobsPage() {
                                                                     cursor: key === 'candidate_status' ? 'pointer' : 'text',
                                                                     verticalAlign: 'middle'
                                                                 }}>
-                                                                    {key === 'full_name' && row.filename && !row.filename.toLowerCase().endsWith('.xlsx') && !row.filename.toLowerCase().endsWith('.xls') && !row.filename.toLowerCase().endsWith('.csv') ? (
-                                                                        <span
-                                                                            onClick={() => setViewingPdf({ url: `${BACKEND_URL}/static/${row.filename}`, name: row.full_name })}
-                                                                            style={{
-                                                                                display: 'inline-flex',
-                                                                                alignItems: 'center',
-                                                                                gap: '6px',
-                                                                                color: 'var(--gold)',
-                                                                                textDecoration: 'underline',
-                                                                                cursor: 'pointer',
-                                                                                fontWeight: 700,
-                                                                                transition: 'color 0.2s'
-                                                                            }}
-                                                                            title={`View ${row.filename}`}
+                                                                    {key === 'full_name' ? (
+                                                                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                                                                            <input 
+                                                                                type="checkbox"
+                                                                                checked={row.job_status === 'selected'}
+                                                                                onChange={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    handleStatusChange(row.id, row.job_status === 'selected' ? 'matched' : 'selected');
+                                                                                }}
+                                                                                title={row.job_status === 'selected' ? 'Deselect Candidate for Job Role' : 'Select Candidate for Job Role'}
+                                                                                style={{
+                                                                                    cursor: 'pointer',
+                                                                                    width: '16px',
+                                                                                    height: '16px',
+                                                                                    accentColor: 'var(--gold)',
+                                                                                    flexShrink: 0
+                                                                                }}
+                                                                            />
+                                                                            <span
+                                                                                onClick={() => setSelectedCandidateForDetails(row)}
+                                                                                style={{
+                                                                                    display: 'inline-flex',
+                                                                                    alignItems: 'center',
+                                                                                    gap: '6px',
+                                                                                    color: 'var(--gold)',
+                                                                                    textDecoration: 'underline',
+                                                                                    cursor: 'pointer',
+                                                                                    fontWeight: 700,
+                                                                                    transition: 'color 0.2s'
+                                                                                }}
+                                                                                title="View Candidate Profile & Jobs"
+                                                                            >
+                                                                                <FileText size={14} style={{ flexShrink: 0, color: 'var(--gold)' }} />
+                                                                                {display}
+                                                                                {row.is_qualified ? (
+                                                                                    <span style={{ fontSize: '0.72rem', background: 'rgba(var(--gold-rgb), 0.2)', padding: '2px 6px', borderRadius: '10px', color: 'var(--gold)', marginLeft: '6px' }} title="Qualified candidate">
+                                                                                        ⭐ Qualified
+                                                                                    </span>
+                                                                                ) : null}
+                                                                            </span>
+                                                                        </div>
+                                                                    ) : key === 'email' && val ? (
+                                                                        <a 
+                                                                            href={`https://mail.google.com/mail/?view=cm&fs=1&to=${val}`} 
+                                                                            target="_blank" 
+                                                                            rel="noreferrer" 
+                                                                            title="Send email via Gmail" 
+                                                                            style={{ color: 'var(--sky-dim)', textDecoration: 'underline', cursor: 'pointer' }}
+                                                                            onClick={e => e.stopPropagation()}
                                                                         >
-                                                                            <FileText size={14} style={{ flexShrink: 0, color: 'var(--gold)' }} />
                                                                             {display}
-                                                                        </span>
+                                                                        </a>
                                                                     ) : (
-                                                                        <>
-                                                                            {display}
-                                                                            {key === 'full_name' && row.is_qualified ? (
-                                                                                <span style={{ fontSize: '0.72rem', background: 'rgba(var(--gold-rgb), 0.2)', padding: '2px 6px', borderRadius: '10px', color: 'var(--gold)', marginLeft: '6px' }} title="Qualified candidate">
-                                                                                    ⭐ Qualified
-                                                                                </span>
-                                                                            ) : null}
-                                                                        </>
+                                                                        display
                                                                     )}
                                                                 </td>
                                                             )
@@ -1438,6 +2106,8 @@ export default function JobsPage() {
                                 </>
                             )}
                         </div>
+                    </>
+                )}
                     </div>
                 ) : (
                     <div style={{ padding: '2rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '1.5rem', overflowY: 'auto' }}>
@@ -1511,7 +2181,7 @@ export default function JobsPage() {
                                         <span style={{ display: 'block', fontSize: '0.8rem', color: isActive ? 'var(--gold)' : 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05rem', fontWeight: 600 }}>
                                             {status}
                                         </span>
-                                        <span style={{ display: 'block', fontSize: '2rem', fontWeight: 800, color: '#fff', marginTop: '6px' }}>
+                                        <span style={{ display: 'block', fontSize: '2rem', fontWeight: 800, color: 'var(--text)', marginTop: '6px' }}>
                                             {count}
                                         </span>
                                     </div>
@@ -1535,7 +2205,7 @@ export default function JobsPage() {
                                 <span style={{ display: 'block', fontSize: '0.8rem', color: statusFilter === 'All' ? 'var(--gold)' : 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05rem', fontWeight: 600 }}>
                                     Total Jobs
                                 </span>
-                                <span style={{ display: 'block', fontSize: '2rem', fontWeight: 800, color: '#fff', marginTop: '6px' }}>
+                                <span style={{ display: 'block', fontSize: '2rem', fontWeight: 800, color: 'var(--text)', marginTop: '6px' }}>
                                     {jobs.length}
                                 </span>
                             </div>
@@ -1546,7 +2216,7 @@ export default function JobsPage() {
                             {filteredJobs.length === 0 ? (
                                 <div style={{ textAlign: 'center', padding: '5rem 2rem', color: 'var(--text-dim)', background: 'rgba(var(--navy-dark-rgb), 0.1)', borderRadius: '12px', border: '1px solid var(--border)' }}>
                                     <Briefcase size={40} style={{ opacity: 0.3, marginBottom: '1rem' }} />
-                                    <h4 style={{ color: '#fff', margin: '0 0 8px 0' }}>No jobs match your selection</h4>
+                                    <h4 style={{ color: 'var(--text)', margin: '0 0 8px 0' }}>No jobs match your selection</h4>
                                     <p style={{ margin: 0, fontSize: '0.88rem' }}>Try clearing filters or search to view other job postings, or create a new job profile.</p>
                                     {(statusFilter !== 'All' || searchQuery) && (
                                         <button 
@@ -1619,7 +2289,7 @@ export default function JobsPage() {
                                             <div>
                                                 <h4 style={{ margin: 0, color: 'var(--gold)', fontSize: '1.15rem', fontFamily: 'var(--fh)', fontWeight: 800 }}>{job.title}</h4>
                                                 <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)', display: 'block', marginTop: '4px' }}>
-                                                    Client: <strong style={{ color: '#fff' }}>{job.client_name || 'N/A'}</strong>
+                                                    Client: <strong style={{ color: 'var(--text)' }}>{job.client_name || 'N/A'}</strong>
                                                 </span>
                                             </div>
 
@@ -1657,13 +2327,13 @@ export default function JobsPage() {
                                             }}>
                                                 <div>
                                                     <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.02rem' }}>Matched</span>
-                                                    <strong style={{ fontSize: '1.1rem', color: '#fff', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                                                    <strong style={{ fontSize: '1.1rem', color: 'var(--text)', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
                                                         <Search size={13} style={{ color: 'var(--gold)' }} /> {job.matched_count}
                                                     </strong>
                                                 </div>
                                                 <div style={{ borderLeft: '1px solid var(--border)' }}>
                                                     <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.02rem' }}>Selected</span>
-                                                    <strong style={{ fontSize: '1.1rem', color: '#fff', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                                                    <strong style={{ fontSize: '1.1rem', color: 'var(--text)', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
                                                         <UserCheck size={13} style={{ color: 'var(--primary)' }} /> {job.selected_count}
                                                     </strong>
                                                 </div>
@@ -1681,17 +2351,19 @@ export default function JobsPage() {
                                                 >
                                                     Open Details <ChevronRight size={14} />
                                                 </button>
-                                                <button
-                                                    className="btn btn-secondary"
-                                                    style={{ padding: '7px', borderColor: 'rgba(239, 68, 68, 0.3)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleDeleteJob(job.id);
-                                                    }}
-                                                    title="Delete job description completely"
-                                                >
-                                                    <Trash2 size={15} />
-                                                </button>
+                                                {!isExternal && (
+                                                    <button
+                                                        className="btn btn-secondary"
+                                                        style={{ padding: '7px', borderColor: 'rgba(239, 68, 68, 0.3)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleDeleteJob(job.id);
+                                                        }}
+                                                        title="Delete job description completely"
+                                                    >
+                                                        <Trash2 size={15} />
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     ))}
@@ -1972,6 +2644,27 @@ export default function JobsPage() {
                 </div>
             )}
             
+            {/* Candidate Details Modal */}
+            {selectedCandidateForDetails && (
+                <CandidateDetailsModal 
+                    candidate={selectedCandidateForDetails} 
+                    onClose={() => setSelectedCandidateForDetails(null)} 
+                    onViewPdf={(filename, name) => {
+                        setSelectedCandidateForDetails(null);
+                        setViewingPdf({ url: `${BACKEND_URL}/static/${filename}`, name });
+                    }}
+                    onToggleStatus={handleStatusChange}
+                />
+            )}
+            
+            {/* Cell Text Modal */}
+            {selectedCellText && (
+                <CellTextModal 
+                    data={selectedCellText} 
+                    onClose={() => setSelectedCellText(null)} 
+                />
+            )}
+            
             {/* Resume Viewer Modal */}
             {viewingPdf && (
                 <div style={{
@@ -2009,6 +2702,235 @@ export default function JobsPage() {
                             style={{ width: '100%', flex: 1, border: 'none', background: '#525659' }} 
                             title="Resume Viewer"
                         />
+                    </div>
+                </div>
+            )}
+
+            {/* Add Candidate Modal */}
+            {showAddCandidateModal && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(0,0,0,0.75)', zIndex: 99999,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    backdropFilter: 'blur(4px)'
+                }} onClick={() => setShowAddCandidateModal(false)}>
+                    <div className="card" onClick={e => e.stopPropagation()} style={{
+                        width: '90%', maxWidth: '500px', maxHeight: '80vh',
+                        display: 'flex', flexDirection: 'column', padding: 0,
+                        border: '1px solid var(--border)',
+                        boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+                        background: 'var(--navy-dark)'
+                    }}>
+                        {/* Header */}
+                        <div style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            padding: '16px 24px', background: 'rgba(var(--navy-rgb), 0.95)',
+                            borderBottom: '1px solid var(--border)'
+                        }}>
+                            <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 800 }}>
+                                ➕ Add Candidate manually to Job
+                            </h3>
+                            <button onClick={() => setShowAddCandidateModal(false)} style={{
+                                background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', display: 'flex'
+                            }}>
+                                <X size={18} />
+                            </button>
+                        </div>
+                        
+                        {/* Search Input */}
+                        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', background: 'rgba(var(--navy-rgb), 0.2)' }}>
+                            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                <Search size={16} style={{ position: 'absolute', left: '12px', color: 'var(--text-dim)' }} />
+                                <input 
+                                    type="text"
+                                    placeholder="Search candidate by name or email..."
+                                    value={unmatchedSearchQuery}
+                                    onChange={e => setUnmatchedSearchQuery(e.target.value)}
+                                    style={{
+                                        width: '100%', padding: '10px 10px 10px 36px',
+                                        background: 'rgba(var(--navy-dark-rgb), 0.8)', border: '1px solid var(--border)',
+                                        color: 'var(--text)', borderRadius: 8, outline: 'none', fontSize: '0.88rem'
+                                    }}
+                                />
+                            </div>
+                        </div>
+                        
+                        {/* List Container */}
+                        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {loadingUnmatched ? (
+                                <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
+                                    <Loader className="spin" size={24} style={{ color: 'var(--gold)' }} />
+                                </div>
+                            ) : unmatchedCandidates.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-dim)', fontSize: '0.9rem' }}>
+                                    No candidates available to match.
+                                </div>
+                            ) : (() => {
+                                const filtered = unmatchedCandidates.filter(c => {
+                                    const q = unmatchedSearchQuery.toLowerCase();
+                                    return (c.full_name || '').toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q);
+                                });
+                                
+                                if (filtered.length === 0) {
+                                    return (
+                                        <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-dim)', fontSize: '0.9rem' }}>
+                                            No matching candidates found.
+                                        </div>
+                                    );
+                                }
+                                
+                                return filtered.map(c => (
+                                    <div 
+                                        key={c.id}
+                                        style={{
+                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                            padding: '12px 16px', background: 'rgba(255,255,255,0.02)',
+                                            border: '1px solid var(--border)', borderRadius: '8px',
+                                            transition: 'all 0.2s'
+                                        }}
+                                    >
+                                        <div style={{ overflow: 'hidden', marginRight: '12px' }}>
+                                            <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {c.full_name || 'Unnamed Candidate'}
+                                            </div>
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: '2px' }}>
+                                                Exp: {c.total_experience ? `${c.total_experience} yrs` : '—'} | notice: {c.notice_period || '—'}
+                                            </div>
+                                        </div>
+                                        <button 
+                                            onClick={() => handleAddCandidateManually(c.id)}
+                                            className="btn btn-primary"
+                                            style={{ padding: '6px 12px', fontSize: '0.78rem', whiteSpace: 'nowrap' }}
+                                        >
+                                            Match
+                                        </button>
+                                    </div>
+                                ));
+                            })()}
+                        </div>
+                        
+                        {/* Footer */}
+                        <div style={{
+                            padding: '12px 24px', borderTop: '1px solid var(--border)',
+                            display: 'flex', justifyContent: 'flex-end',
+                            background: 'rgba(var(--navy-rgb), 0.3)'
+                        }}>
+                            <button 
+                                onClick={() => setShowAddCandidateModal(false)}
+                                className="btn btn-secondary"
+                                style={{ padding: '6px 16px', fontSize: '0.8rem' }}
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+ 
+            {showShareModal && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(0,0,0,0.75)', zIndex: 99999,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    backdropFilter: 'blur(4px)'
+                }} onClick={() => setShowShareModal(false)}>
+                    <div className="card" onClick={e => e.stopPropagation()} style={{
+                        width: '90%', maxWidth: '500px', maxHeight: '80vh',
+                        display: 'flex', flexDirection: 'column', padding: 0,
+                        border: '1px solid var(--border)',
+                        boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+                        background: 'var(--navy-dark)'
+                    }}>
+                        {/* Header */}
+                        <div style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            padding: '16px 24px', background: 'rgba(var(--navy-rgb), 0.95)',
+                            borderBottom: '1px solid var(--border)'
+                        }}>
+                            <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Share2 size={18} /> Share Job Profile
+                            </h3>
+                            <button onClick={() => setShowShareModal(false)} style={{
+                                background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', display: 'flex', transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.color = 'var(--gold)'}
+                            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-dim)'}
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+                        
+                        {/* Content */}
+                        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', color: 'var(--text)' }}>
+                            <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '15px' }}>
+                                Select the external candidates/users who should be permitted to view this Job Description.
+                            </p>
+                            {loadingShares ? (
+                                <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
+                                    <Loader className="spin" size={24} style={{ color: 'var(--gold)' }} />
+                                </div>
+                            ) : externalUsers.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-dim)', border: '1px dashed var(--border)', borderRadius: '8px', fontSize: '0.9rem' }}>
+                                    No external users registered. Check the "External" role in Admin Portal to add external users.
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    {externalUsers.map(u => (
+                                        <label 
+                                            key={u.username} 
+                                            style={{ 
+                                                display: 'flex', alignItems: 'center', gap: '12px', 
+                                                padding: '10px 14px', background: 'rgba(255,255,255,0.02)', 
+                                                border: '1px solid var(--border)', borderRadius: '8px',
+                                                cursor: 'pointer', transition: 'all 0.2s'
+                                            }}
+                                            onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--gold)'}
+                                            onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+                                        >
+                                            <input 
+                                                type="checkbox"
+                                                checked={sharedUsernames.includes(u.username)}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                        setSharedUsernames([...sharedUsernames, u.username]);
+                                                    } else {
+                                                        setSharedUsernames(sharedUsernames.filter(uname => uname !== u.username));
+                                                    }
+                                                }}
+                                                style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--gold)' }}
+                                            />
+                                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{u.full_name}</span>
+                                                <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>@{u.username}</span>
+                                            </div>
+                                        </label>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        
+                        {/* Footer */}
+                        <div style={{
+                            padding: '12px 24px', borderTop: '1px solid var(--border)',
+                            display: 'flex', justifyContent: 'flex-end', gap: '10px',
+                            background: 'rgba(var(--navy-rgb), 0.3)'
+                        }}>
+                            <button 
+                                onClick={() => setShowShareModal(false)}
+                                className="btn btn-secondary"
+                                style={{ padding: '6px 16px', fontSize: '0.8rem' }}
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={handleSaveShares}
+                                className="btn btn-primary"
+                                style={{ padding: '6px 16px', fontSize: '0.8rem' }}
+                                disabled={loadingShares || externalUsers.length === 0}
+                            >
+                                Save Shares
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

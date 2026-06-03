@@ -24,12 +24,12 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
 
     const navItems = [
         { to: '/', label: 'Dashboard', Icon: LayoutDashboard },
-        { to: '/jobs', label: 'Job Description', Icon: Briefcase },
+        ...((user?.is_hr === 1 || user?.is_external === 1) ? [{ to: '/jobs', label: 'Job Description', Icon: Briefcase }] : []),
         { to: '/upload', label: 'Candidate Profiles', Icon: Users },
         { to: '/chat', label: 'Chat with Hire', Icon: MessageSquare },
     ]
 
-    if (user?.role === 'admin') {
+    if (user?.role === 'admin' || user?.is_admin === 1) {
         navItems.push({ to: '/admin', label: 'Admin Portal', Icon: Shield })
     }
 
@@ -105,144 +105,146 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
                     </div>
                 </header>
 
-                <div className="page-body" style={{ padding: 0, flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <div className="page-body" style={{ padding: 0, flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflowY: 'auto' }}>
                     <Outlet context={{ user, onUpdateUser }} />
                 </div>
             </div>
             
             {/* Activity Log Sidebar (Right) */}
-            <aside className="activity-sidebar" style={{
-                width: '300px',
-                borderLeft: '1px solid var(--border)',
-                background: 'var(--sidebar-bg)',
-                display: 'flex',
-                flexDirection: 'column',
-                flexShrink: 0,
-                height: '100%',
-                backdropFilter: 'blur(25px)'
-            }}>
-                <div style={{
-                    padding: '20px 16px 12px',
-                    borderBottom: '1px solid var(--border)',
-                    background: 'rgba(var(--navy-dark-rgb), 0.4)',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                }}>
-                    <div>
-                        <h3 style={{
-                            margin: 0,
-                            color: 'var(--gold)',
-                            fontFamily: 'var(--fh)',
-                            fontSize: '0.9rem',
-                            fontWeight: 800,
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.06rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px'
-                        }}>
-                            <span>⚡</span> Activity Feed
-                        </h3>
-                        <p style={{ margin: '4px 0 0', fontSize: '0.72rem', color: 'var(--text-dim)', opacity: 0.8 }}>
-                            Live updates from your team
-                        </p>
-                    </div>
-                    {activities.length > 0 && (
-                        <button
-                            onClick={async () => {
-                                if (window.confirm("Are you sure you want to clear the activity feed?")) {
-                                    try {
-                                        await axios.delete('/api/activity');
-                                        fetchActivities();
-                                    } catch (e) {
-                                        console.error("Failed to clear activity feed", e);
-                                    }
-                                }
-                            }}
-                            style={{
-                                background: 'rgba(239, 68, 68, 0.1)',
-                                border: '1px solid rgba(239, 68, 68, 0.3)',
-                                color: '#ef4444',
-                                borderRadius: '6px',
-                                fontSize: '0.7rem',
-                                padding: '4px 8px',
-                                cursor: 'pointer',
-                                transition: 'all 0.2s',
-                                fontWeight: 'bold'
-                            }}
-                            onMouseEnter={e => {
-                                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
-                                e.currentTarget.style.borderColor = '#ef4444';
-                            }}
-                            onMouseLeave={e => {
-                                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
-                                e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)';
-                            }}
-                        >
-                            🗑️ Clear
-                        </button>
-                    )}
-                </div>
-                
-                <div style={{
-                    flex: 1,
-                    overflowY: 'auto',
-                    padding: '16px 16px',
+            {user?.role === 'admin' && (
+                <aside className="activity-sidebar" style={{
+                    width: '300px',
+                    borderLeft: '1px solid var(--border)',
+                    background: 'var(--sidebar-bg)',
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: '16px'
+                    flexShrink: 0,
+                    height: '100%',
+                    backdropFilter: 'blur(25px)'
                 }}>
-                    {activities.length === 0 ? (
-                        <div style={{
-                            textAlign: 'center',
-                            color: 'var(--text-dim)',
-                            opacity: 0.6,
-                            padding: '2rem 0',
-                            fontSize: '0.75rem'
-                        }}>
-                            No activity logged yet.
+                    <div style={{
+                        padding: '20px 16px 12px',
+                        borderBottom: '1px solid var(--border)',
+                        background: 'rgba(var(--navy-dark-rgb), 0.4)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                    }}>
+                        <div>
+                            <h3 style={{
+                                margin: 0,
+                                color: 'var(--gold)',
+                                fontFamily: 'var(--fh)',
+                                fontSize: '0.9rem',
+                                fontWeight: 800,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.06rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                            }}>
+                                <span>⚡</span> Activity Feed
+                            </h3>
+                            <p style={{ margin: '4px 0 0', fontSize: '0.72rem', color: 'var(--text-dim)', opacity: 0.8 }}>
+                                Live updates from your team
+                            </p>
                         </div>
-                    ) : (
-                        activities.map(act => {
-                            const initials = act.username ? act.username.substring(0, 2).toUpperCase() : 'U';
-                            const date = new Date(act.timestamp);
-                            const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                            const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-                            
-                            return (
-                                <div key={act.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                                    <div style={{
-                                        width: '28px',
-                                        height: '28px',
-                                        borderRadius: '50%',
-                                        background: 'linear-gradient(135deg, #FB8500, #FFB703)',
-                                        color: '#fff',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        fontWeight: 'bold',
-                                        fontSize: '0.72rem',
-                                        flexShrink: 0,
-                                        boxShadow: '0 0 8px rgba(251, 133, 0, 0.2)'
-                                    }}>
-                                        {initials}
-                                    </div>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', flex: 1, minWidth: 0 }}>
-                                        <div style={{ fontSize: '0.8rem', color: 'var(--text)', lineHeight: '1.35', wordBreak: 'break-word' }}>
-                                            <strong style={{ color: 'var(--gold)' }}>{act.username}</strong>{' '}
-                                            <span style={{ color: 'var(--text-dim)' }}>{act.action}</span>
+                        {activities.length > 0 && (
+                            <button
+                                onClick={async () => {
+                                    if (window.confirm("Are you sure you want to clear the activity feed?")) {
+                                        try {
+                                            await axios.delete('/api/activity');
+                                            fetchActivities();
+                                        } catch (e) {
+                                            console.error("Failed to clear activity feed", e);
+                                        }
+                                    }
+                                }}
+                                style={{
+                                    background: 'rgba(239, 68, 68, 0.1)',
+                                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                                    color: '#ef4444',
+                                    borderRadius: '6px',
+                                    fontSize: '0.7rem',
+                                    padding: '4px 8px',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                    fontWeight: 'bold'
+                                }}
+                                onMouseEnter={e => {
+                                    e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+                                    e.currentTarget.style.borderColor = '#ef4444';
+                                }}
+                                onMouseLeave={e => {
+                                    e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
+                                    e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+                                }}
+                            >
+                                🗑️ Clear
+                            </button>
+                        )}
+                    </div>
+                    
+                    <div style={{
+                        flex: 1,
+                        overflowY: 'auto',
+                        padding: '16px 16px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '16px'
+                    }}>
+                        {activities.length === 0 ? (
+                            <div style={{
+                                textAlign: 'center',
+                                color: 'var(--text-dim)',
+                                opacity: 0.6,
+                                padding: '2rem 0',
+                                fontSize: '0.75rem'
+                            }}>
+                                No activity logged yet.
+                            </div>
+                        ) : (
+                            activities.map(act => {
+                                const initials = act.username ? act.username.substring(0, 2).toUpperCase() : 'U';
+                                const date = new Date(act.timestamp);
+                                const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                                
+                                return (
+                                    <div key={act.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                                        <div style={{
+                                            width: '28px',
+                                            height: '28px',
+                                            borderRadius: '50%',
+                                            background: 'linear-gradient(135deg, #FB8500, #FFB703)',
+                                            color: '#fff',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontWeight: 'bold',
+                                            fontSize: '0.72rem',
+                                            flexShrink: 0,
+                                            boxShadow: '0 0 8px rgba(251, 133, 0, 0.2)'
+                                        }}>
+                                            {initials}
                                         </div>
-                                        <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)', opacity: 0.5 }}>
-                                            {dateStr} at {timeStr}
-                                        </span>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontSize: '0.8rem', color: 'var(--text)', lineHeight: '1.35', wordBreak: 'break-word' }}>
+                                                <strong style={{ color: 'var(--gold)' }}>{act.username}</strong>{' '}
+                                                <span style={{ color: 'var(--text-dim)' }}>{act.action}</span>
+                                            </div>
+                                            <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)', opacity: 0.5 }}>
+                                                {dateStr} at {timeStr}
+                                            </span>
+                                        </div>
                                     </div>
-                                </div>
-                            );
-                        })
-                    )}
-                </div>
-            </aside>
+                                );
+                            })
+                        )}
+                    </div>
+                </aside>
+            )}
         </div>
     )
 }
