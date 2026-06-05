@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useDropzone } from 'react-dropzone'
+import { useOutletContext } from 'react-router-dom'
 import axios from 'axios'
 import { UploadCloud, Trash2, CheckCircle, FileText, Search, Plus, Filter, Loader, RefreshCw, Download, Upload, X, Check, Eye } from 'lucide-react'
 import { exportToExcel, formatCandidatesForExcel } from '../utils/excelUtils'
@@ -65,12 +66,7 @@ function ExpandableCell({ value, onEdit }) {
             {open && (
                 <div 
                     onClick={() => setOpen(false)}
-                    style={{
-                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                        background: 'rgba(0, 0, 0, 0.45)', zIndex: 99999,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        backdropFilter: 'blur(2px)'
-                    }}
+                    className="modal-overlay"
                 >
                     <div
                         onClick={e => e.stopPropagation()}
@@ -122,13 +118,13 @@ function ExpandableCell({ value, onEdit }) {
 
 /* ─── Column config ───────────────────────────────────────────────────────── */
 const BASE_WIDTHS = {
-    full_name: '150px', total_experience: '90px', pega_experience: '90px',
-    cdh_exp: '90px', ctc: '100px', expected_ctc: '100px', percentage_hike: '90px',
-    candidate_interview_status: '130px', candidate_status: '130px', availability_in_days: '100px', notice_period: '90px',
-    phone: '130px', email: '180px', linkedin: '120px', current_location: '120px',
-    pref_locations: '120px', current_organization: '150px', current_client: '150px',
-    domain: '120px', tier: '90px', certification_version: '100px',
-    skills: '200px', certifications: '180px', notescomments: '180px'
+    full_name: '180px', total_experience: '150px', pega_experience: '150px',
+    cdh_exp: '140px', ctc: '120px', expected_ctc: '120px', percentage_hike: '140px',
+    candidate_interview_status: '180px', candidate_status: '150px', availability_in_days: '140px', notice_period: '120px',
+    phone: '140px', email: '220px', linkedin: '140px', current_location: '140px',
+    pref_locations: '150px', current_organization: '180px', current_client: '160px',
+    domain: '130px', tier: '100px', certification_version: '120px',
+    skills: '220px', certifications: '200px', notescomments: '220px'
 }
 
 const TH = {
@@ -151,6 +147,7 @@ const TD_BASE = {
 
 /* ─── Page ────────────────────────────────────────────────────────────────── */
 export default function UploadPage() {
+    const { user } = useOutletContext()
     const [candidates, setCandidates] = useState([])
     const [progress, setProgress] = useState([])
     const [toast, setToast] = useState(null)
@@ -411,7 +408,19 @@ export default function UploadPage() {
         multiple: true,
     })
 
-    const startEdit = (ri, col, val) => { setEditCell({ row: ri, col }); setEditVal(String(val || '')) }
+    const startEdit = (ri, col, val) => {
+        const isAdmin = user?.role === 'admin' || user?.is_admin === 1;
+        if (col === 'certifications' && !isAdmin) {
+            showToast("Only Admins can view or edit certifications.", "error");
+            return;
+        }
+        if (val === '[HIDDEN]') {
+            showToast("This field is hidden by the administrator.", "error");
+            return;
+        }
+        setEditCell({ row: ri, col });
+        setEditVal(String(val || ''));
+    }
     const saveEdit = async (ri) => {
         const c = candidates[ri]; if (!c?.id) { setEditCell(null); return }
         
@@ -461,7 +470,7 @@ export default function UploadPage() {
     }
 
     return (
-        <div style={{ padding: '2rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+        <div style={{ padding: '2rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '2rem', minWidth: 0, width: '100%' }}>
 
             {/* Drop Zone */}
             <div className="card">
@@ -495,7 +504,7 @@ export default function UploadPage() {
             </div>
 
             {/* Table */}
-            <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, width: '100%' }}>
                 <div className="section-header" style={{ borderBottom: '1px solid rgba(var(--sky-rgb), 0.2)', paddingBottom: '1rem', marginBottom: '1rem' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                         <div className="section-title">👥 Candidate Profiles</div>
@@ -608,7 +617,7 @@ export default function UploadPage() {
                     </div>
                 ) : (
                     <>
-                        <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid var(--border)' }}>
+                        <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid var(--border)', width: '100%' }}>
                             <table style={{ width: getTableWidth(), tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
                                 <colgroup>
                                     {activeCols.map(c => <col key={c.key} style={{ width: c.pct }} />)}
@@ -949,12 +958,12 @@ export default function UploadPage() {
                                                          </span>
                                                      );
                                                  } else if (isExp) {
-                                                    display = (val !== '' && val != null ? `${val} yrs` : '—');
-                                                } else if (key === 'notice_period' || key === 'availability_in_days') {
-                                                    display = (val === 0 || val === '0') ? 'Immediate' : (val !== null && val !== '' && !isNaN(val) ? `${val} days` : (val || '—'));
-                                                } else {
-                                                    display = (val !== '' && val != null ? val : '—');
-                                                }
+                                                     display = (val !== '' && val != null ? (val === '[HIDDEN]' ? '[HIDDEN]' : `${val} yrs`) : '—');
+                                                 } else if (key === 'notice_period' || key === 'availability_in_days') {
+                                                     display = (val === '[HIDDEN]') ? '[HIDDEN]' : ((val === 0 || val === '0') ? 'Immediate' : (val !== null && val !== '' && !isNaN(val) ? `${val} days` : (val || '—')));
+                                                 } else {
+                                                     display = (val !== '' && val != null ? val : '—');
+                                                 }
                                                 return (
                                                     <td key={key} onClick={() => {
                                                              if (key === 'candidate_status') startEdit(ri, key, val);
@@ -1012,11 +1021,7 @@ export default function UploadPage() {
             )}
 
             {showAddCol && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                    background: 'rgba(0,0,0,0.7)', zIndex: 99999,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center'
-                }}>
+                <div className="modal-overlay">
                     <div className="card" style={{ width: 400, maxWidth: '90%' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 15 }}>
                             <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)' }}>Add Custom Column</h3>
@@ -1050,11 +1055,7 @@ export default function UploadPage() {
 
             {/* Filter Modal */}
             {showFilter && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                    background: 'rgba(0,0,0,0.7)', zIndex: 99999,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center'
-                }}>
+                <div className="modal-overlay">
                     <div className="card" style={{ width: 400, maxWidth: '90%' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 15 }}>
                             <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)' }}>Filter Candidates</h3>
@@ -1157,21 +1158,15 @@ export default function UploadPage() {
 
             {/* Resume Viewer Modal */}
             {viewingPdf && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                    background: 'rgba(0,0,0,0.85)', zIndex: 99999,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    backdropFilter: 'blur(5px)'
-                }} onClick={() => setViewingPdf(null)}>
+                <div className="modal-overlay" onClick={() => setViewingPdf(null)}>
                     <div className="card" onClick={e => e.stopPropagation()} style={{ 
                         width: '90%', maxWidth: 1000, height: '90vh', 
                         display: 'flex', flexDirection: 'column', padding: 0, 
-                        overflow: 'hidden', border: '1px solid var(--border)',
-                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+                        overflow: 'hidden'
                     }}>
                         <div style={{ 
                             display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
-                            padding: '16px 24px', background: 'rgba(var(--navy-rgb), 0.98)', borderBottom: '1px solid var(--border)' 
+                            padding: '20px 24px', background: 'rgba(var(--navy-dark-rgb), 0.4)', borderBottom: '1px solid var(--border)' 
                         }}>
                             <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', display: 'flex', alignItems: 'center', gap: 10, fontSize: '1.05rem' }}>
                                 <span style={{fontSize: '1.2rem', opacity: 0.8}}>📄</span> {viewingPdf.name}

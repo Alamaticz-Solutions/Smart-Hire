@@ -212,7 +212,8 @@ def init_db():
             password TEXT NOT NULL,
             role TEXT DEFAULT 'user',
             is_hr INTEGER DEFAULT 0,
-            is_admin INTEGER DEFAULT 0
+            is_admin INTEGER DEFAULT 0,
+            is_external INTEGER DEFAULT 0
         )
     ''')
     cur.execute('''
@@ -319,6 +320,8 @@ def init_db():
         cur.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0")
     if 'is_external' not in existing_users_cols:
         cur.execute("ALTER TABLE users ADD COLUMN is_external INTEGER DEFAULT 0")
+    if 'hidden_fields' not in existing_users_cols:
+        cur.execute("ALTER TABLE users ADD COLUMN hidden_fields TEXT DEFAULT ''")
 
     # Seed default users if empty (do NOT wipe the table to preserve registered users!)
     cur.execute("SELECT COUNT(*) FROM users WHERE LOWER(username) = 'admin'")
@@ -597,6 +600,17 @@ def get_job_title(job_id: int) -> str:
 @app.get("/api/candidates")
 def list_candidates(request: Request):
     username = request.headers.get("x-user-username")
+    
+    # Check if requesting user is external
+    if username:
+        conn = sqlite3.connect(STATS_DB, timeout=30.0)
+        cur = conn.cursor()
+        cur.execute("SELECT is_external FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+        row = cur.fetchone()
+        conn.close()
+        if row and row[0] == 1:
+            raise HTTPException(status_code=403, detail="Forbidden")
+            
     rows = get_candidates_list()
     
     # Replace None values with empty string
@@ -605,10 +619,17 @@ def list_candidates(request: Request):
             if v is None:
                 row[k] = ""
 
+    # Mask certifications for non-admin users (like HR users)
+    is_user_admin = (get_user_role(username) == "admin")
+    if not is_user_admin:
+        for row in rows:
+            row["certifications"] = "[HIDDEN]"
+
     if not is_admin_or_hr(username):
         keywords = get_masked_keywords()
         rows = [mask_candidate_record(row, keywords) for row in rows]
         
+    rows = apply_user_hidden_fields(rows, username)
     return rows
 
 class CustomColumn(BaseModel):
@@ -703,7 +724,7 @@ async def update_candidate(candidate_id: int, request: Request, background_tasks
     cur  = conn.cursor()
     cur.execute("PRAGMA table_info(candidate_metadata)")
     allowed_cols = [c[1] for c in cur.fetchall()]
-    updates = {k: v for k, v in body.items() if k in allowed_cols and k != 'id' and v is not None}
+    updates = {k: v for k, v in body.items() if k in allowed_cols and k != 'id' and v is not None and v != '[HIDDEN]'}
     
     # Server-side validation for numeric edits
     for int_col in ['notice_period', 'availability_in_days']:
@@ -1760,6 +1781,7 @@ class UserPermissionsUpdate(BaseModel):
     is_hr: int
     is_admin: int
     is_external: Optional[int] = 0
+    hidden_fields: Optional[str] = ""
 
 def has_digit(s: str) -> bool:
     return any(c.isdigit() for c in s)
@@ -1796,6 +1818,11 @@ def list_jobs(request: Request):
         counts = {r['status']: r['cnt'] for r in cur.fetchall()}
         job['matched_count'] = counts.get('matched', 0)
         job['selected_count'] = counts.get('selected', 0)
+        
+        # Get shared usernames
+        cur.execute("SELECT username FROM job_shares WHERE job_id = ?", (job_id,))
+        job['shared_with'] = [r['username'] for r in cur.fetchall()]
+        
     conn.close()
     return jobs
 
@@ -1833,8 +1860,10 @@ def create_job(job: JobCreate, request: Request):
     counts = {r['status']: r['cnt'] for r in cur.fetchall()}
     updated_job['matched_count'] = counts.get('matched', 0)
     updated_job['selected_count'] = counts.get('selected', 0)
+    updated_job['shared_with'] = []
     username = request.headers.get("x-user-username")
     log_activity_db(username or "unknown", f"posted a Job Description for '{job.title}'")
+    conn.close()
     
     return updated_job
 
@@ -1875,6 +1904,10 @@ def update_job(job_id: int, job: JobCreate, request: Request):
     counts = {r['status']: r['cnt'] for r in cur.fetchall()}
     updated_job['matched_count'] = counts.get('matched', 0)
     updated_job['selected_count'] = counts.get('selected', 0)
+    
+    cur.execute("SELECT username FROM job_shares WHERE job_id = ?", (job_id,))
+    updated_job['shared_with'] = [r['username'] for r in cur.fetchall()]
+    
     conn.close()
     
     return updated_job
@@ -1904,6 +1937,18 @@ def get_job_candidates(job_id: int, request: Request):
         WHERE jc.job_id = ?
     """, (job_id,))
     candidates = [dict(row) for row in cur.fetchall()]
+    
+    # Check if requesting user is external
+    username = request.headers.get("x-user-username")
+    is_external = False
+    user_full_name = ""
+    if username:
+        cur.execute("SELECT is_external, full_name FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+        row = cur.fetchone()
+        if row:
+            is_external = (row['is_external'] == 1)
+            user_full_name = row['full_name']
+            
     conn.close()
     
     # Replace None values with empty string
@@ -1912,11 +1957,25 @@ def get_job_candidates(job_id: int, request: Request):
             if v is None:
                 row[k] = ""
 
-    username = request.headers.get("x-user-username")
+    if is_external:
+        # Mask all columns except for ID, name, AI reason, and status for data privacy
+        allowed_keys = {'id', 'full_name', 'ai_reason', 'job_status', 'candidate_status'}
+        for c in candidates:
+            for key in list(c.keys()):
+                if key not in allowed_keys:
+                    c[key] = ""
+
+    # Mask certifications for non-admin users (like HR users)
+    is_user_admin = (get_user_role(username) == "admin")
+    if not is_user_admin:
+        for row in candidates:
+            row["certifications"] = "[HIDDEN]"
+
     if not is_admin_or_hr(username):
         keywords = get_masked_keywords()
         candidates = [mask_candidate_record(row, keywords) for row in candidates]
         
+    candidates = apply_user_hidden_fields(candidates, username)
     return candidates
 
 @app.get("/api/jobs/{job_id}/unmatched-candidates")
@@ -1941,10 +2000,17 @@ def get_unmatched_candidates(job_id: int, request: Request):
                 row[k] = ""
 
     username = request.headers.get("x-user-username")
+    # Mask certifications for non-admin users (like HR users)
+    is_user_admin = (get_user_role(username) == "admin")
+    if not is_user_admin:
+        for row in candidates:
+            row["certifications"] = "[HIDDEN]"
+
     if not is_admin_or_hr(username):
         keywords = get_masked_keywords()
         candidates = [mask_candidate_record(row, keywords) for row in candidates]
         
+    candidates = apply_user_hidden_fields(candidates, username)
     return candidates
 
 @app.post("/api/jobs/{job_id}/candidates/{candidate_id}")
@@ -2180,7 +2246,8 @@ def login(req: LoginRequest):
         "role": user_dict["role"],
         "is_hr": user_dict.get("is_hr", 0),
         "is_admin": user_dict.get("is_admin", 0),
-        "is_external": user_dict.get("is_external", 0)
+        "is_external": user_dict.get("is_external", 0),
+        "hidden_fields": user_dict.get("hidden_fields", "")
     }
 
 class FirebaseSyncRequest(BaseModel):
@@ -2218,7 +2285,8 @@ def firebase_sync(req: FirebaseSyncRequest):
         "role": user_dict["role"],
         "is_hr": user_dict.get("is_hr", 0),
         "is_admin": user_dict.get("is_admin", 0),
-        "is_external": user_dict.get("is_external", 0)
+        "is_external": user_dict.get("is_external", 0),
+        "hidden_fields": user_dict.get("hidden_fields", "")
     }
 
 @app.get("/api/admin/requests")
@@ -2239,14 +2307,14 @@ def list_change_requests(request: Request):
 @app.get("/api/admin/users")
 def list_users(request: Request):
     username = request.headers.get("x-user-username")
-    role = get_user_role(username)
-    if role != "admin":
+    if not is_admin_or_hr(username):
         raise HTTPException(status_code=403, detail="Forbidden")
+        
         
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
-    cur.execute("SELECT id, full_name, username, role, is_hr, is_admin, is_external FROM users")
+    cur.execute("SELECT id, full_name, username, role, is_hr, is_admin, is_external, hidden_fields FROM users")
     rows = [dict(r) for r in cur.fetchall()]
     conn.close()
     return rows
@@ -2264,6 +2332,32 @@ def is_admin_or_hr(username: str) -> bool:
         return is_admin == 1 or is_hr == 1
     return False
 
+def get_user_hidden_fields(username: str) -> list[str]:
+    if not username:
+        return []
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT hidden_fields FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+        row = cur.fetchone()
+        if row and row[0]:
+            conn.close()
+            return [f.strip().lower() for f in row[0].split(",") if f.strip()]
+    except Exception as e:
+        pass
+    conn.close()
+    return []
+
+def apply_user_hidden_fields(rows: list[dict], username: str) -> list[dict]:
+    hidden = get_user_hidden_fields(username)
+    if not hidden:
+        return rows
+    for r in rows:
+        for field in hidden:
+            if field in r:
+                r[field] = "[HIDDEN]"
+    return rows
+
 @app.put("/api/admin/users/{user_id}/permissions")
 def update_user_permissions_endpoint(user_id: int, body: UserPermissionsUpdate, request: Request):
     username = request.headers.get("x-user-username")
@@ -2277,14 +2371,15 @@ def update_user_permissions_endpoint(user_id: int, body: UserPermissionsUpdate, 
     is_external_val = body.is_external if body.is_external is not None else 0
     is_hr_val = body.is_hr
     is_admin_val = body.is_admin
+    hidden_fields_val = body.hidden_fields if body.hidden_fields is not None else ""
     
     if is_external_val == 1:
         is_hr_val = 0
         is_admin_val = 0
         
     new_role = "admin" if is_admin_val == 1 else "user"
-    cur.execute("UPDATE users SET is_hr = ?, is_admin = ?, is_external = ?, role = ? WHERE id = ?", 
-                (is_hr_val, is_admin_val, is_external_val, new_role, user_id))
+    cur.execute("UPDATE users SET is_hr = ?, is_admin = ?, is_external = ?, role = ?, hidden_fields = ? WHERE id = ?", 
+                (is_hr_val, is_admin_val, is_external_val, new_role, hidden_fields_val, user_id))
     conn.commit()
     conn.close()
     return {"status": "updated"}

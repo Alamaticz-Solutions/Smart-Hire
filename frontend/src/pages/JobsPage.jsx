@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import { Briefcase, Plus, Trash2, Search, UserCheck, Loader, ChevronRight, Edit, Calendar, User, Building, DollarSign, Award, Target, X, Phone, Eye, Filter, Check, FileText, Download, MoreVertical, Share2 } from 'lucide-react';
 import { useOutletContext } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
 import { exportToExcel, formatCandidatesForExcel } from '../utils/excelUtils';
 const API_URL = import.meta.env.VITE_API_URL || '';
 const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
@@ -62,12 +63,7 @@ function ExpandableCell({ value, onEdit }) {
             {open && (
                 <div 
                     onClick={() => setOpen(false)}
-                    style={{
-                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                        background: 'rgba(0, 0, 0, 0.45)', zIndex: 99999,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        backdropFilter: 'blur(2px)'
-                    }}
+                    className="modal-overlay"
                 >
                     <div
                         onClick={e => e.stopPropagation()}
@@ -140,23 +136,16 @@ function CandidateDetailsModal({ candidate, onClose, onViewPdf, onToggleStatus }
     };
 
     return (
-        <div style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0,0,0,0.75)', zIndex: 99998,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            backdropFilter: 'blur(4px)'
-        }} onClick={onClose}>
+        <div className="modal-overlay" style={{ zIndex: 99998 }} onClick={onClose}>
             <div className="card" onClick={e => e.stopPropagation()} style={{
                 width: '95%', maxWidth: '800px', maxHeight: '90vh',
                 display: 'flex', flexDirection: 'column', padding: 0,
-                overflow: 'hidden', border: '1px solid var(--border)',
-                boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-                background: 'var(--navy-dark)'
+                overflow: 'hidden'
             }}>
                 {/* Header */}
                 <div style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '16px 24px', background: 'rgba(var(--navy-rgb), 0.95)',
+                    padding: '20px 24px', background: 'rgba(var(--navy-dark-rgb), 0.4)',
                     borderBottom: '1px solid var(--border)'
                 }}>
                     <div>
@@ -448,22 +437,14 @@ function CellTextModal({ data, onClose }) {
     };
 
     return (
-        <div style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0,0,0,0.75)', zIndex: 99999,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            backdropFilter: 'blur(4px)'
-        }} onClick={onClose}>
+        <div className="modal-overlay" onClick={onClose}>
             <div className="card" onClick={e => e.stopPropagation()} style={{
                 width: '90%', maxWidth: '600px', maxHeight: '80vh',
-                display: 'flex', flexDirection: 'column', padding: 0,
-                border: '1px solid var(--border)',
-                boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-                background: 'var(--navy-dark)'
+                display: 'flex', flexDirection: 'column', padding: 0
             }}>
                 <div style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '16px 24px', background: 'rgba(var(--navy-rgb), 0.95)',
+                    padding: '20px 24px', background: 'rgba(var(--navy-dark-rgb), 0.4)',
                     borderBottom: '1px solid var(--border)'
                 }}>
                     <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 800 }}>
@@ -514,14 +495,14 @@ function CellTextModal({ data, onClose }) {
 
 /* ─── Column config ───────────────────────────────────────────────────────── */
 const BASE_WIDTHS = {
-    full_name: '150px', total_experience: '90px', pega_experience: '90px',
-    cdh_exp: '90px', ctc: '100px', expected_ctc: '100px', percentage_hike: '90px',
-    candidate_interview_status: '130px', candidate_status: '130px', availability_in_days: '100px', notice_period: '90px',
-    phone: '130px', email: '180px', linkedin: '120px', current_location: '120px',
-    pref_locations: '120px', current_organization: '150px', current_client: '150px',
-    domain: '120px', tier: '90px', certification_version: '100px',
-    skills: '200px', certifications: '180px', notescomments: '180px',
-    ai_reason: '320px', source: '120px'
+    full_name: '180px', total_experience: '150px', pega_experience: '150px',
+    cdh_exp: '140px', ctc: '120px', expected_ctc: '120px', percentage_hike: '140px',
+    candidate_interview_status: '180px', candidate_status: '150px', availability_in_days: '140px', notice_period: '120px',
+    phone: '140px', email: '220px', linkedin: '140px', current_location: '140px',
+    pref_locations: '150px', current_organization: '180px', current_client: '160px',
+    domain: '130px', tier: '100px', certification_version: '120px',
+    skills: '220px', certifications: '200px', notescomments: '220px',
+    ai_reason: '350px', source: '130px'
 }
 
 const TH = {
@@ -543,6 +524,7 @@ const TD_BASE = {
 export default function JobsPage() {
     const { user } = useOutletContext();
     const isExternal = user?.is_external === 1;
+    const isAdmin = user?.role === 'admin' || user?.is_admin === 1;
 
     const [jobs, setJobs] = useState([]);
     const [selectedJob, setSelectedJob] = useState(null);
@@ -607,10 +589,33 @@ export default function JobsPage() {
     
     // Sharing & External Roles states
     const [showDropdown, setShowDropdown] = useState(false);
+    const [activeDropdownJobId, setActiveDropdownJobId] = useState(null);
     const [showShareModal, setShowShareModal] = useState(false);
     const [externalUsers, setExternalUsers] = useState([]);
     const [sharedUsernames, setSharedUsernames] = useState([]);
     const [loadingShares, setLoadingShares] = useState(false);
+    const [viewingSharedList, setViewingSharedList] = useState(null);
+
+    const handleStartEditJob = (job) => {
+        setSelectedJob(job);
+        setEditingJob(job);
+        setEditJobForm({
+            title: job.title || '',
+            description: job.description || '',
+            client_name: job.client_name || '',
+            client_phone: job.client_phone || '',
+            contact_name: job.contact_name || '',
+            account_manager: job.account_manager || '',
+            assigned_recruiter: job.assigned_recruiter || '',
+            target_date: job.target_date || '',
+            job_type: job.job_type || 'Full time',
+            job_status: job.job_status || 'In-progress',
+            work_experience: job.work_experience || 'None',
+            industry: job.industry || 'None',
+            salary: job.salary || '',
+            required_skills: job.required_skills || ''
+        });
+    };
 
     // Dynamic Spreadsheet States
     const [searchQuery, setSearchQuery] = useState('');
@@ -692,8 +697,10 @@ export default function JobsPage() {
         }
     }
 
-    const handleOpenShareModal = async () => {
-        if (!selectedJob) return;
+    const handleOpenShareModal = async (job) => {
+        const targetJob = job || selectedJob;
+        if (!targetJob) return;
+        setSelectedJob(targetJob);
         setLoadingShares(true);
         setShowShareModal(true);
         try {
@@ -701,7 +708,7 @@ export default function JobsPage() {
             const external = (usersRes.data || []).filter(u => u.is_external === 1);
             setExternalUsers(external);
             
-            const sharesRes = await axios.get(`${API_URL}/api/jobs/${selectedJob.id}/shares`);
+            const sharesRes = await axios.get(`${API_URL}/api/jobs/${targetJob.id}/shares`);
             setSharedUsernames(sharesRes.data || []);
         } catch (e) {
             showToast('Failed to load sharing details', 'error');
@@ -715,6 +722,7 @@ export default function JobsPage() {
             await axios.post(`${API_URL}/api/jobs/${selectedJob.id}/share`, { usernames: sharedUsernames });
             showToast('Sharing permissions updated successfully!');
             setShowShareModal(false);
+            loadJobs(); // Refresh jobs to get updated sharing list
         } catch (e) {
             showToast('Failed to save sharing permissions', 'error');
         }
@@ -731,6 +739,21 @@ export default function JobsPage() {
             loadCols();
         }
     }, [selectedJob]);
+
+    useEffect(() => {
+        if (!activeDropdownJobId && !showDropdown) return;
+        const clickAway = () => {
+            setActiveDropdownJobId(null);
+            setShowDropdown(false);
+        };
+        const timer = setTimeout(() => {
+            document.addEventListener('click', clickAway);
+        }, 10);
+        return () => {
+            clearTimeout(timer);
+            document.removeEventListener('click', clickAway);
+        };
+    }, [activeDropdownJobId, showDropdown]);
 
     const handleCreateJob = async () => {
         if (!newJob.title || !newJob.description) return showToast('Title and Description are required', 'error');
@@ -985,7 +1008,9 @@ export default function JobsPage() {
         };
     }, [showColVisibility]);
 
-    const activeCols = cols.filter(c => c.key === '_actions' || !hiddenColumnKeys.includes(c.key))
+    const activeCols = isExternal 
+        ? cols.filter(c => ['full_name', 'ai_reason', 'candidate_status'].includes(c.key))
+        : cols.filter(c => c.key === '_actions' || !hiddenColumnKeys.includes(c.key))
 
     const getTableWidth = () => {
         let total = 0
@@ -1001,7 +1026,20 @@ export default function JobsPage() {
     }
 
     // Inline edit cell handlers
-    const startEdit = (ri, col, val) => { setEditCell({ row: ri, col }); setEditVal(String(val || '')) }
+    const startEdit = (ri, col, val) => {
+        if (isExternal) return;
+        const isAdmin = user?.role === 'admin' || user?.is_admin === 1;
+        if (col === 'certifications' && !isAdmin) {
+            showToast("Only Admins can view or edit certifications.", "error");
+            return;
+        }
+        if (val === '[HIDDEN]') {
+            showToast("This field is hidden by the administrator.", "error");
+            return;
+        }
+        setEditCell({ row: ri, col });
+        setEditVal(String(val || ''));
+    }
     const saveEdit = async (ri) => {
         const c = candidates[ri]; if (!c?.id) { setEditCell(null); return }
         
@@ -1044,7 +1082,7 @@ export default function JobsPage() {
     });
 
     const filteredCandidates = candidates.filter(c => {
-        if (c.job_status !== activeTab) return false;
+        if (!isExternal && c.job_status !== activeTab) return false;
         
         for (const [colKey, filterVal] of Object.entries(columnFilters)) {
             if (filterVal) {
@@ -1097,15 +1135,94 @@ export default function JobsPage() {
                             key={job.id} 
                             onClick={() => { setSelectedJob(job); setShowNewForm(false); }}
                             style={{ 
+                                position: 'relative',
                                 padding: '1rem', borderRadius: '12px', marginBottom: '10px', cursor: 'pointer',
                                 border: `1px solid ${selectedJob?.id === job.id ? 'var(--gold)' : 'var(--border)'}`,
                                 background: selectedJob?.id === job.id ? 'rgba(var(--gold-rgb), 0.1)' : 'var(--input-bg)',
                                 transition: 'all 0.2s'
                             }}
                         >
-                            <div style={{ fontWeight: 700, color: selectedJob?.id === job.id ? 'var(--gold)' : 'var(--text)', marginBottom: '4px' }}>
+                            <div style={{ fontWeight: 700, color: selectedJob?.id === job.id ? 'var(--gold)' : 'var(--text)', marginBottom: '4px', paddingRight: '24px' }}>
                                 {job.title}
                             </div>
+                            {isAdmin && (
+                                <div style={{ position: 'absolute', top: '12px', right: '12px', zIndex: 10 }}>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setActiveDropdownJobId(activeDropdownJobId === job.id ? null : job.id);
+                                            setShowDropdown(false);
+                                        }}
+                                        style={{
+                                            background: 'var(--navy-dark)', border: '1px solid var(--border)', color: 'var(--text)',
+                                            cursor: 'pointer', padding: '6px', display: 'flex',
+                                            alignItems: 'center', justifyContent: 'center', borderRadius: '4px',
+                                            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                                        }}
+                                        onMouseEnter={e => { e.currentTarget.style.color = 'var(--gold)'; e.currentTarget.style.borderColor = 'var(--gold)'; }}
+                                        onMouseLeave={e => { e.currentTarget.style.color = 'var(--text)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+                                    >
+                                            <MoreVertical size={16} />
+                                        </button>
+                                        {activeDropdownJobId === job.id && (
+                                            <div style={{
+                                                position: 'absolute', right: 0, top: '28px',
+                                                background: 'var(--navy-dark)', border: '1px solid var(--border)',
+                                                borderRadius: '8px', boxShadow: '0 8px 16px rgba(0,0,0,0.5)',
+                                                zIndex: 100, width: '140px', overflow: 'hidden'
+                                            }}>
+                                                <button 
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setActiveDropdownJobId(null);
+                                                        handleOpenShareModal(job);
+                                                    }}
+                                                    style={{
+                                                        width: '100%', padding: '8px 12px', background: 'none', border: 'none',
+                                                        color: 'var(--text)', textAlign: 'left', cursor: 'pointer', fontSize: '0.8rem',
+                                                        display: 'flex', alignItems: 'center', gap: '8px'
+                                                    }}
+                                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
+                                                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                                                >
+                                                    <Share2 size={14} /> Share
+                                                </button>
+                                                <button 
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setActiveDropdownJobId(null);
+                                                        handleStartEditJob(job);
+                                                    }}
+                                                    style={{
+                                                        width: '100%', padding: '8px 12px', background: 'none', border: 'none',
+                                                        color: 'var(--text)', textAlign: 'left', cursor: 'pointer', fontSize: '0.8rem',
+                                                        display: 'flex', alignItems: 'center', gap: '8px'
+                                                    }}
+                                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
+                                                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                                                >
+                                                    <Edit size={14} /> Edit
+                                                </button>
+                                                <button 
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setActiveDropdownJobId(null);
+                                                        handleDeleteJob(job.id);
+                                                    }}
+                                                    style={{
+                                                        width: '100%', padding: '8px 12px', background: 'none', border: 'none',
+                                                        color: '#fca5a5', textAlign: 'left', cursor: 'pointer', fontSize: '0.8rem',
+                                                        display: 'flex', alignItems: 'center', gap: '8px'
+                                                    }}
+                                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'}
+                                                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                                                >
+                                                    <Trash2 size={14} /> Delete
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             {job.client_name && (
                                 <div style={{ fontSize: '0.76rem', color: 'var(--sky-dim)', marginBottom: '6px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
                                     🏢 Client: {job.client_name}
@@ -1119,111 +1236,199 @@ export default function JobsPage() {
                                     <UserCheck size={12}/> {job.selected_count} Selected
                                 </span>
                             </div>
+                            {!isExternal && job.shared_with && job.shared_with.length > 0 && (
+                                <div 
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setViewingSharedList(job);
+                                    }}
+                                    style={{
+                                        fontSize: '0.72rem',
+                                        color: 'var(--gold)',
+                                        marginTop: '6px',
+                                        cursor: 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        background: 'rgba(var(--gold-rgb), 0.08)',
+                                        padding: '2px 8px',
+                                        borderRadius: '4px',
+                                        border: '1px solid rgba(var(--gold-rgb), 0.15)',
+                                        width: 'fit-content'
+                                    }}
+                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.15)'}
+                                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.08)'}
+                                    title="Click to view shared users"
+                                >
+                                    <Share2 size={10} /> Shared ({job.shared_with.length})
+                                </div>
+                            )}
                         </div>
                     ))}
                 </div>
             </div>
 
             {/* Main Content: Job Details */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--card-bg)' }}>
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', overflow: 'hidden' }}>
                 {showNewForm ? (
-                    <div style={{ padding: '3rem', maxWidth: '850px', margin: '0 auto', width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
-                        <h2 style={{ fontFamily: 'var(--fh)', color: 'var(--gold)', marginBottom: '1.5rem' }}>Create New Job Description</h2>
-                        
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
-                            <div>
-                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Job Title *</label>
-                                <input value={newJob.title} onChange={e => setNewJob({...newJob, title: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }} placeholder="e.g. pega CSSA" />
+                    <div style={{ padding: '2rem 3rem', maxWidth: '900px', margin: '0 auto', width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
+                        <div className="modern-form-card">
+                            <h2 style={{ fontFamily: 'var(--fh)', color: 'var(--gold)', marginBottom: '2rem', fontSize: '1.75rem', fontWeight: 800 }}>Create New Job Description</h2>
+                            
+                            <div className="form-section-title">
+                                <Briefcase size={18} /> Role & Client Details
                             </div>
-                            <div>
-                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Client Name</label>
-                                <input value={newJob.client_name} onChange={e => setNewJob({...newJob, client_name: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }} placeholder="e.g. My company" />
+                            
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '1.5rem' }}>
+                                <div>
+                                    <label className="modern-label">Job Title *</label>
+                                    <div className="modern-input-group">
+                                        <Briefcase size={16} className="modern-input-icon" />
+                                        <input value={newJob.title} onChange={e => setNewJob({...newJob, title: e.target.value})} className="modern-input" placeholder="e.g. Pega CSSA" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="modern-label">Client Name</label>
+                                    <div className="modern-input-group">
+                                        <Building size={16} className="modern-input-icon" />
+                                        <input value={newJob.client_name} onChange={e => setNewJob({...newJob, client_name: e.target.value})} className="modern-input" placeholder="e.g. My company" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="modern-label">Client Phone</label>
+                                    <div className="modern-input-group">
+                                        <Phone size={16} className="modern-input-icon" />
+                                        <input value={newJob.client_phone} onChange={e => setNewJob({...newJob, client_phone: e.target.value})} className="modern-input" placeholder="e.g. +1 555-0199" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="modern-label">Contact Name</label>
+                                    <div className="modern-input-group">
+                                        <User size={16} className="modern-input-icon" />
+                                        <input value={newJob.contact_name} onChange={e => setNewJob({...newJob, contact_name: e.target.value})} className="modern-input" placeholder="e.g. Sabari Shree" />
+                                    </div>
+                                </div>
                             </div>
-                            <div>
-                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Client Phone</label>
-                                <input value={newJob.client_phone} onChange={e => setNewJob({...newJob, client_phone: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }} placeholder="e.g. +1 555-0199" />
-                            </div>
-                            <div>
-                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Contact Name</label>
-                                <input value={newJob.contact_name} onChange={e => setNewJob({...newJob, contact_name: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }} placeholder="e.g. Sabari Shree" />
-                            </div>
-                            <div>
-                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Account Manager</label>
-                                <input value={newJob.account_manager} onChange={e => setNewJob({...newJob, account_manager: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }} placeholder="e.g. Sabari Shree" />
-                            </div>
-                            <div>
-                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Assigned Recruiter(s)</label>
-                                <input value={newJob.assigned_recruiter} onChange={e => setNewJob({...newJob, assigned_recruiter: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }} placeholder="Recruiter Name" />
-                            </div>
-                            <div>
-                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Target Date</label>
-                                <input type="date" value={newJob.target_date} onChange={e => setNewJob({...newJob, target_date: e.target.value})} style={{ width: '100%', padding: '9px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }} />
-                            </div>
-                            <div>
-                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Job Type</label>
-                                <select value={newJob.job_type} onChange={e => setNewJob({...newJob, job_type: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', height: 'auto' }}>
-                                    <option value="Full time">Full time</option>
-                                    <option value="Part time">Part time</option>
-                                    <option value="Contract">Contract</option>
-                                    <option value="Temporary">Temporary</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Job Opening Status</label>
-                                <select value={newJob.job_status} onChange={e => setNewJob({...newJob, job_status: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', height: 'auto' }}>
-                                    <option value="In-progress">In-progress</option>
-                                    <option value="On-hold">On-hold</option>
-                                    <option value="Filled">Filled</option>
-                                    <option value="Closed">Closed</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Work Experience</label>
-                                <select value={newJob.work_experience} onChange={e => setNewJob({...newJob, work_experience: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', height: 'auto' }}>
-                                    <option value="None">None</option>
-                                    <option value="Fresher">Fresher</option>
-                                    <option value="1-3 years">1-3 years</option>
-                                    <option value="3-5 years">3-5 years</option>
-                                    <option value="5+ years">5+ years</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Industry</label>
-                                <select value={newJob.industry} onChange={e => setNewJob({...newJob, industry: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', height: 'auto' }}>
-                                    <option value="None">None</option>
-                                    <option value="IT">IT</option>
-                                    <option value="Finance">Finance</option>
-                                    <option value="Healthcare">Healthcare</option>
-                                    <option value="Telecom">Telecom</option>
-                                    <option value="Other">Other</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Salary</label>
-                                <input value={newJob.salary} onChange={e => setNewJob({...newJob, salary: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }} placeholder="e.g. 10 LPA" />
-                            </div>
-                            <div>
-                                <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-dim)', fontSize: '0.85rem' }}>Required Skills</label>
-                                <input value={newJob.required_skills} onChange={e => setNewJob({...newJob, required_skills: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }} placeholder="e.g. Pega, CSSA" />
-                            </div>
-                        </div>
 
-                        <div style={{ marginBottom: '1.5rem' }}>
-                            <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-dim)' }}>Job Description *</label>
-                            <textarea 
-                                value={newJob.description} 
-                                onChange={e => setNewJob({...newJob, description: e.target.value})}
-                                style={{ width: '100%', minHeight: '120px', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', resize: 'vertical', outline: 'none' }}
-                                placeholder="Paste the full job description here..."
-                            />
-                        </div>
-                        <div style={{ display: 'flex', gap: '10px' }}>
-                            <button className="btn btn-secondary" onClick={() => setShowNewForm(false)}>Cancel</button>
-                            <button className="btn btn-primary" onClick={handleCreateJob}>Create Job Description</button>
+                            <div className="form-section-title">
+                                <User size={18} /> Management & Timeline
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '1.5rem' }}>
+                                <div>
+                                    <label className="modern-label">Account Manager</label>
+                                    <div className="modern-input-group">
+                                        <User size={16} className="modern-input-icon" />
+                                        <input value={newJob.account_manager} onChange={e => setNewJob({...newJob, account_manager: e.target.value})} className="modern-input" placeholder="e.g. Sabari Shree" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="modern-label">Assigned Recruiter(s)</label>
+                                    <div className="modern-input-group">
+                                        <User size={16} className="modern-input-icon" />
+                                        <input value={newJob.assigned_recruiter} onChange={e => setNewJob({...newJob, assigned_recruiter: e.target.value})} className="modern-input" placeholder="Recruiter Name" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="modern-label">Target Date</label>
+                                    <div className="modern-input-group">
+                                        <Calendar size={16} className="modern-input-icon" />
+                                        <input type="date" value={newJob.target_date} onChange={e => setNewJob({...newJob, target_date: e.target.value})} className="modern-input" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="modern-label">Job Type</label>
+                                    <div className="modern-input-group">
+                                        <Briefcase size={16} className="modern-input-icon" />
+                                        <select value={newJob.job_type} onChange={e => setNewJob({...newJob, job_type: e.target.value})} className="modern-select">
+                                            <option value="Full time">Full time</option>
+                                            <option value="Part time">Part time</option>
+                                            <option value="Contract">Contract</option>
+                                            <option value="Temporary">Temporary</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="form-section-title">
+                                <Target size={18} /> Requirements & Salary
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '1.5rem' }}>
+                                <div>
+                                    <label className="modern-label">Job Opening Status</label>
+                                    <div className="modern-input-group">
+                                        <Target size={16} className="modern-input-icon" />
+                                        <select value={newJob.job_status} onChange={e => setNewJob({...newJob, job_status: e.target.value})} className="modern-select">
+                                            <option value="In-progress">In-progress</option>
+                                            <option value="On-hold">On-hold</option>
+                                            <option value="Filled">Filled</option>
+                                            <option value="Closed">Closed</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="modern-label">Work Experience</label>
+                                    <div className="modern-input-group">
+                                        <Award size={16} className="modern-input-icon" />
+                                        <select value={newJob.work_experience} onChange={e => setNewJob({...newJob, work_experience: e.target.value})} className="modern-select">
+                                            <option value="None">None</option>
+                                            <option value="Fresher">Fresher</option>
+                                            <option value="1-3 years">1-3 years</option>
+                                            <option value="3-5 years">3-5 years</option>
+                                            <option value="5+ years">5+ years</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="modern-label">Industry</label>
+                                    <div className="modern-input-group">
+                                        <Building size={16} className="modern-input-icon" />
+                                        <select value={newJob.industry} onChange={e => setNewJob({...newJob, industry: e.target.value})} className="modern-select">
+                                            <option value="None">None</option>
+                                            <option value="IT">IT</option>
+                                            <option value="Finance">Finance</option>
+                                            <option value="Healthcare">Healthcare</option>
+                                            <option value="Telecom">Telecom</option>
+                                            <option value="Other">Other</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="modern-label">Salary</label>
+                                    <div className="modern-input-group">
+                                        <DollarSign size={16} className="modern-input-icon" />
+                                        <input value={newJob.salary} onChange={e => setNewJob({...newJob, salary: e.target.value})} className="modern-input" placeholder="e.g. 10 LPA" />
+                                    </div>
+                                </div>
+                                <div style={{ gridColumn: 'span 2' }}>
+                                    <label className="modern-label">Required Skills</label>
+                                    <div className="modern-input-group">
+                                        <Award size={16} className="modern-input-icon" />
+                                        <input value={newJob.required_skills} onChange={e => setNewJob({...newJob, required_skills: e.target.value})} className="modern-input" placeholder="e.g. Pega, CSSA" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style={{ marginBottom: '2rem' }}>
+                                <label className="modern-label">Job Description *</label>
+                                <textarea 
+                                    value={newJob.description} 
+                                    onChange={e => setNewJob({...newJob, description: e.target.value})}
+                                    className="modern-textarea"
+                                    style={{ minHeight: '140px' }}
+                                    placeholder="Paste the full job description here..."
+                                />
+                            </div>
+                            
+                            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', borderTop: '1px solid rgba(var(--sky-rgb), 0.15)', paddingTop: '1.5rem' }}>
+                                <button className="btn btn-secondary" style={{ padding: '10px 22px', fontSize: '0.85rem' }} onClick={() => setShowNewForm(false)}>Cancel</button>
+                                <button className="btn btn-primary" style={{ padding: '10px 22px', fontSize: '0.85rem', boxShadow: '0 4px 14px rgba(var(--primary-rgb), 0.3)' }} onClick={handleCreateJob}>Create Job Description</button>
+                            </div>
                         </div>
                     </div>
                 ) : selectedJob ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto', minWidth: 0, width: '100%' }}>
                         <div style={{ padding: '2rem', borderBottom: '1px solid var(--border)', background: 'rgba(var(--navy-rgb), 0.15)' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
                                 <div>
@@ -1268,9 +1473,34 @@ export default function JobsPage() {
                                     <div style={{ color: 'var(--text-dim)', fontSize: '0.9rem' }}>
                                         Client: <strong style={{ color: 'var(--text)' }}>{selectedJob.client_name || 'N/A'}</strong>
                                     </div>
+                                    {!isExternal && selectedJob.shared_with && selectedJob.shared_with.length > 0 && (
+                                        <div 
+                                            onClick={() => setViewingSharedList(selectedJob)}
+                                            style={{
+                                                fontSize: '0.82rem',
+                                                color: 'var(--gold)',
+                                                marginTop: '6px',
+                                                cursor: 'pointer',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '6px',
+                                                background: 'rgba(var(--gold-rgb), 0.1)',
+                                                padding: '4px 10px',
+                                                borderRadius: '6px',
+                                                border: '1px solid rgba(var(--gold-rgb), 0.2)',
+                                                width: 'fit-content',
+                                                transition: 'all 0.2s'
+                                            }}
+                                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.18)'}
+                                            onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.1)'}
+                                            title="Click to view shared users"
+                                        >
+                                            <Share2 size={13} /> Shared with {selectedJob.shared_with.length} {selectedJob.shared_with.length === 1 ? 'user' : 'users'}
+                                        </div>
+                                    )}
                                 </div>
                                 <div style={{ display: 'flex', gap: '10px' }}>
-                                    {!isExternal && (
+                                    {isAdmin && (
                                         <div style={{ position: 'relative' }}>
                                             <button 
                                                 onClick={() => setShowDropdown(!showDropdown)} 
@@ -1305,23 +1535,7 @@ export default function JobsPage() {
                                                     <button 
                                                         onClick={() => {
                                                             setShowDropdown(false);
-                                                            setEditingJob(selectedJob);
-                                                            setEditJobForm({
-                                                                title: selectedJob.title || '',
-                                                                description: selectedJob.description || '',
-                                                                client_name: selectedJob.client_name || '',
-                                                                client_phone: selectedJob.client_phone || '',
-                                                                contact_name: selectedJob.contact_name || '',
-                                                                account_manager: selectedJob.account_manager || '',
-                                                                assigned_recruiter: selectedJob.assigned_recruiter || '',
-                                                                target_date: selectedJob.target_date || '',
-                                                                job_type: selectedJob.job_type || 'Full time',
-                                                                job_status: selectedJob.job_status || 'In-progress',
-                                                                work_experience: selectedJob.work_experience || 'None',
-                                                                industry: selectedJob.industry || 'None',
-                                                                salary: selectedJob.salary || '',
-                                                                required_skills: selectedJob.required_skills || ''
-                                                            });
+                                                            handleStartEditJob(selectedJob);
                                                         }}
                                                         style={{
                                                             width: '100%', padding: '10px 14px', background: 'none', border: 'none',
@@ -1353,85 +1567,68 @@ export default function JobsPage() {
                             </div>
 
                             {/* Zoho Recruit style parameters grid */}
-                            <div style={{ 
-                                display: 'grid', 
-                                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
-                                gap: '1.25rem', 
-                                padding: '1.25rem', 
-                                background: 'rgba(var(--navy-dark-rgb), 0.4)', 
-                                border: '1px solid var(--border)', 
-                                borderRadius: '12px',
-                                marginBottom: '1.5rem'
-                            }}>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Client Phone</span>
-                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <Phone size={14} style={{ color: 'var(--gold)' }} /> {selectedJob.client_phone || '--'}
+                            <div className="jd-param-grid">
+                                <div className="jd-param-card">
+                                    <span className="jd-param-label">Client Phone</span>
+                                    <span className="jd-param-value">
+                                        <Phone size={14} className="jd-param-icon" /> {selectedJob.client_phone || '--'}
                                     </span>
                                 </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Contact Name</span>
-                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <User size={14} style={{ color: 'var(--gold)' }} /> {selectedJob.contact_name || '--'}
+                                <div className="jd-param-card">
+                                    <span className="jd-param-label">Contact Name</span>
+                                    <span className="jd-param-value">
+                                        <User size={14} className="jd-param-icon" /> {selectedJob.contact_name || '--'}
                                     </span>
                                 </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Account Manager</span>
-                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <User size={14} style={{ color: 'var(--gold)' }} /> {selectedJob.account_manager || '--'}
+                                <div className="jd-param-card">
+                                    <span className="jd-param-label">Account Manager</span>
+                                    <span className="jd-param-value">
+                                        <User size={14} className="jd-param-icon" /> {selectedJob.account_manager || '--'}
                                     </span>
                                 </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Assigned Recruiter</span>
-                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <User size={14} style={{ color: 'var(--gold)' }} /> {selectedJob.assigned_recruiter || '--'}
+                                <div className="jd-param-card">
+                                    <span className="jd-param-label">Assigned Recruiter</span>
+                                    <span className="jd-param-value">
+                                        <User size={14} className="jd-param-icon" /> {selectedJob.assigned_recruiter || '--'}
                                     </span>
                                 </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Target Date</span>
-                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <Calendar size={14} style={{ color: 'var(--gold)' }} /> {selectedJob.target_date || '--'}
+                                <div className="jd-param-card">
+                                    <span className="jd-param-label">Target Date</span>
+                                    <span className="jd-param-value">
+                                        <Calendar size={14} className="jd-param-icon" /> {selectedJob.target_date || '--'}
                                     </span>
                                 </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Work Experience</span>
-                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <Award size={14} style={{ color: 'var(--gold)' }} /> {selectedJob.work_experience || '--'}
+                                <div className="jd-param-card">
+                                    <span className="jd-param-label">Work Experience</span>
+                                    <span className="jd-param-value">
+                                        <Award size={14} className="jd-param-icon" /> {selectedJob.work_experience || '--'}
                                     </span>
                                 </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Industry</span>
-                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <Briefcase size={14} style={{ color: 'var(--gold)' }} /> {selectedJob.industry || '--'}
+                                <div className="jd-param-card">
+                                    <span className="jd-param-label">Industry</span>
+                                    <span className="jd-param-value">
+                                        <Briefcase size={14} className="jd-param-icon" /> {selectedJob.industry || '--'}
                                     </span>
                                 </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '2px' }}>Salary</span>
-                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <DollarSign size={14} style={{ color: 'var(--gold)' }} /> {selectedJob.salary || '--'}
+                                <div className="jd-param-card">
+                                    <span className="jd-param-label">Salary</span>
+                                    <span className="jd-param-value">
+                                        <DollarSign size={14} className="jd-param-icon" /> {selectedJob.salary || '--'}
                                     </span>
                                 </div>
                             </div>
 
                             {/* Required Skills Badges */}
                             {selectedJob.required_skills && (
-                                <div style={{ marginBottom: '1.5rem' }}>
-                                    <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Required Skills</span>
+                                <div style={{ marginBottom: '1.75rem' }}>
+                                    <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '8px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04rem' }}>Required Skills</span>
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                                         {selectedJob.required_skills.split(',').map((skill, index) => {
                                             const trimmed = skill.trim();
                                             if (!trimmed) return null;
                                             return (
-                                                <span key={index} style={{
-                                                    fontSize: '0.78rem',
-                                                    fontWeight: 600,
-                                                    padding: '4px 10px',
-                                                    borderRadius: '6px',
-                                                    background: 'rgba(var(--sky-rgb), 0.15)',
-                                                    color: 'var(--sky-dim)',
-                                                    border: '1px solid rgba(var(--sky-rgb), 0.3)'
-                                                }}>
-                                                    {trimmed}
+                                                <span key={index} className="jd-skill-pill">
+                                                    <Award size={12} /> {trimmed}
                                                 </span>
                                             );
                                         })}
@@ -1440,7 +1637,7 @@ export default function JobsPage() {
                             )}
 
                             <div style={{ marginBottom: '1.5rem' }}>
-                                <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>
+                                <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '8px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04rem' }}>
                                     Full Job Description {isEditingJdInline ? '(Editing)' : (!isExternal ? '(Double-click text below to edit)' : '')}
                                 </span>
                                 {isEditingJdInline ? (
@@ -1448,25 +1645,21 @@ export default function JobsPage() {
                                         <textarea
                                             value={jdInlineValue}
                                             onChange={e => setJdInlineValue(e.target.value)}
-                                            style={{
-                                                width: '100%', minHeight: '150px', padding: '12px',
-                                                background: 'var(--input-bg)', border: '1px solid var(--gold)',
-                                                color: 'var(--text)', borderRadius: '8px', resize: 'vertical',
-                                                outline: 'none', fontFamily: 'var(--fb)', fontSize: '0.9rem'
-                                            }}
+                                            className="modern-textarea"
+                                            style={{ minHeight: '180px' }}
                                             autoFocus
                                         />
                                         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                                             <button 
                                                 className="btn btn-secondary" 
-                                                style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                                                style={{ padding: '6px 14px', fontSize: '0.8rem' }}
                                                 onClick={() => setIsEditingJdInline(false)}
                                             >
                                                 Cancel
                                             </button>
                                             <button 
                                                 className="btn btn-primary" 
-                                                style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                                                style={{ padding: '6px 14px', fontSize: '0.8rem' }}
                                                 onClick={async () => {
                                                     try {
                                                         const updatedJobForm = {
@@ -1509,22 +1702,12 @@ export default function JobsPage() {
                                             }
                                         }}
                                         title={!isExternal ? "Double-click to edit job description inline" : ""}
+                                        className="jd-markdown-container"
                                         style={{ 
-                                            color: 'var(--text)', 
-                                            fontSize: '0.9rem', 
-                                            maxHeight: '150px', 
-                                            overflowY: 'auto',
-                                            padding: '12px',
-                                            background: 'rgba(var(--navy-dark-rgb), 0.2)',
-                                            border: '1px solid var(--border)',
-                                            borderRadius: '8px',
-                                            whiteSpace: 'pre-wrap',
                                             cursor: !isExternal ? 'pointer' : 'default'
                                         }}
-                                        onMouseEnter={e => { if (!isExternal) e.currentTarget.style.borderColor = 'var(--gold)'; }}
-                                        onMouseLeave={e => { if (!isExternal) e.currentTarget.style.borderColor = 'var(--border)'; }}
                                     >
-                                        {selectedJob.description}
+                                        <ReactMarkdown>{selectedJob.description}</ReactMarkdown>
                                     </div>
                                 )}
                             </div>
@@ -1543,131 +1726,130 @@ export default function JobsPage() {
                         </div>
 
                         {!isExternal && (
-                            <>
-                                {/* Tabs */}
-                                <div style={{ padding: '1rem 2rem 0', borderBottom: '1px solid var(--border)', display: 'flex', gap: '1rem' }}>
-                                    <button 
-                                        onClick={() => setActiveTab('matched')}
-                                        style={{ 
-                                            padding: '10px 20px', background: 'transparent', border: 'none', borderBottom: `3px solid ${activeTab === 'matched' ? 'var(--gold)' : 'transparent'}`,
-                                            color: activeTab === 'matched' ? 'var(--gold)' : 'var(--text-dim)', fontWeight: activeTab === 'matched' ? 700 : 500, cursor: 'pointer',
-                                            fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s'
-                                        }}
-                                    >
-                                        <Search size={16}/> Matched ({selectedJob.matched_count})
-                                    </button>
-                                    <button 
-                                        onClick={() => setActiveTab('selected')}
-                                        style={{ 
-                                            padding: '10px 20px', background: 'transparent', border: 'none', borderBottom: `3px solid ${activeTab === 'selected' ? 'var(--primary)' : 'transparent'}`,
-                                            color: activeTab === 'selected' ? 'var(--primary)' : 'var(--text-dim)', fontWeight: activeTab === 'selected' ? 700 : 500, cursor: 'pointer',
-                                            fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s'
-                                        }}
-                                    >
-                                        <UserCheck size={16}/> Selected ({selectedJob.selected_count})
-                                    </button>
-                                </div>
-
-                                {/* Candidates List Spreadsheet Table */}
-                                <div style={{ flex: 1, overflowY: 'auto', padding: '2rem', display: 'flex', flexDirection: 'column' }}>
-                                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', marginBottom: '15px' }}>
-                                        {/* Columns Selector Popover */}
-                                        <div style={{ position: 'relative' }}>
-                                            <button 
-                                                className="btn btn-secondary" 
-                                                onClick={() => setShowColVisibility(!showColVisibility)} 
-                                                style={{ gap: 6, color: 'var(--text)', borderColor: 'var(--border)', padding: '6px 12px', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center' }}
-                                            >
-                                                <Eye size={14} /> Columns
-                                            </button>
-                                            
-                                            {showColVisibility && (
-                                                <div 
-                                                    onClick={e => e.stopPropagation()}
-                                            style={{
-                                                position: 'absolute', top: '100%', right: 0, marginTop: '8px', zIndex: 100,
-                                                background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '10px',
-                                                boxShadow: '0 10px 25px rgba(0,0,0,0.35)', padding: '12px', width: '250px',
-                                                display: 'flex', flexDirection: 'column', gap: '10px'
-                                            }}
-                                        >
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
-                                                <span style={{ fontWeight: 'bold', fontSize: '0.85rem', color: 'var(--gold)' }}>Visible Columns</span>
-                                                <button 
-                                                    onClick={() => setShowColVisibility(false)} 
-                                                    style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: 0 }}
-                                                >
-                                                    <X size={14} />
-                                                </button>
-                                            </div>
-                                            
-                                            <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
-                                                <button 
-                                                    onClick={handleShowAllColumns}
-                                                    style={{ 
-                                                        flex: 1, padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px',
-                                                        border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', cursor: 'pointer' 
-                                                    }}
-                                                >
-                                                    Show All
-                                                </button>
-                                                <button 
-                                                    onClick={handleHideAllColumns}
-                                                    style={{ 
-                                                        flex: 1, padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px',
-                                                        border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', cursor: 'pointer' 
-                                                    }}
-                                                >
-                                                    Hide All
-                                                </button>
-                                            </div>
-                                            
-                                            <div style={{ maxHeight: '250px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                                {cols.filter(c => c.key !== '_actions').map(c => {
-                                                    const isChecked = !hiddenColumnKeys.includes(c.key);
-                                                    return (
-                                                        <label 
-                                                            key={c.key} 
-                                                            style={{ 
-                                                                display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', 
-                                                                color: isChecked ? 'var(--text)' : 'var(--text-dim)', cursor: 'pointer',
-                                                                padding: '4px 6px', borderRadius: '4px', transition: 'all 0.15s',
-                                                                background: isChecked ? 'transparent' : 'rgba(var(--sky-rgb), 0.02)'
-                                                            }}
-                                                        >
-                                                            <input 
-                                                                type="checkbox" 
-                                                                checked={isChecked}
-                                                                onChange={() => toggleColumnVisibility(c.key)}
-                                                                style={{ cursor: 'pointer' }}
-                                                            />
-                                                            <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{c.label}</span>
-                                                        </label>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                                <button
-                                    className="btn btn-secondary"
-                                    style={{ gap: 6, padding: '6px 12px', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center' }}
-                                    onClick={() => exportToExcel(formatCandidatesForExcel(filteredCandidates, activeCols.filter(c => c.key !== '_actions')), `job_${selectedJob.title.replace(/\s+/g, '_')}_candidates.xlsx`)}
+                            /* Tabs */
+                            <div style={{ padding: '1rem 2rem 0', borderBottom: '1px solid var(--border)', display: 'flex', gap: '1rem' }}>
+                                <button 
+                                    onClick={() => setActiveTab('matched')}
+                                    style={{ 
+                                        padding: '10px 20px', background: 'transparent', border: 'none', borderBottom: `3px solid ${activeTab === 'matched' ? 'var(--gold)' : 'transparent'}`,
+                                        color: activeTab === 'matched' ? 'var(--gold)' : 'var(--text-dim)', fontWeight: activeTab === 'matched' ? 700 : 500, cursor: 'pointer',
+                                        fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s'
+                                    }}
                                 >
-                                    <Download size={14} /> Download Excel
+                                    <Search size={16}/> Matched ({selectedJob.matched_count})
+                                </button>
+                                <button 
+                                    onClick={() => setActiveTab('selected')}
+                                    style={{ 
+                                        padding: '10px 20px', background: 'transparent', border: 'none', borderBottom: `3px solid ${activeTab === 'selected' ? 'var(--primary)' : 'transparent'}`,
+                                        color: activeTab === 'selected' ? 'var(--primary)' : 'var(--text-dim)', fontWeight: activeTab === 'selected' ? 700 : 500, cursor: 'pointer',
+                                        fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s'
+                                    }}
+                                >
+                                    <UserCheck size={16}/> Selected ({selectedJob.selected_count})
                                 </button>
                             </div>
- 
+                        )}
+
+                        {/* Candidates List Spreadsheet Table */}
+                        <div style={{ flex: 1, padding: '2rem', display: 'flex', flexDirection: 'column', minWidth: 0, width: '100%' }}>
+                            {isExternal && (
+                                <h3 style={{ fontFamily: 'var(--fh)', color: 'var(--gold)', marginBottom: '1.25rem', fontSize: '1.2rem', fontWeight: 800 }}>
+                                    Your Application & Match Status
+                                </h3>
+                            )}
+                            
+                            {!isExternal && (
+                                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', marginBottom: '15px' }}>
+                                    {/* Columns Selector Popover */}
+                                    <div style={{ position: 'relative' }}>
+                                        <button 
+                                            className="btn btn-secondary" 
+                                            onClick={() => setShowColVisibility(!showColVisibility)} 
+                                            style={{ gap: 6, color: 'var(--text)', borderColor: 'var(--border)', padding: '6px 12px', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center' }}
+                                        >
+                                            <Eye size={14} /> Columns
+                                        </button>
+                                        
+                                        {showColVisibility && (
+                                            <div 
+                                                onClick={e => e.stopPropagation()}
+                                                style={{
+                                                    position: 'absolute', top: '100%', right: 0, marginTop: '8px', zIndex: 100,
+                                                    background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '10px',
+                                                    boxShadow: '0 10px 25px rgba(0,0,0,0.35)', padding: '12px', width: '250px',
+                                                    display: 'flex', flexDirection: 'column', gap: '10px'
+                                                }}
+                                            >
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                                                    <span style={{ fontWeight: 'bold', fontSize: '0.8rem', color: 'var(--gold)', fontFamily: 'var(--fh)' }}>Columns Visibility</span>
+                                                    <button 
+                                                        onClick={handleShowAllColumns}
+                                                        style={{ 
+                                                            flex: 1, padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px', marginRight: '6px',
+                                                            border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', cursor: 'pointer' 
+                                                        }}
+                                                    >
+                                                        Show All
+                                                    </button>
+                                                    <button 
+                                                        onClick={handleHideAllColumns}
+                                                        style={{ 
+                                                            flex: 1, padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px',
+                                                            border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', cursor: 'pointer' 
+                                                        }}
+                                                    >
+                                                        Hide All
+                                                    </button>
+                                                </div>
+                                                
+                                                <div style={{ maxHeight: '250px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                    {cols.filter(c => c.key !== '_actions').map(c => {
+                                                        const isChecked = !hiddenColumnKeys.includes(c.key);
+                                                        return (
+                                                            <label 
+                                                                key={c.key} 
+                                                                style={{ 
+                                                                    display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', 
+                                                                    color: isChecked ? 'var(--text)' : 'var(--text-dim)', cursor: 'pointer',
+                                                                    padding: '4px 6px', borderRadius: '4px', transition: 'all 0.15s',
+                                                                    background: isChecked ? 'transparent' : 'rgba(var(--sky-rgb), 0.02)'
+                                                                }}
+                                                            >
+                                                                <input 
+                                                                    type="checkbox" 
+                                                                    checked={isChecked}
+                                                                    onChange={() => toggleColumnVisibility(c.key)}
+                                                                    style={{ cursor: 'pointer' }}
+                                                                />
+                                                                <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{c.label}</span>
+                                                            </label>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <button
+                                        className="btn btn-secondary"
+                                        style={{ gap: 6, padding: '6px 12px', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center' }}
+                                        onClick={() => exportToExcel(formatCandidatesForExcel(filteredCandidates, activeCols.filter(c => c.key !== '_actions')), `job_${selectedJob.title.replace(/\s+/g, '_')}_candidates.xlsx`)}
+                                    >
+                                        <Download size={14} /> Download Excel
+                                    </button>
+                                </div>
+                            )}
+
                             {filteredCandidates.length === 0 ? (
                                 <div style={{ textAlign: 'center', color: 'var(--text-dim)', marginTop: '2rem', padding: '3rem', border: '1px dashed var(--border)', borderRadius: '12px' }}>
                                     <Search size={32} style={{ opacity: 0.3, marginBottom: '10px' }} />
                                     <p style={{ margin: 0 }}>
-                                        {activeTab === 'matched' ? 'No candidates matched yet. Click "Match Job Description" to find perfect matches in your database.' : 'No candidates selected yet. Select them from the Matched tab.'}
+                                        {isExternal ? 'Your application details are not matched with this job description yet.' : (activeTab === 'matched' ? 'No candidates matched yet. Click "Match Job Description" to find perfect matches in your database.' : 'No candidates selected yet. Select them from the Matched tab.')}
                                     </p>
                                 </div>
                             ) : (
                                 <>
-                                    <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-darker)' }}>
+                                    <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-darker)', width: '100%' }}>
                                         <table style={{ width: getTableWidth(), tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
                                             <colgroup>
                                                 {activeCols.map(c => <col key={c.key} style={{ width: c.pct }} />)}
@@ -2007,9 +2189,9 @@ export default function JobsPage() {
                                                                      </span>
                                                                  );
                                                             } else if (isExp) {
-                                                                display = (val !== '' && val != null ? `${val} yrs` : '—');
+                                                                display = (val !== '' && val != null ? (val === '[HIDDEN]' ? '[HIDDEN]' : `${val} yrs`) : '—');
                                                             } else if (key === 'notice_period' || key === 'availability_in_days') {
-                                                                display = (val === 0 || val === '0') ? 'Immediate' : (val !== null && val !== '' && !isNaN(val) ? `${val} days` : (val || '—'));
+                                                                display = (val === '[HIDDEN]') ? '[HIDDEN]' : ((val === 0 || val === '0') ? 'Immediate' : (val !== null && val !== '' && !isNaN(val) ? `${val} days` : (val || '—')));
                                                             } else {
                                                                 display = (val !== '' && val != null ? val : '—');
                                                             }
@@ -2106,8 +2288,6 @@ export default function JobsPage() {
                                 </>
                             )}
                         </div>
-                    </>
-                )}
                     </div>
                 ) : (
                     <div style={{ padding: '2rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '1.5rem', overflowY: 'auto' }}>
@@ -2352,6 +2532,19 @@ export default function JobsPage() {
                                                     Open Details <ChevronRight size={14} />
                                                 </button>
                                                 {!isExternal && (
+                                                    <button 
+                                                        className="btn btn-secondary" 
+                                                        style={{ padding: '7px 12px', fontSize: '0.8rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '4px', borderColor: 'var(--border)' }}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleOpenShareModal(job);
+                                                        }}
+                                                        title="Share this job description with external users"
+                                                    >
+                                                        <Share2 size={14} /> Share
+                                                    </button>
+                                                )}
+                                                {!isExternal && (
                                                     <button
                                                         className="btn btn-secondary"
                                                         style={{ padding: '7px', borderColor: 'rgba(239, 68, 68, 0.3)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -2365,6 +2558,42 @@ export default function JobsPage() {
                                                     </button>
                                                 )}
                                             </div>
+                                            {/* Share status indicator */}
+                                            {!isExternal && job.shared_with && job.shared_with.length > 0 && (
+                                                <div 
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setViewingSharedList(job);
+                                                    }}
+                                                    style={{
+                                                        fontSize: '0.78rem',
+                                                        color: 'var(--gold)',
+                                                        marginTop: '8px',
+                                                        textAlign: 'left',
+                                                        cursor: 'pointer',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '5px',
+                                                        background: 'rgba(var(--gold-rgb), 0.1)',
+                                                        padding: '4px 10px',
+                                                        borderRadius: '6px',
+                                                        border: '1px solid rgba(var(--gold-rgb), 0.2)',
+                                                        width: 'fit-content',
+                                                        transition: 'all 0.2s'
+                                                    }}
+                                                    onMouseEnter={e => {
+                                                        e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.18)';
+                                                        e.currentTarget.style.borderColor = 'var(--gold)';
+                                                    }}
+                                                    onMouseLeave={e => {
+                                                        e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.1)';
+                                                        e.currentTarget.style.borderColor = 'rgba(var(--gold-rgb), 0.2)';
+                                                    }}
+                                                    title="Click to view shared users"
+                                                >
+                                                    <Share2 size={12} /> Shared with {job.shared_with.length} {job.shared_with.length === 1 ? 'user' : 'users'}
+                                                </div>
+                                            )}
                                         </div>
                                     ))}
                                 </div>
@@ -2375,11 +2604,7 @@ export default function JobsPage() {
             </div>
 
             {editingCandidate && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', 
-                    background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', 
-                    justifyContent: 'center', zIndex: 1000
-                }}>
+                <div className="modal-overlay">
                     <div className="card" style={{ width: '500px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxHeight: '90vh', overflowY: 'auto' }}>
                         <h3 style={{ color: 'var(--gold)', margin: 0, fontFamily: 'var(--fh)', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem' }}>Edit Candidate & Match Details</h3>
                         
@@ -2462,181 +2687,228 @@ export default function JobsPage() {
                 </div>
             )}
             {editingJob && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', 
-                    background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', 
-                    justifyContent: 'center', zIndex: 1000
-                }}>
-                    <div className="card" style={{ width: '800px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxHeight: '90vh', overflowY: 'auto' }}>
-                        <h3 style={{ color: 'var(--gold)', margin: 0, fontFamily: 'var(--fh)', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem' }}>Edit Job Description</h3>
+                <div className="modal-overlay">
+                    <div className="card" style={{ width: '850px', padding: '2.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxHeight: '90vh', overflowY: 'auto' }}>
+                        <h3 style={{ color: 'var(--gold)', margin: 0, fontFamily: 'var(--fh)', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem', fontSize: '1.5rem', fontWeight: 800 }}>Edit Job Description</h3>
                         
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                        <div className="form-section-title">
+                            <Briefcase size={16} className="jd-param-icon" /> Role & Client Details
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
                             <div>
-                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Job Title *</label>
-                                <input 
-                                    type="text" 
-                                    value={editJobForm.title} 
-                                    onChange={e => setEditJobForm({...editJobForm, title: e.target.value})} 
-                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none' }}
-                                />
+                                <label className="modern-label">Job Title *</label>
+                                <div className="modern-input-group">
+                                    <Briefcase size={16} className="modern-input-icon" />
+                                    <input 
+                                        type="text" 
+                                        value={editJobForm.title} 
+                                        onChange={e => setEditJobForm({...editJobForm, title: e.target.value})} 
+                                        className="modern-input"
+                                    />
+                                </div>
                             </div>
                             
                             <div>
-                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Client Name</label>
-                                <input 
-                                    type="text" 
-                                    value={editJobForm.client_name} 
-                                    onChange={e => setEditJobForm({...editJobForm, client_name: e.target.value})} 
-                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none' }}
-                                />
+                                <label className="modern-label">Client Name</label>
+                                <div className="modern-input-group">
+                                    <Building size={16} className="modern-input-icon" />
+                                    <input 
+                                        type="text" 
+                                        value={editJobForm.client_name} 
+                                        onChange={e => setEditJobForm({...editJobForm, client_name: e.target.value})} 
+                                        className="modern-input"
+                                    />
+                                </div>
                             </div>
                             
                             <div>
-                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Client Phone</label>
-                                <input 
-                                    type="text" 
-                                    value={editJobForm.client_phone} 
-                                    onChange={e => setEditJobForm({...editJobForm, client_phone: e.target.value})} 
-                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none' }}
-                                />
+                                <label className="modern-label">Client Phone</label>
+                                <div className="modern-input-group">
+                                    <Phone size={16} className="modern-input-icon" />
+                                    <input 
+                                        type="text" 
+                                        value={editJobForm.client_phone} 
+                                        onChange={e => setEditJobForm({...editJobForm, client_phone: e.target.value})} 
+                                        className="modern-input"
+                                    />
+                                </div>
                             </div>
                             
                             <div>
-                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Contact Name</label>
-                                <input 
-                                    type="text" 
-                                    value={editJobForm.contact_name} 
-                                    onChange={e => setEditJobForm({...editJobForm, contact_name: e.target.value})} 
-                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none' }}
-                                />
+                                <label className="modern-label">Contact Name</label>
+                                <div className="modern-input-group">
+                                    <User size={16} className="modern-input-icon" />
+                                    <input 
+                                        type="text" 
+                                        value={editJobForm.contact_name} 
+                                        onChange={e => setEditJobForm({...editJobForm, contact_name: e.target.value})} 
+                                        className="modern-input"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="form-section-title">
+                            <User size={16} className="jd-param-icon" /> Management & Timeline
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+                            <div>
+                                <label className="modern-label">Account Manager</label>
+                                <div className="modern-input-group">
+                                    <User size={16} className="modern-input-icon" />
+                                    <input 
+                                        type="text" 
+                                        value={editJobForm.account_manager} 
+                                        onChange={e => setEditJobForm({...editJobForm, account_manager: e.target.value})} 
+                                        className="modern-input"
+                                    />
+                                </div>
                             </div>
                             
                             <div>
-                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Account Manager</label>
-                                <input 
-                                    type="text" 
-                                    value={editJobForm.account_manager} 
-                                    onChange={e => setEditJobForm({...editJobForm, account_manager: e.target.value})} 
-                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none' }}
-                                />
+                                <label className="modern-label">Assigned Recruiter(s)</label>
+                                <div className="modern-input-group">
+                                    <User size={16} className="modern-input-icon" />
+                                    <input 
+                                        type="text" 
+                                        value={editJobForm.assigned_recruiter} 
+                                        onChange={e => setEditJobForm({...editJobForm, assigned_recruiter: e.target.value})} 
+                                        className="modern-input"
+                                    />
+                                </div>
                             </div>
                             
                             <div>
-                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Assigned Recruiter(s)</label>
-                                <input 
-                                    type="text" 
-                                    value={editJobForm.assigned_recruiter} 
-                                    onChange={e => setEditJobForm({...editJobForm, assigned_recruiter: e.target.value})} 
-                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none' }}
-                                />
+                                <label className="modern-label">Target Date</label>
+                                <div className="modern-input-group">
+                                    <Calendar size={16} className="modern-input-icon" />
+                                    <input 
+                                        type="date" 
+                                        value={editJobForm.target_date} 
+                                        onChange={e => setEditJobForm({...editJobForm, target_date: e.target.value})} 
+                                        className="modern-input"
+                                    />
+                                </div>
                             </div>
                             
                             <div>
-                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Target Date</label>
-                                <input 
-                                    type="date" 
-                                    value={editJobForm.target_date} 
-                                    onChange={e => setEditJobForm({...editJobForm, target_date: e.target.value})} 
-                                    style={{ width: '100%', padding: '9px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none' }}
-                                />
+                                <label className="modern-label">Job Type</label>
+                                <div className="modern-input-group">
+                                    <Briefcase size={16} className="modern-input-icon" />
+                                    <select 
+                                        value={editJobForm.job_type} 
+                                        onChange={e => setEditJobForm({...editJobForm, job_type: e.target.value})} 
+                                        className="modern-select"
+                                    >
+                                        <option value="Full time">Full time</option>
+                                        <option value="Part time">Part time</option>
+                                        <option value="Contract">Contract</option>
+                                        <option value="Temporary">Temporary</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="form-section-title">
+                            <Target size={16} className="jd-param-icon" /> Requirements & Salary
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+                            <div>
+                                <label className="modern-label">Job Opening Status</label>
+                                <div className="modern-input-group">
+                                    <Target size={16} className="modern-input-icon" />
+                                    <select 
+                                        value={editJobForm.job_status} 
+                                        onChange={e => setEditJobForm({...editJobForm, job_status: e.target.value})} 
+                                        className="modern-select"
+                                    >
+                                        <option value="In-progress">In-progress</option>
+                                        <option value="On-hold">On-hold</option>
+                                        <option value="Filled">Filled</option>
+                                        <option value="Closed">Closed</option>
+                                    </select>
+                                </div>
                             </div>
                             
                             <div>
-                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Job Type</label>
-                                <select 
-                                    value={editJobForm.job_type} 
-                                    onChange={e => setEditJobForm({...editJobForm, job_type: e.target.value})} 
-                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none', height: 'auto' }}
-                                >
-                                    <option value="Full time">Full time</option>
-                                    <option value="Part time">Part time</option>
-                                    <option value="Contract">Contract</option>
-                                    <option value="Temporary">Temporary</option>
-                                </select>
+                                <label className="modern-label">Work Experience</label>
+                                <div className="modern-input-group">
+                                    <Award size={16} className="modern-input-icon" />
+                                    <select 
+                                        value={editJobForm.work_experience} 
+                                        onChange={e => setEditJobForm({...editJobForm, work_experience: e.target.value})} 
+                                        className="modern-select"
+                                    >
+                                        <option value="None">None</option>
+                                        <option value="Fresher">Fresher</option>
+                                        <option value="1-3 years">1-3 years</option>
+                                        <option value="3-5 years">3-5 years</option>
+                                        <option value="5+ years">5+ years</option>
+                                    </select>
+                                </div>
                             </div>
                             
                             <div>
-                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Job Opening Status</label>
-                                <select 
-                                    value={editJobForm.job_status} 
-                                    onChange={e => setEditJobForm({...editJobForm, job_status: e.target.value})} 
-                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none', height: 'auto' }}
-                                >
-                                    <option value="In-progress">In-progress</option>
-                                    <option value="On-hold">On-hold</option>
-                                    <option value="Filled">Filled</option>
-                                    <option value="Closed">Closed</option>
-                                </select>
+                                <label className="modern-label">Industry</label>
+                                <div className="modern-input-group">
+                                    <Building size={16} className="modern-input-icon" />
+                                    <select 
+                                        value={editJobForm.industry} 
+                                        onChange={e => setEditJobForm({...editJobForm, industry: e.target.value})} 
+                                        className="modern-select"
+                                    >
+                                        <option value="None">None</option>
+                                        <option value="IT">IT</option>
+                                        <option value="Finance">Finance</option>
+                                        <option value="Healthcare">Healthcare</option>
+                                        <option value="Telecom">Telecom</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
                             </div>
                             
                             <div>
-                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Work Experience</label>
-                                <select 
-                                    value={editJobForm.work_experience} 
-                                    onChange={e => setEditJobForm({...editJobForm, work_experience: e.target.value})} 
-                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none', height: 'auto' }}
-                                >
-                                    <option value="None">None</option>
-                                    <option value="Fresher">Fresher</option>
-                                    <option value="1-3 years">1-3 years</option>
-                                    <option value="3-5 years">3-5 years</option>
-                                    <option value="5+ years">5+ years</option>
-                                </select>
+                                <label className="modern-label">Salary</label>
+                                <div className="modern-input-group">
+                                    <DollarSign size={16} className="modern-input-icon" />
+                                    <input 
+                                        type="text" 
+                                        value={editJobForm.salary} 
+                                        onChange={e => setEditJobForm({...editJobForm, salary: e.target.value})} 
+                                        placeholder="e.g. 10 LPA"
+                                        className="modern-input"
+                                    />
+                                </div>
                             </div>
                             
-                            <div>
-                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Industry</label>
-                                <select 
-                                    value={editJobForm.industry} 
-                                    onChange={e => setEditJobForm({...editJobForm, industry: e.target.value})} 
-                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none', height: 'auto' }}
-                                >
-                                    <option value="None">None</option>
-                                    <option value="IT">IT</option>
-                                    <option value="Finance">Finance</option>
-                                    <option value="Healthcare">Healthcare</option>
-                                    <option value="Telecom">Telecom</option>
-                                    <option value="Other">Other</option>
-                                </select>
-                            </div>
-                            
-                            <div>
-                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Salary</label>
-                                <input 
-                                    type="text" 
-                                    value={editJobForm.salary} 
-                                    onChange={e => setEditJobForm({...editJobForm, salary: e.target.value})} 
-                                    placeholder="e.g. 10 LPA"
-                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none' }}
-                                />
-                            </div>
-                            
-                            <div>
-                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Required Skills</label>
-                                <input 
-                                    type="text" 
-                                    value={editJobForm.required_skills} 
-                                    onChange={e => setEditJobForm({...editJobForm, required_skills: e.target.value})} 
-                                    placeholder="e.g. Pega, CSSA"
-                                    style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, outline: 'none' }}
-                                />
+                            <div style={{ gridColumn: 'span 2' }}>
+                                <label className="modern-label">Required Skills</label>
+                                <div className="modern-input-group">
+                                    <Award size={16} className="modern-input-icon" />
+                                    <input 
+                                        type="text" 
+                                        value={editJobForm.required_skills} 
+                                        onChange={e => setEditJobForm({...editJobForm, required_skills: e.target.value})} 
+                                        placeholder="e.g. Pega, CSSA"
+                                        className="modern-input"
+                                    />
+                                </div>
                             </div>
                         </div>
                         
                         <div>
-                            <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>Job Description *</label>
+                            <label className="modern-label">Job Description *</label>
                             <textarea 
                                 value={editJobForm.description} 
                                 onChange={e => setEditJobForm({...editJobForm, description: e.target.value})} 
-                                placeholder="Paste the full job description here..." 
-                                rows={6}
-                                style={{ width: '100%', padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, resize: 'vertical', outline: 'none' }}
+                                className="modern-textarea"
+                                style={{ minHeight: '140px' }}
                             />
                         </div>
                         
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid var(--border)', paddingTop: '1rem', marginTop: '0.5rem' }}>
-                            <button className="btn btn-secondary" onClick={() => setEditingJob(null)}>Cancel</button>
-                            <button className="btn btn-primary" onClick={handleSaveJobEdit} disabled={isSavingJob}>
+                            <button className="btn btn-secondary" style={{ padding: '10px 22px', fontSize: '0.85rem' }} onClick={() => setEditingJob(null)}>Cancel</button>
+                            <button className="btn btn-primary" style={{ padding: '10px 22px', fontSize: '0.85rem', boxShadow: '0 4px 14px rgba(var(--primary-rgb), 0.3)' }} onClick={handleSaveJobEdit} disabled={isSavingJob}>
                                 {isSavingJob ? 'Saving & Re-matching...' : 'Save & Re-match'}
                             </button>
                         </div>
@@ -2667,21 +2939,15 @@ export default function JobsPage() {
             
             {/* Resume Viewer Modal */}
             {viewingPdf && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                    background: 'rgba(0,0,0,0.85)', zIndex: 99999,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    backdropFilter: 'blur(5px)'
-                }} onClick={() => setViewingPdf(null)}>
+                <div className="modal-overlay" onClick={() => setViewingPdf(null)}>
                     <div className="card" onClick={e => e.stopPropagation()} style={{ 
                         width: '95%', maxWidth: 1000, height: '90vh', 
                         display: 'flex', flexDirection: 'column', padding: 0, 
-                        overflow: 'hidden', border: '1px solid var(--border)',
-                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+                        overflow: 'hidden'
                     }}>
                         <div style={{ 
                             display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
-                            padding: '16px 24px', background: 'rgba(var(--navy-rgb), 0.98)', borderBottom: '1px solid var(--border)' 
+                            padding: '20px 24px', background: 'rgba(var(--navy-dark-rgb), 0.4)', borderBottom: '1px solid var(--border)' 
                         }}>
                             <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', display: 'flex', alignItems: 'center', gap: 10, fontSize: '1.05rem' }}>
                                 <span style={{fontSize: '1.2rem', opacity: 0.8}}>📄</span> {viewingPdf.name}
@@ -2708,23 +2974,15 @@ export default function JobsPage() {
 
             {/* Add Candidate Modal */}
             {showAddCandidateModal && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                    background: 'rgba(0,0,0,0.75)', zIndex: 99999,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    backdropFilter: 'blur(4px)'
-                }} onClick={() => setShowAddCandidateModal(false)}>
+                <div className="modal-overlay" onClick={() => setShowAddCandidateModal(false)}>
                     <div className="card" onClick={e => e.stopPropagation()} style={{
                         width: '90%', maxWidth: '500px', maxHeight: '80vh',
-                        display: 'flex', flexDirection: 'column', padding: 0,
-                        border: '1px solid var(--border)',
-                        boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-                        background: 'var(--navy-dark)'
+                        display: 'flex', flexDirection: 'column', padding: 0
                     }}>
                         {/* Header */}
                         <div style={{
                             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                            padding: '16px 24px', background: 'rgba(var(--navy-rgb), 0.95)',
+                            padding: '20px 24px', background: 'rgba(var(--navy-dark-rgb), 0.4)',
                             borderBottom: '1px solid var(--border)'
                         }}>
                             <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 800 }}>
@@ -2827,24 +3085,93 @@ export default function JobsPage() {
                 </div>
             )}
  
-            {showShareModal && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                    background: 'rgba(0,0,0,0.75)', zIndex: 99999,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    backdropFilter: 'blur(4px)'
-                }} onClick={() => setShowShareModal(false)}>
+            {viewingSharedList && (
+                <div className="modal-overlay" onClick={() => setViewingSharedList(null)}>
                     <div className="card" onClick={e => e.stopPropagation()} style={{
-                        width: '90%', maxWidth: '500px', maxHeight: '80vh',
-                        display: 'flex', flexDirection: 'column', padding: 0,
-                        border: '1px solid var(--border)',
-                        boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-                        background: 'var(--navy-dark)'
+                        width: '95%', maxWidth: '400px', maxHeight: '80vh',
+                        display: 'flex', flexDirection: 'column', padding: 0
                     }}>
                         {/* Header */}
                         <div style={{
                             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                            padding: '16px 24px', background: 'rgba(var(--navy-rgb), 0.95)',
+                            padding: '20px 24px', background: 'rgba(var(--navy-dark-rgb), 0.4)',
+                            borderBottom: '1px solid var(--border)'
+                        }}>
+                            <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Share2 size={18} /> Shared Candidates
+                            </h3>
+                            <button onClick={() => setViewingSharedList(null)} style={{
+                                background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', display: 'flex', transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.color = 'var(--gold)'}
+                            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-dim)'}
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+                        
+                        {/* Content */}
+                        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', color: 'var(--text)' }}>
+                            <div style={{ fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '15px' }}>
+                                This job description is shared with the following external candidate accounts:
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                {viewingSharedList.shared_with.map(username => (
+                                    <div 
+                                        key={username}
+                                        style={{ 
+                                            padding: '10px 14px', background: 'rgba(255,255,255,0.02)', 
+                                            border: '1px solid var(--border)', borderRadius: '8px',
+                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                            <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{username}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        {/* Footer */}
+                        <div style={{
+                            padding: '12px 24px', borderTop: '1px solid var(--border)',
+                            display: 'flex', justifyContent: 'space-between', gap: '10px',
+                            background: 'rgba(var(--navy-rgb), 0.3)', alignItems: 'center'
+                        }}>
+                            <button 
+                                onClick={() => {
+                                    const jobToShare = viewingSharedList;
+                                    setViewingSharedList(null);
+                                    handleOpenShareModal(jobToShare);
+                                }}
+                                className="btn btn-primary"
+                                style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                            >
+                                ✏ Manage Shares
+                            </button>
+                            <button 
+                                onClick={() => setViewingSharedList(null)}
+                                className="btn btn-secondary"
+                                style={{ padding: '6px 16px', fontSize: '0.8rem' }}
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showShareModal && (
+                <div className="modal-overlay" onClick={() => setShowShareModal(false)}>
+                    <div className="card" onClick={e => e.stopPropagation()} style={{
+                        width: '90%', maxWidth: '500px', maxHeight: '80vh',
+                        display: 'flex', flexDirection: 'column', padding: 0
+                    }}>
+                        {/* Header */}
+                        <div style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            padding: '20px 24px', background: 'rgba(var(--navy-dark-rgb), 0.4)',
                             borderBottom: '1px solid var(--border)'
                         }}>
                             <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>

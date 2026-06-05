@@ -1,7 +1,7 @@
 import sqlite3
 import os
 
-db_path = r"c:\Users\sekhe\OneDrive\Documents\321\backend\stats.db"
+db_path = "backend/stats.db"
 conn = sqlite3.connect(db_path, timeout=30.0)
 cur = conn.cursor()
 

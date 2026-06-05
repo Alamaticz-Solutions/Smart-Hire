@@ -3,6 +3,25 @@ import { useOutletContext } from 'react-router-dom'
 import axios from 'axios'
 import { Shield, CheckCircle, XCircle, UserCheck, Trash2, UserPlus, Check, Users, Search } from 'lucide-react'
 
+const CANDIDATE_FIELDS = [
+    { key: 'full_name', label: 'Name' },
+    { key: 'email', label: 'Email Address' },
+    { key: 'phone', label: 'Phone Number' },
+    { key: 'linkedin', label: 'LinkedIn Profile' },
+    { key: 'ctc', label: 'Current CTC' },
+    { key: 'expected_ctc', label: 'Expected CTC' },
+    { key: 'percentage_hike', label: 'Hike %' },
+    { key: 'notice_period', label: 'Notice Period' },
+    { key: 'total_experience', label: 'Total Experience' },
+    { key: 'pega_experience', label: 'Pega Experience' },
+    { key: 'cdh_exp', label: 'CDH Experience' },
+    { key: 'current_organization', label: 'Current Org' },
+    { key: 'current_location', label: 'Current Location' },
+    { key: 'pref_locations', label: 'Preferred Location' },
+    { key: 'skills', label: 'Skills' },
+    { key: 'certifications', label: 'Certifications' }
+];
+
 export default function AdminPage() {
     const { user, onUpdateUser } = useOutletContext()
     const [activeTab, setActiveTab] = useState('requests') // requests | users | matrix
@@ -15,6 +34,10 @@ export default function AdminPage() {
     const [userSearchQuery, setUserSearchQuery] = useState('')
     const [keywords, setKeywords] = useState([])
     const [newKeyword, setNewKeyword] = useState('')
+    
+    const [selectedUserForHiddenFields, setSelectedUserForHiddenFields] = useState(null)
+    const [tempHiddenFields, setTempHiddenFields] = useState([])
+    const [showHiddenFieldsModal, setShowHiddenFieldsModal] = useState(false)
 
     useEffect(() => {
         if (activeTab === 'requests') {
@@ -122,6 +145,23 @@ export default function AdminPage() {
             fetchUsers()
         } catch (err) {
             alert(err.response?.data?.detail || 'Failed to update user permissions')
+        }
+    }
+
+    const updateUserHiddenFields = async (id, hiddenFields) => {
+        const targetUser = users.find(u => u.id === id)
+        if (!targetUser) return
+        
+        try {
+            await axios.put(`/api/admin/users/${id}/permissions`, { 
+                is_hr: targetUser.is_hr, 
+                is_admin: targetUser.is_admin,
+                is_external: targetUser.is_external || 0,
+                hidden_fields: hiddenFields
+            })
+            fetchUsers()
+        } catch (err) {
+            alert(err.response?.data?.detail || 'Failed to update user hidden fields')
         }
     }
 
@@ -266,17 +306,7 @@ export default function AdminPage() {
                 >
                     User Management
                 </button>
-                <button 
-                    onClick={() => setActiveTab('keywords')}
-                    style={{
-                        padding: '0.8rem 1.5rem', background: 'none', border: 'none', cursor: 'pointer',
-                        color: activeTab === 'keywords' ? 'var(--gold)' : 'var(--text-dim)',
-                        borderBottom: activeTab === 'keywords' ? '2px solid var(--gold)' : '2px solid transparent',
-                        fontWeight: activeTab === 'keywords' ? 'bold' : 'normal', fontSize: '1rem'
-                    }}
-                >
-                    Masked Keywords
-                </button>
+
             </div>
 
             {loading && <div style={{ textAlign: 'center', padding: '2rem' }}>Loading data...</div>}
@@ -401,6 +431,7 @@ export default function AdminPage() {
                                         <th style={{ padding: '1rem', textAlign: 'center', fontSize: '0.78rem' }}>HR</th>
                                         <th style={{ padding: '1rem', textAlign: 'center', fontSize: '0.78rem' }}>Admin</th>
                                         <th style={{ padding: '1rem', textAlign: 'center', fontSize: '0.78rem' }}>External</th>
+                                        <th style={{ padding: '1rem', textAlign: 'center', fontSize: '0.78rem' }}>Hidden Info</th>
                                         <th style={{ padding: '1rem 1.5rem', textAlign: 'right', fontSize: '0.78rem' }}>Actions</th>
                                     </tr>
                                 </thead>
@@ -488,6 +519,21 @@ export default function AdminPage() {
                                                         </span>
                                                     </div>
                                                 </td>
+                                                <td style={{ padding: '1rem', textAlign: 'center' }}>
+                                                    <button 
+                                                        className="btn btn-secondary" 
+                                                        style={{ padding: '4px 10px', fontSize: '0.75rem', borderColor: 'var(--border)', color: 'var(--text)' }}
+                                                        onClick={() => {
+                                                            setSelectedUserForHiddenFields(u);
+                                                            setTempHiddenFields(u.hidden_fields ? u.hidden_fields.split(',').map(s => s.trim().lower()).filter(Boolean) : []);
+                                                            setShowHiddenFieldsModal(true);
+                                                        }}
+                                                    >
+                                                        {u.hidden_fields && u.hidden_fields.split(',').filter(Boolean).length > 0 
+                                                            ? `🚫 ${u.hidden_fields.split(',').filter(Boolean).length} Hidden` 
+                                                            : 'Configure'}
+                                                    </button>
+                                                </td>
                                                 <td style={{ padding: '1rem 1.5rem', textAlign: 'right' }}>
                                                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
                                                         {isSelf ? (
@@ -513,7 +559,7 @@ export default function AdminPage() {
                                         u.full_name.toLowerCase().includes(userSearchQuery.toLowerCase())
                                     ).length === 0 && (
                                         <tr>
-                                            <td colSpan="5" style={{ padding: '3rem 2rem', textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.9rem' }}>
+                                            <td colSpan="6" style={{ padding: '3rem 2rem', textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.9rem' }}>
                                                 No users found matching your search.
                                             </td>
                                         </tr>
@@ -525,77 +571,89 @@ export default function AdminPage() {
                 </div>
             )}
 
-            {/* Masked Keywords Tab */}
-            {!loading && activeTab === 'keywords' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: '800px' }}>
-                    <div className="card" style={{ padding: '2rem' }}>
-                        <h3 style={{ margin: '0 0 0.5rem 0', fontFamily: 'var(--fh)', fontSize: '1.2rem', color: 'var(--gold)' }}>Add Masked Keyword</h3>
-                        <p style={{ margin: '0 0 1.5rem 0', fontSize: '0.85rem', color: 'var(--text-dim)' }}>
-                            Add keywords/certifications (e.g. "CSSA", "LSA") to be masked with <code>****</code> in candidate profiles for non-admin and non-HR users.
-                        </p>
-                        <form onSubmit={handleAddKeyword} style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                            <input 
-                                type="text"
-                                className="form-input"
-                                placeholder="Enter keyword to mask (e.g. CSSA)"
-                                value={newKeyword}
-                                onChange={e => setNewKeyword(e.target.value)}
-                                style={{ flex: 1, margin: 0 }}
-                            />
-                            <button type="submit" className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap' }}>
-                                <UserPlus size={16} /> Add Keyword
-                            </button>
-                        </form>
-                    </div>
 
-                    <div className="card" style={{ padding: '2rem' }}>
-                        <h3 style={{ margin: '0 0 1.5rem 0', fontFamily: 'var(--fh)', fontSize: '1.2rem' }}>Currently Masked Keywords</h3>
-                        {keywords.length === 0 ? (
-                            <div style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '2rem 0', fontSize: '0.9rem' }}>
-                                No masked keywords defined. Non-admin/non-HR users will see all details.
-                            </div>
-                        ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-                                {keywords.map(kw => (
-                                    <div key={kw} style={{ 
-                                        display: 'flex', 
-                                        justifyContent: 'space-between', 
-                                        alignItems: 'center', 
-                                        padding: '0.8rem 1.2rem', 
-                                        background: 'rgba(var(--navy-rgb), 0.2)', 
-                                        border: '1px solid var(--border)', 
-                                        borderRadius: '8px' 
+
+
+            {showHiddenFieldsModal && selectedUserForHiddenFields && (
+                <div className="modal-overlay" onClick={() => setShowHiddenFieldsModal(false)}>
+                    <div className="card" onClick={e => e.stopPropagation()} style={{
+                        width: '90%', maxWidth: '500px', maxHeight: '85vh',
+                        display: 'flex', flexDirection: 'column', padding: 0
+                    }}>
+                        <div style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            padding: '20px 24px', background: 'rgba(var(--navy-dark-rgb), 0.4)',
+                            borderBottom: '1px solid var(--border)'
+                        }}>
+                            <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 800 }}>
+                                🚫 Hidden Candidate Fields for @{selectedUserForHiddenFields.username}
+                            </h3>
+                            <button onClick={() => setShowHiddenFieldsModal(false)} style={{
+                                background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
+                                color: 'var(--gold)', cursor: 'pointer', padding: 6, borderRadius: '8px',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            }}>
+                                <XCircle size={18} />
+                            </button>
+                        </div>
+                        <div style={{
+                            flex: 1, padding: '24px', overflowY: 'auto',
+                            display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px'
+                        }}>
+                            {CANDIDATE_FIELDS.map(f => {
+                                const isChecked = tempHiddenFields.includes(f.key);
+                                return (
+                                    <label key={f.key} style={{
+                                        display: 'flex', alignItems: 'center', gap: '8px',
+                                        fontSize: '0.88rem', color: isChecked ? '#ef4444' : 'var(--text)',
+                                        cursor: 'pointer', padding: '8px 12px', borderRadius: '6px',
+                                        background: isChecked ? 'rgba(239, 68, 68, 0.08)' : 'rgba(255,255,255,0.02)',
+                                        border: `1px solid ${isChecked ? 'rgba(239, 68, 68, 0.2)' : 'transparent'}`,
+                                        transition: 'all 0.15s'
                                     }}>
-                                        <span style={{ fontFamily: 'monospace', fontWeight: 'bold', fontSize: '1rem', color: 'var(--text)' }}>
-                                            {kw}
-                                        </span>
-                                        <button 
-                                            className="btn btn-danger" 
-                                            style={{ 
-                                                padding: '0.4rem 0.8rem', 
-                                                fontSize: '0.8rem', 
-                                                display: 'inline-flex', 
-                                                alignItems: 'center', 
-                                                gap: '0.4rem', 
-                                                background: 'rgba(231, 76, 60, 0.1)',
-                                                border: '1px solid rgba(231, 76, 60, 0.3)',
-                                                color: '#e74c3c',
-                                                borderRadius: '6px',
-                                                cursor: 'pointer'
+                                        <input
+                                            type="checkbox"
+                                            checked={isChecked}
+                                            onChange={() => {
+                                                setTempHiddenFields(prev => 
+                                                    prev.includes(f.key) 
+                                                        ? prev.filter(k => k !== f.key) 
+                                                        : [...prev, f.key]
+                                                );
                                             }}
-                                            onClick={() => handleDeleteKeyword(kw)}
-                                        >
-                                            <Trash2 size={13} /> Remove
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
+                                            style={{ cursor: 'pointer', accentColor: '#ef4444' }}
+                                        />
+                                        {f.label}
+                                    </label>
+                                );
+                            })}
+                        </div>
+                        <div style={{
+                            padding: '16px 24px', borderTop: '1px solid var(--border)',
+                            display: 'flex', justifyContent: 'flex-end', gap: '12px',
+                            background: 'rgba(var(--navy-rgb), 0.3)'
+                        }}>
+                            <button 
+                                onClick={() => setShowHiddenFieldsModal(false)}
+                                className="btn btn-secondary"
+                                style={{ padding: '6px 16px', fontSize: '0.8rem' }}
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={async () => {
+                                    await updateUserHiddenFields(selectedUserForHiddenFields.id, tempHiddenFields.join(','));
+                                    setShowHiddenFieldsModal(false);
+                                }}
+                                className="btn btn-primary"
+                                style={{ padding: '6px 18px', fontSize: '0.8rem', background: '#ef4444', borderColor: '#ef4444' }}
+                            >
+                                Save Changes
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
-
-
         </div>
     )
 }
