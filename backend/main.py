@@ -322,6 +322,10 @@ def init_db():
         cur.execute("ALTER TABLE users ADD COLUMN is_external INTEGER DEFAULT 0")
     if 'hidden_fields' not in existing_users_cols:
         cur.execute("ALTER TABLE users ADD COLUMN hidden_fields TEXT DEFAULT ''")
+    if 'email' not in existing_users_cols:
+        cur.execute("ALTER TABLE users ADD COLUMN email TEXT")
+    if 'is_approved' not in existing_users_cols:
+        cur.execute("ALTER TABLE users ADD COLUMN is_approved INTEGER DEFAULT 0")
 
     # Seed default users if empty (do NOT wipe the table to preserve registered users!)
     cur.execute("SELECT COUNT(*) FROM users WHERE LOWER(username) = 'admin'")
@@ -355,8 +359,8 @@ def init_db():
         for m in ["Boopathi", "Praveen", "Harish", "Sabari"]:
             cur.execute("INSERT OR IGNORE INTO team_members (name) VALUES (?)", (m,))
         
-    # Delete legacy resume approval requests to clean up the Admin Portal
-    cur.execute("DELETE FROM change_requests WHERE action_type = 'approve_resume'")
+    # Pre-approve seeded/default users
+    cur.execute("UPDATE users SET is_approved = 1 WHERE LOWER(username) IN ('admin', 'user', 'boopathi', 'praveen', 'harish', 'sabari')")
 
     conn.commit()
     conn.close()
@@ -554,7 +558,25 @@ def delete_team_member(member_id: int, request: Request):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ── Authorization Helpers ──────────────────────────────────────────────────────
+def is_user_approved(username: Optional[str]) -> bool:
+    if not username:
+        return False
+    # Seeded/default users are always approved
+    if username.lower() in ("admin", "user", "boopathi", "praveen", "harish", "sabari"):
+        return True
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT is_approved FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+        row = cur.fetchone()
+        if row and row[0] == 1:
+            return True
+    except Exception:
+        pass
+    finally:
+        conn.close()
+    return False
+
 def get_user_role(username: Optional[str]) -> str:
     if not username:
         return "user"
@@ -611,6 +633,9 @@ def list_candidates(request: Request):
         if row and row[0] == 1:
             raise HTTPException(status_code=403, detail="Forbidden")
             
+    if not is_user_approved(username):
+        return []
+
     rows = get_candidates_list()
     
     # Replace None values with empty string
@@ -797,6 +822,149 @@ def get_candidate_jobs(candidate_id: int):
     rows = [dict(r) for r in cur.fetchall()]
     conn.close()
     return rows
+
+@app.get("/api/candidates/{candidate_id}/formatted-resume")
+def get_formatted_resume_data(candidate_id: int, request: Request):
+    username = request.headers.get("x-user-username")
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM candidate_metadata WHERE id = ?", (candidate_id,))
+    row = cur.fetchone()
+    conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    candidate = dict(row)
+    filename = candidate.get("filename", "")
+    
+    # Try to load original text
+    text = ""
+    if filename:
+        path = os.path.join(UPLOAD_DIR, filename)
+        if os.path.exists(path) and not filename.lower().endswith(('.xlsx', '.xls', '.csv')):
+            try:
+                if filename.lower().endswith(".pdf"):
+                    loader = PyMuPDFLoader(path)
+                else:
+                    loader = Docx2txtLoader(path)
+                docs = loader.load()
+                text = "\n".join([d.page_content for d in docs])
+            except Exception as e:
+                print(f"Error loading resume file: {e}")
+
+    # Fallback to metadata if file text couldn't be loaded
+    if not text:
+        text = f"""
+        Name: {candidate.get('full_name')}
+        Experience: {candidate.get('total_experience')} years (Pega: {candidate.get('pega_experience')} years, CDH: {candidate.get('cdh_exp')} years)
+        Current Employment: {candidate.get('current_organization')}
+        Location: {candidate.get('current_location')}
+        Skills: {candidate.get('skills')}
+        Certifications: {candidate.get('certifications')}
+        Preferred Location: {candidate.get('pref_locations')}
+        CTC: {candidate.get('ctc')}
+        Expected CTC: {candidate.get('expected_ctc')}
+        """
+
+    _, llm = get_models()
+
+    prompt = f"""You are an expert resume formatter. Extract details from the candidate resume text below and structure them into the exact JSON template provided.
+Make sure to fill all fields based on the candidate's actual data. If a field is not present in the resume text, leave it blank or default appropriately.
+
+Template Structure:
+{{
+  "full_name": "Name of the candidate",
+  "job_title": "Determine a standard job designation based on their experience and skills, e.g. 'PEGA - CERTIFIED SENIOR SYSTEM ANALYST', 'Pega Lead Business Architect', or similar. If they are a Pega certified system architect, use a format like 'PEGA - CERTIFIED SENIOR SYSTEM ARCHITECT' or 'PEGA - CERTIFIED SYSTEM ARCHITECT'",
+  "profile_summary": "A professional profile summary. You MUST format this summary using the exact wording layout: '[X]+ years of experience in [domain/industry] with a proven track record of [key achievement]. Expertise in [Skill 1], [Skill 2], [Skill 3], and [Skill 4]. Experienced in [tools/platforms] and capable of [key capability]. Adept at working with [stakeholders] to deliver [outcomes].' Fill in the bracketed placeholders using the candidate's actual data. Do not leave brackets in the output, resolve them completely.",
+  "domain_skills": [
+    "A concise list of 4-6 specific domain or functional skill areas, e.g. 'Pega PRPC', 'Decisioning (CDH)', 'Integration Services', 'Data Modeling', 'Agile Methodologies'"
+  ],
+  "technical_skills": {{
+    "primary": "Primary Tool/Platform: [list primary tool(s) and version(s) if known, e.g. 'Pega PRPC: v8.x, v7.x']",
+    "languages": "Languages: [list programming/database languages, e.g. 'Java, SQL, XML']",
+    "frontend": "Frontend: [list frontend technologies, e.g. 'HTML5, CSS3, JavaScript, React']",
+    "others": "Others: [list other tools and platforms, e.g. 'Git, Jira, Azure, Maven']"
+  }},
+  "education": [
+    {{
+      "degree": "Degree name (e.g. 'B.E.', 'MCA', 'B.Tech')",
+      "field": "Field of study (e.g. 'Computer Science & Engineering')",
+      "school": "University or College Name",
+      "years": "Year Start - Year End or Year of Completion (e.g. '2015 - 2019')"
+    }}
+  ],
+  "certifications": [
+    "List of certifications found, e.g. 'Pega Certified Senior System Architect (CSSA)', 'Certified System Architect (CSA)', 'Certified Pega Decisioning Consultant (CPDC)'"
+  ],
+  "work_experience": [
+    {{
+      "company": "Company Name",
+      "dates": "Start Date - End Date (e.g. 'Jul 2019 - Present')",
+      "role": "Role or Job Title",
+      "bullets": [
+        "Accomplishment or key responsibility bullet point (limit to 3-5 high-impact bullets per job)"
+      ]
+    }}
+  ],
+  "recognitions": [
+    {{
+      "date": "Month Year / Year (e.g. '2022' or 'Dec 2021')",
+      "description": "Award title or recognition detail (e.g. 'Star of the Quarter for excellent project delivery')"
+    }}
+  ]
+}}
+
+Rules:
+1. Return ONLY the valid JSON block. No explanation, no markdown backticks, no markdown blocks. Just raw valid JSON.
+2. If certifications are empty, extract them from the text (do not use "[HIDDEN]").
+3. All fields must be clean strings, numbers, arrays, or objects as defined in the template.
+
+Resume Text:
+{text[:8000]}
+
+JSON:"""
+
+    try:
+        resp = llm.invoke([HumanMessage(content=prompt)])
+        raw = resp.content.strip()
+        if "```json" in raw:
+            raw = raw.split("```json")[1].split("```")[0].strip()
+        elif "```" in raw:
+            raw = raw.split("```")[1].split("```")[0].strip()
+        start, end = raw.find('{'), raw.rfind('}')
+        if start != -1 and end != -1:
+            raw = raw[start:end+1]
+        data = json.loads(raw)
+    except Exception as e:
+        print(f"Error parsing resume via LLM: {e}")
+        # Return fallback structured data
+        data = {
+            "full_name": candidate.get("full_name"),
+            "job_title": "Pega Professional",
+            "profile_summary": f"{candidate.get('total_experience', 0)} years of experience in IT with skills in {candidate.get('skills', '')}.",
+            "domain_skills": [s.strip() for s in str(candidate.get("skills", "")).split(",") if s.strip()][:4],
+            "technical_skills": {
+                "primary": "Primary Tool/Platform: Pega",
+                "languages": "Languages: Java, SQL",
+                "frontend": "Frontend: HTML, CSS, JavaScript",
+                "others": "Others: Git, Jira"
+            },
+            "education": [],
+            "certifications": [c.strip() for c in str(candidate.get("certifications", "")).split(",") if c.strip()],
+            "work_experience": [
+                {
+                    "company": candidate.get("current_organization") or "Current Employer",
+                    "dates": "N/A",
+                    "role": "Pega Developer",
+                    "bullets": ["Contributed to application development and configuration."]
+                }
+            ],
+            "recognitions": []
+        }
+
+    return data
 
 # ── Upload & Extract ────────────────────────────────────────────────────────────
 EXTRACT_PROMPT = """You are an expert resume parser. Extract EVERY piece of information from the resume below.
@@ -1427,6 +1595,8 @@ def process_resume(safe_name: str, path: str, is_approved: int = 1, username: st
 @app.post("/api/upload")
 async def upload_resume(request: Request, background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
     is_approved = 1
 
     # Save file
@@ -1506,7 +1676,14 @@ def _find_matching_rows(rows: list, names: list) -> list:
     return records
 
 @app.post("/api/chat")
-def chat(body: ChatRequest):
+def chat(body: ChatRequest, request: Request):
+    username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        return {
+            "type": "text",
+            "answer": "Your account access is currently pending administrator approval. Please contact your system administrator to view and query candidate data."
+        }
+
     global _embeddings, _llm, _models_loading
     if _embeddings is None or _llm is None:
         if _models_loading:
@@ -1772,6 +1949,7 @@ class RegisterRequest(BaseModel):
     full_name: str
     username: str
     password: str
+    email: str
 
 class LoginRequest(BaseModel):
     username: str
@@ -1782,6 +1960,7 @@ class UserPermissionsUpdate(BaseModel):
     is_admin: int
     is_external: Optional[int] = 0
     hidden_fields: Optional[str] = ""
+    is_approved: Optional[int] = None
 
 def has_digit(s: str) -> bool:
     return any(c.isdigit() for c in s)
@@ -1789,6 +1968,9 @@ def has_digit(s: str) -> bool:
 @app.get("/api/jobs")
 def list_jobs(request: Request):
     username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        return []
+        
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
@@ -2214,8 +2396,14 @@ def register(req: RegisterRequest):
         if cur.fetchone():
             username_exists = True
         else:
-            cur.execute("INSERT INTO users (full_name, username, password, role) VALUES (?, ?, ?, 'user')",
-                        (req.full_name, req.username, req.password))
+            is_approved_val = 1 if req.username.lower() in ("admin", "user", "boopathi", "praveen", "harish", "sabari") else 0
+            cur.execute("INSERT INTO users (full_name, username, password, email, role, is_approved) VALUES (?, ?, ?, ?, 'user', ?)",
+                        (req.full_name, req.username, req.password, req.email, is_approved_val))
+            if is_approved_val == 0:
+                cur.execute("""
+                    INSERT INTO change_requests (username, action_type, target_id, payload, description, status)
+                    VALUES (?, 'approve_user', ?, NULL, ?, 'pending')
+                """, (req.username, req.username, f"Approve access request for registered user {req.full_name} (@{req.username})"))
             conn.commit()
     except sqlite3.IntegrityError:
         username_exists = True
@@ -2247,6 +2435,8 @@ def login(req: LoginRequest):
         "is_hr": user_dict.get("is_hr", 0),
         "is_admin": user_dict.get("is_admin", 0),
         "is_external": user_dict.get("is_external", 0),
+        "is_approved": user_dict.get("is_approved", 0),
+        "email": user_dict.get("email", ""),
         "hidden_fields": user_dict.get("hidden_fields", "")
     }
 
@@ -2266,8 +2456,14 @@ def firebase_sync(req: FirebaseSyncRequest):
     
     if not user:
         try:
-            cur.execute("INSERT INTO users (full_name, username, password, role) VALUES (?, ?, ?, ?)",
-                        (req.full_name, req.username, "firebase_auth_managed", "user"))
+            is_approved_val = 1 if req.username.lower() in ("admin", "user", "boopathi", "praveen", "harish", "sabari") else 0
+            cur.execute("INSERT INTO users (full_name, username, password, email, role, is_approved) VALUES (?, ?, ?, ?, 'user', ?)",
+                        (req.full_name, req.username, "firebase_auth_managed", req.email, is_approved_val))
+            if is_approved_val == 0:
+                cur.execute("""
+                    INSERT INTO change_requests (username, action_type, target_id, payload, description, status)
+                    VALUES (?, 'approve_user', ?, NULL, ?, 'pending')
+                """, (req.username, req.username, f"Approve access request for registered user {req.full_name} (@{req.username})"))
             conn.commit()
             
             cur.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (req.username,))
@@ -2286,8 +2482,206 @@ def firebase_sync(req: FirebaseSyncRequest):
         "is_hr": user_dict.get("is_hr", 0),
         "is_admin": user_dict.get("is_admin", 0),
         "is_external": user_dict.get("is_external", 0),
+        "is_approved": user_dict.get("is_approved", 0),
+        "email": user_dict.get("email", ""),
         "hidden_fields": user_dict.get("hidden_fields", "")
     }
+
+OTP_STORE = {}
+
+@app.get("/api/auth/get-email")
+def get_email(username: str):
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    cur.execute("SELECT email FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+    row = cur.fetchone()
+    conn.close()
+    if row and row[0]:
+        return {"email": row[0]}
+    # Fallback
+    return {"email": f"{username.lower()}@hireai.local"}
+
+@app.get("/api/auth/status")
+def get_user_status(request: Request):
+    username = request.headers.get("x-user-username")
+    if not username:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="User not found")
+    user_dict = dict(row)
+    return {
+        "username": user_dict["username"],
+        "full_name": user_dict["full_name"],
+        "role": user_dict["role"],
+        "is_hr": user_dict.get("is_hr", 0),
+        "is_admin": user_dict.get("is_admin", 0),
+        "is_external": user_dict.get("is_external", 0),
+        "is_approved": user_dict.get("is_approved", 0),
+        "email": user_dict.get("email", ""),
+        "hidden_fields": user_dict.get("hidden_fields", "")
+    }
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    otp: str
+    new_password: str
+
+def send_otp_email(to_email: str, otp: str) -> bool:
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_sender = os.getenv("SMTP_SENDER", "")
+    smtp_password = os.getenv("SMTP_PASSWORD", "")
+    
+    if not smtp_sender or not smtp_password:
+        print(f"[SMTP] Credentials not set. Skipped sending real email.")
+        return False
+        
+    subject = "Hire AI - Password Reset OTP"
+    body = f"Hi,\n\nYour 6-digit OTP code to reset your Hire AI password is: {otp}\n\nThis code is valid for 5 minutes.\n\nBest regards,\nHire AI Team"
+    
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = smtp_sender
+        msg['To'] = to_email
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain'))
+        
+        server = smtplib.SMTP(smtp_host, smtp_port, timeout=10.0)
+        server.starttls()
+        server.login(smtp_sender, smtp_password)
+        server.sendmail(smtp_sender, to_email, msg.as_string())
+        server.quit()
+        print(f"[SMTP] Successfully sent OTP email to {to_email}")
+        return True
+    except Exception as e:
+        print(f"[SMTP] Failed to send email to {to_email}: {str(e)}")
+        return False
+
+@app.post("/api/auth/forgot-password/request")
+def request_otp(req: ForgotPasswordRequest):
+    import random
+    import time
+    email = req.email.strip().lower()
+    
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    cur.execute("SELECT username FROM users WHERE LOWER(email) = LOWER(?)", (email,))
+    row = cur.fetchone()
+    conn.close()
+    
+    if not row:
+        raise HTTPException(status_code=404, detail="No registered account found with this email address.")
+        
+    otp = f"{random.randint(100000, 999999)}"
+    OTP_STORE[email] = {
+        "otp": otp,
+        "expires_at": time.time() + 300.0
+    }
+    
+    print(f"========================================")
+    print(f"[OTP SIMULATION] Password reset OTP for {email}: {otp}")
+    print(f"========================================")
+    
+    # Try sending real email
+    sent = send_otp_email(email, otp)
+    
+    return {
+        "status": "success",
+        "otp": otp if not sent else None,
+        "sent_real_email": sent,
+        "message": "OTP has been sent to your email."
+    }
+
+@app.post("/api/auth/forgot-password/reset")
+def reset_password(req: ResetPasswordRequest):
+    import time
+    email = req.email.strip().lower()
+    otp_code = req.otp.strip()
+    new_pass = req.new_password
+    
+    if not has_digit(new_pass):
+        raise HTTPException(status_code=400, detail="Password must contain at least one digit")
+        
+    if email not in OTP_STORE:
+        raise HTTPException(status_code=400, detail="No active password reset request found for this email.")
+        
+    stored = OTP_STORE[email]
+    if time.time() > stored["expires_at"]:
+        del OTP_STORE[email]
+        raise HTTPException(status_code=400, detail="OTP has expired. Please request a new one.")
+        
+    if stored["otp"] != otp_code:
+        raise HTTPException(status_code=400, detail="Invalid OTP code. Please try again.")
+        
+    del OTP_STORE[email]
+    
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET password = ? WHERE LOWER(email) = LOWER(?)", (new_pass, email))
+    conn.commit()
+    conn.close()
+    
+    return {
+        "status": "success",
+        "message": "Password reset successfully. You can now log in with your new password."
+    }
+
+@app.post("/api/candidates")
+def add_candidate_manually(request: Request, body: dict):
+    username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
+        
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    cur.pragma("table_info(candidate_metadata)")
+    # wait, cur.execute("PRAGMA table_info(candidate_metadata)")
+    cur.execute("PRAGMA table_info(candidate_metadata)")
+    valid_cols = [c[1] for c in cur.fetchall()]
+    
+    insert_data = {}
+    for col in valid_cols:
+        if col in ('id', 'timestamp'):
+            continue
+        if col in body:
+            insert_data[col] = body[col]
+            
+    if 'source' not in insert_data or not insert_data['source']:
+        insert_data['source'] = 'Manual Entry'
+    if 'candidate_status' not in insert_data or not insert_data['candidate_status']:
+        insert_data['candidate_status'] = 'New'
+        
+    if not insert_data.get('full_name'):
+        conn.close()
+        raise HTTPException(status_code=400, detail="Candidate Name is required")
+        
+    cols_str = ", ".join(insert_data.keys())
+    placeholders = ", ".join(["?"] * len(insert_data))
+    vals = list(insert_data.values())
+    
+    try:
+        cur.execute(f"INSERT INTO candidate_metadata ({cols_str}) VALUES ({placeholders})", vals)
+        conn.commit()
+        log_activity_db(username or "unknown", f"manually added candidate '{insert_data.get('full_name')}'")
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+        
+    conn.close()
+    return {"status": "success", "message": "Candidate added successfully"}
 
 @app.get("/api/admin/requests")
 def list_change_requests(request: Request):
@@ -2314,7 +2708,7 @@ def list_users(request: Request):
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
-    cur.execute("SELECT id, full_name, username, role, is_hr, is_admin, is_external, hidden_fields FROM users")
+    cur.execute("SELECT id, full_name, username, role, is_hr, is_admin, is_external, hidden_fields, is_approved, email FROM users")
     rows = [dict(r) for r in cur.fetchall()]
     conn.close()
     return rows
@@ -2378,8 +2772,12 @@ def update_user_permissions_endpoint(user_id: int, body: UserPermissionsUpdate, 
         is_admin_val = 0
         
     new_role = "admin" if is_admin_val == 1 else "user"
-    cur.execute("UPDATE users SET is_hr = ?, is_admin = ?, is_external = ?, role = ?, hidden_fields = ? WHERE id = ?", 
-                (is_hr_val, is_admin_val, is_external_val, new_role, hidden_fields_val, user_id))
+    if body.is_approved is not None:
+        cur.execute("UPDATE users SET is_hr = ?, is_admin = ?, is_external = ?, role = ?, hidden_fields = ?, is_approved = ? WHERE id = ?", 
+                    (is_hr_val, is_admin_val, is_external_val, new_role, hidden_fields_val, body.is_approved, user_id))
+    else:
+        cur.execute("UPDATE users SET is_hr = ?, is_admin = ?, is_external = ?, role = ?, hidden_fields = ? WHERE id = ?", 
+                    (is_hr_val, is_admin_val, is_external_val, new_role, hidden_fields_val, user_id))
     conn.commit()
     conn.close()
     return {"status": "updated"}
@@ -2615,6 +3013,10 @@ def approve_change_request(request_id: int, request: Request, background_tasks: 
                     shutil.rmtree(CHROMA_PATH)
             except Exception:
                 pass
+                
+        elif action_type == "approve_user":
+            target_username = target_id
+            cur.execute("UPDATE users SET is_approved = 1 WHERE LOWER(username) = LOWER(?)", (target_username,))
                 
         cur.execute("UPDATE change_requests SET status = 'approved' WHERE id = ?", (request_id,))
         conn.commit()

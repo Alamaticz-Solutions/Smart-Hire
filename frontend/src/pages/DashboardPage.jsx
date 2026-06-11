@@ -578,7 +578,7 @@ export default function DashboardPage() {
                     </div>
 
                     {/* Summary Table — responsive layout */}
-                    <div className="card" ref={summaryRef} style={{ overflowX: 'auto' }}>
+                    <div className="card" ref={summaryRef}>
                         <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', minWidth: '800px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 👥 {filterType === 'immediate' ? 'Immediate Joiners' : 'Candidate Summary'}
@@ -600,29 +600,38 @@ export default function DashboardPage() {
                                 </button>
                             </div>
                         </div>
-                        <table style={{ minWidth: '2600px', width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                            <thead>
-                                <tr style={{ background: 'rgba(var(--navy-rgb), 0.9)' }}>
-                                    {columns.map(h => (
-                                        <th key={h.col_key} style={{
-                                            padding: '11px 12px', textAlign: 'left',
+                        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', borderRadius: 10, border: '1px solid var(--border)', width: '100%' }}>
+                            <table style={{ minWidth: '2600px', width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                <thead>
+                                    <tr style={{ background: 'rgba(var(--navy-rgb), 0.9)' }}>
+                                        {columns.map(h => (
+                                            <th key={h.col_key} style={{
+                                                padding: '11px 12px', textAlign: 'left',
+                                                fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.78rem',
+                                                color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.04rem',
+                                                borderBottom: '1px solid var(--border)',
+                                                position: 'sticky',
+                                                top: 0,
+                                                zIndex: 12,
+                                                background: 'rgba(var(--navy-rgb), 0.95)'
+                                            }}>
+                                                {h.col_label}
+                                            </th>
+                                        ))}
+                                        <th style={{
+                                            padding: '11px 12px', textAlign: 'center',
                                             fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.78rem',
                                             color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.04rem',
-                                            borderBottom: '1px solid var(--border)'
+                                            borderBottom: '1px solid var(--border)',
+                                            position: 'sticky',
+                                            top: 0,
+                                            zIndex: 12,
+                                            background: 'rgba(var(--navy-rgb), 0.95)'
                                         }}>
-                                            {h.col_label}
+                                            Actions
                                         </th>
-                                    ))}
-                                    <th style={{
-                                        padding: '11px 12px', textAlign: 'center',
-                                        fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.78rem',
-                                        color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.04rem',
-                                        borderBottom: '1px solid var(--border)'
-                                    }}>
-                                        Actions
-                                    </th>
-                                </tr>
-                            </thead>
+                                    </tr>
+                                </thead>
                             <tbody>
                                 {filteredCandidates.map((c, i) => (
                                     <tr key={i} style={{
@@ -818,6 +827,7 @@ export default function DashboardPage() {
                             </tbody>
                         </table>
                     </div>
+                </div>
                 </>
             )}
 

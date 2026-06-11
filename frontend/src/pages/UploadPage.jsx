@@ -155,6 +155,8 @@ export default function UploadPage() {
     const [editVal, setEditVal] = useState('')
     const [cols, setCols] = useState([])
     const [showAddCol, setShowAddCol] = useState(false)
+    const [showAddCandidate, setShowAddCandidate] = useState(false)
+    const [newCandidateForm, setNewCandidateForm] = useState({})
     const [viewingPdf, setViewingPdf] = useState(null)
     const [showFilter, setShowFilter] = useState(false)
     const [filters, setFilters] = useState({ minTotalExp: '', minPegaExp: '', certs: [] })
@@ -292,6 +294,20 @@ export default function UploadPage() {
 
     const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500) }
     const load = () => axios.get(`${API_URL}/api/candidates`).then(r => setCandidates(r.data)).catch(() => { })
+    const handleAddCandidateSubmit = async () => {
+        if (!newCandidateForm.full_name || !newCandidateForm.full_name.trim()) {
+            alert("Candidate Name is required!");
+            return;
+        }
+        try {
+            await axios.post(`${API_URL}/api/candidates`, newCandidateForm);
+            showToast("Candidate added successfully!");
+            setShowAddCandidate(false);
+            load();
+        } catch (err) {
+            alert(err.response?.data?.detail || "Failed to add candidate");
+        }
+    };
     const loadCols = () => axios.get(`${API_URL}/api/columns`).then(r => {
         const base = (r.data.base || []).map(c => ({ key: c.col_key, label: c.col_label, pct: BASE_WIDTHS[c.col_key] || '120px', col_key: c.col_key, col_label: c.col_label }))
         const custom = (r.data.custom || []).map(c => ({ key: c.col_key, label: c.col_label, pct: '120px', col_key: c.col_key, col_label: c.col_label, isCustom: true }))
@@ -594,6 +610,18 @@ export default function UploadPage() {
                             )}
                         </div>
 
+                        <button className="btn btn-secondary" onClick={() => {
+                            const initialForm = {};
+                            cols.forEach(c => {
+                                if (c.key !== '_actions') {
+                                    initialForm[c.key] = '';
+                                }
+                            });
+                            setNewCandidateForm(initialForm);
+                            setShowAddCandidate(true);
+                        }} style={{ gap: 6, color: 'var(--sky)', borderColor: 'rgba(var(--sky-rgb), 0.3)' }}>
+                            <span style={{ fontWeight: 900 }}>+</span> Add Candidate
+                        </button>
                         <button className="btn btn-secondary" onClick={() => setShowAddCol(true)} style={{ gap: 6, color: 'var(--gold)', borderColor: 'rgba(var(--gold-rgb), 0.3)' }}>
                             <span style={{ fontWeight: 900 }}>+</span> Add Column
                         </button>
@@ -617,7 +645,7 @@ export default function UploadPage() {
                     </div>
                 ) : (
                     <>
-                        <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid var(--border)', width: '100%' }}>
+                        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', borderRadius: 10, border: '1px solid var(--border)', width: '100%' }}>
                             <table style={{ width: getTableWidth(), tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
                                 <colgroup>
                                     {activeCols.map(c => <col key={c.key} style={{ width: c.pct }} />)}
@@ -647,9 +675,10 @@ export default function UploadPage() {
                                                     onDrop={(e) => !isActions && handleDrop(e, c.key)}
                                                     style={{ 
                                                         ...TH, 
-                                                        position: isActions ? 'sticky' : undefined, 
+                                                        position: 'sticky', 
+                                                        top: 0, 
                                                         right: isActions ? 0 : undefined, 
-                                                        zIndex: isActions ? 11 : undefined,
+                                                        zIndex: isActions ? 15 : 12,
                                                         background: backgroundStyle,
                                                         boxShadow: isActions ? '-3px 0 6px rgba(0,0,0,0.15)' : undefined,
                                                         cursor: isActions ? 'default' : (isDragged ? 'grabbing' : 'grab'),
@@ -659,7 +688,7 @@ export default function UploadPage() {
                                                         transition: 'all 0.2s ease-in-out'
                                                     }} 
                                                     title={isActions ? c.label : `${c.label} (Drag to reorder)`}
-                                                >
+                                                  >
                                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '6px' }}>
                                                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.label}</span>
                                                         {!isActions && (
@@ -734,8 +763,9 @@ export default function UploadPage() {
                                                             padding: '6px 10px',
                                                             borderBottom: '2px solid var(--border)',
                                                             position: 'sticky',
+                                                            top: '38px',
                                                             right: 0,
-                                                            zIndex: 11,
+                                                            zIndex: 14,
                                                             background: 'rgba(var(--navy-dark-rgb), 0.95)',
                                                             boxShadow: '-3px 0 6px rgba(0,0,0,0.15)',
                                                             textAlign: 'center'
@@ -776,6 +806,9 @@ export default function UploadPage() {
                                                         padding: '6px 10px',
                                                         borderBottom: '2px solid var(--border)',
                                                         background: 'rgba(var(--navy-rgb), 0.97)',
+                                                        position: 'sticky',
+                                                        top: '38px',
+                                                        zIndex: 11,
                                                     }}
                                                 >
                                                     <input
@@ -1017,6 +1050,56 @@ export default function UploadPage() {
             {toast && (
                 <div className="toast-container">
                     <div className={`toast ${toast.type}`}>{toast.msg}</div>
+                </div>
+            )}
+
+            {showAddCandidate && (
+                <div className="modal-overlay" style={{ zIndex: 999 }}>
+                    <div className="card" style={{ width: 550, maxWidth: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 15, paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
+                            <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)' }}>Add Candidate Manually</h3>
+                            <button onClick={() => setShowAddCandidate(false)} style={{ background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><X size={18} /></button>
+                        </div>
+                        <div style={{ overflowY: 'auto', flex: 1, paddingRight: 5, display: 'flex', flexDirection: 'column', gap: 15, marginBottom: 15 }}>
+                            {cols.filter(c => c.key !== '_actions' && c.key !== 'source').map(c => (
+                                <div key={c.key}>
+                                    <label style={{ display: 'block', marginBottom: 5, fontSize: '0.8rem', color: 'var(--text-dim)', fontWeight: 500 }}>
+                                        {c.label} {c.key === 'full_name' ? '*' : ''}
+                                    </label>
+                                    {c.key === 'candidate_status' ? (
+                                        <select
+                                            value={newCandidateForm[c.key] || 'New'}
+                                            onChange={e => setNewCandidateForm(p => ({ ...p, [c.key]: e.target.value }))}
+                                            style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                                        >
+                                            <option value="New">New</option>
+                                            <option value="Screening">Screening</option>
+                                            <option value="Interview">Interview</option>
+                                            <option value="Offered">Offered</option>
+                                            <option value="Rejected">Rejected</option>
+                                        </select>
+                                    ) : (
+                                        <input
+                                            value={newCandidateForm[c.key] || ''}
+                                            onChange={e => setNewCandidateForm(p => ({ ...p, [c.key]: e.target.value }))}
+                                            placeholder={`Enter ${c.label}`}
+                                            type={c.key.includes('experience') || c.key.includes('exp') ? 'number' : 'text'}
+                                            step={c.key.includes('experience') || c.key.includes('exp') ? '0.1' : undefined}
+                                            style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                                        />
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                        <div style={{ display: 'flex', gap: 10, borderTop: '1px solid var(--border)', paddingTop: 15 }}>
+                            <button className="btn btn-secondary" onClick={() => setShowAddCandidate(false)} style={{ flex: 1 }}>
+                                Cancel
+                            </button>
+                            <button className="btn" onClick={handleAddCandidateSubmit} style={{ flex: 1, background: 'var(--gradient-gold)', color: '#000', fontWeight: 'bold' }}>
+                                Add Candidate
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
 

@@ -108,8 +108,11 @@ export default function AdminPage() {
         let isHrValue = targetUser.is_hr
         let isAdminValue = targetUser.is_admin
         let isExternalValue = targetUser.is_external || 0
+        let isApprovedValue = targetUser.is_approved
 
-        if (field === 'is_hr') {
+        if (field === 'is_approved') {
+            isApprovedValue = currentValue === 1 ? 0 : 1
+        } else if (field === 'is_hr') {
             isHrValue = currentValue === 1 ? 0 : 1
             if (isHrValue === 1) {
                 isExternalValue = 0
@@ -131,7 +134,8 @@ export default function AdminPage() {
             await axios.put(`/api/admin/users/${id}/permissions`, { 
                 is_hr: isHrValue, 
                 is_admin: isAdminValue,
-                is_external: isExternalValue
+                is_external: isExternalValue,
+                is_approved: isApprovedValue
             })
             if (targetUser.username === user.username) {
                 onUpdateUser({ 
@@ -139,6 +143,7 @@ export default function AdminPage() {
                     is_hr: isHrValue, 
                     is_admin: isAdminValue,
                     is_external: isExternalValue,
+                    is_approved: isApprovedValue,
                     role: isAdminValue === 1 ? 'admin' : 'user'
                 })
             }
@@ -315,10 +320,10 @@ export default function AdminPage() {
             {/* Requests Tab */}
             {!loading && activeTab === 'requests' && (
                 <div className="grid">
-                    {requests.length === 0 ? (
+                    {requests.filter(r => r.status === 'pending').length === 0 ? (
                         <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-dim)', width: '100%' }}>No pending requests.</div>
                     ) : (
-                        requests.map(req => (
+                        requests.filter(r => r.status === 'pending').map(req => (
                             <div key={req.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <span style={{ fontWeight: 'bold', fontSize: '1.1rem', textTransform: 'capitalize' }}>
@@ -464,7 +469,7 @@ export default function AdminPage() {
                                                         </div>
                                                         <div className="user-info-text">
                                                             <span className="user-info-name">{u.full_name || 'Anonymous User'}</span>
-                                                            <span className="user-info-username">@{u.username}</span>
+                                                            <span className="user-info-username">@{u.username} {u.email ? `· ${u.email}` : ''}</span>
                                                         </div>
                                                     </div>
                                                 </td>
@@ -519,6 +524,7 @@ export default function AdminPage() {
                                                         </span>
                                                     </div>
                                                 </td>
+
                                                 <td style={{ padding: '1rem', textAlign: 'center' }}>
                                                     <button 
                                                         className="btn btn-secondary" 

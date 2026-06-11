@@ -11,6 +11,31 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
     const [loadingActivities, setLoadingActivities] = useState(false);
 
     useEffect(() => {
+        axios.get('/api/auth/status')
+            .then(res => {
+                const updated = res.data;
+                if (
+                    updated.is_approved !== user?.is_approved ||
+                    updated.is_admin !== user?.is_admin ||
+                    updated.is_hr !== user?.is_hr ||
+                    updated.is_external !== user?.is_external ||
+                    updated.full_name !== user?.full_name ||
+                    updated.role !== user?.role ||
+                    updated.hidden_fields !== user?.hidden_fields
+                ) {
+                    onUpdateUser({
+                        ...user,
+                        ...updated,
+                        role: updated.is_admin === 1 ? 'admin' : updated.role
+                    });
+                }
+            })
+            .catch(err => {
+                console.error("Failed to check user status", err);
+            });
+    }, []);
+
+    useEffect(() => {
         if (showActivitySidebar) {
             fetchActivities();
             const interval = setInterval(fetchActivities, 30000);
@@ -162,6 +187,24 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
                 </header>
 
                 <div className="page-body" style={{ padding: 0, flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflowY: 'auto' }}>
+                    {user?.is_approved !== 1 && (
+                        <div style={{
+                            background: 'rgba(245, 158, 11, 0.15)',
+                            borderBottom: '1px solid #f59e0b',
+                            color: '#fbbf24',
+                            padding: '12px 24px',
+                            fontSize: '0.88rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            fontWeight: '500'
+                        }}>
+                            <span>⚠️</span>
+                            <span>
+                                <strong>Access Pending:</strong> Your account is currently awaiting administrator approval. You can navigate the portal, but no candidate or job data will be visible.
+                            </span>
+                        </div>
+                    )}
                     <Outlet context={{ user, onUpdateUser }} />
                 </div>
                 

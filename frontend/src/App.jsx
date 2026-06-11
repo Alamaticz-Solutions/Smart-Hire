@@ -12,7 +12,7 @@ import Layout from './components/Layout'
 export default function App() {
     const [user, setUser] = useState(() => {
         try {
-            return JSON.parse(sessionStorage.getItem('hire_ai_user')) || null
+            return JSON.parse(localStorage.getItem('hire_ai_user')) || null
         } catch { return null }
     })
 
@@ -35,9 +35,9 @@ export default function App() {
 
     const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark')
 
-    const login = (u) => { setUser(u); sessionStorage.setItem('hire_ai_user', JSON.stringify(u)) }
-    const logout = () => { setUser(null); sessionStorage.removeItem('hire_ai_user') }
-    const updateUser = (u) => { setUser(u); sessionStorage.setItem('hire_ai_user', JSON.stringify(u)) }
+    const login = (u) => { setUser(u); localStorage.setItem('hire_ai_user', JSON.stringify(u)) }
+    const logout = () => { setUser(null); localStorage.removeItem('hire_ai_user') }
+    const updateUser = (u) => { setUser(u); localStorage.setItem('hire_ai_user', JSON.stringify(u)) }
 
     return (
         <BrowserRouter>

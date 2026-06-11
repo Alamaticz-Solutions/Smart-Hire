@@ -1878,9 +1878,10 @@ export default function JobsPage() {
                                                                 onDrop={(e) => !isActions && handleDrop(e, c.key)}
                                                                 style={{ 
                                                                     ...TH, 
-                                                                    position: isActions ? 'sticky' : undefined, 
+                                                                    position: 'sticky', 
+                                                                    top: 0, 
                                                                     right: isActions ? 0 : undefined, 
-                                                                    zIndex: isActions ? 11 : undefined,
+                                                                    zIndex: isActions ? 15 : 12,
                                                                     background: backgroundStyle,
                                                                     boxShadow: isActions ? '-3px 0 6px rgba(0,0,0,0.15)' : undefined,
                                                                     cursor: isActions ? 'default' : (isDragged ? 'grabbing' : 'grab'),
@@ -1937,8 +1938,9 @@ export default function JobsPage() {
                                                                         padding: '6px 10px',
                                                                         borderBottom: '2px solid var(--border)',
                                                                         position: 'sticky',
+                                                                        top: '38px',
                                                                         right: 0,
-                                                                        zIndex: 11,
+                                                                        zIndex: 14,
                                                                         background: 'rgba(var(--navy-dark-rgb), 0.95)',
                                                                         boxShadow: '-3px 0 6px rgba(0,0,0,0.15)',
                                                                         textAlign: 'center'
@@ -1979,6 +1981,9 @@ export default function JobsPage() {
                                                                     padding: '6px 10px',
                                                                     borderBottom: '2px solid var(--border)',
                                                                     background: 'rgba(var(--navy-rgb), 0.97)',
+                                                                    position: 'sticky',
+                                                                    top: '38px',
+                                                                    zIndex: 11,
                                                                 }}
                                                             >
                                                                 <input
