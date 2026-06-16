@@ -436,7 +436,7 @@ export default function AdminPage() {
                                         <th style={{ padding: '1rem', textAlign: 'center', fontSize: '0.78rem' }}>HR</th>
                                         <th style={{ padding: '1rem', textAlign: 'center', fontSize: '0.78rem' }}>Admin</th>
                                         <th style={{ padding: '1rem', textAlign: 'center', fontSize: '0.78rem' }}>External</th>
-                                        <th style={{ padding: '1rem', textAlign: 'center', fontSize: '0.78rem' }}>Hidden Info</th>
+                                        <th style={{ padding: '1rem', textAlign: 'center', fontSize: '0.78rem' }}>Manage Fields</th>
                                         <th style={{ padding: '1rem 1.5rem', textAlign: 'right', fontSize: '0.78rem' }}>Actions</th>
                                     </tr>
                                 </thead>
