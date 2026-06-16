@@ -25,6 +25,16 @@ def normalize_email(email) -> str:
         return ""
     return str(email).strip().lower()
 
+def get_base_email(email: str) -> str:
+    if not email:
+        return ""
+    email_str = str(email).strip().lower()
+    if "@" in email_str:
+        parts = email_str.split("@")
+        local_part = parts[0].split("+")[0]
+        return f"{local_part}@{parts[1]}"
+    return email_str
+
 def is_similar_name(n1: str, n2: str) -> bool:
     if not n1 or not n2:
         return False
@@ -162,6 +172,7 @@ def init_db():
             email                TEXT,
             phone                TEXT,
             linkedin             TEXT,
+            created_by           TEXT DEFAULT 'admin',
             timestamp            DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -190,6 +201,7 @@ def init_db():
             industry TEXT,
             salary TEXT,
             required_skills TEXT,
+            created_by TEXT DEFAULT 'admin',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -284,7 +296,8 @@ def init_db():
         'phone': 'TEXT',
         'linkedin': 'TEXT',
         'is_qualified': 'INTEGER DEFAULT 0',
-        'is_approved': 'INTEGER DEFAULT 1'
+        'is_approved': 'INTEGER DEFAULT 1',
+        'created_by': "TEXT DEFAULT 'admin'"
     }
     for col, dtype in new_cols.items():
         if col not in existing:
@@ -305,7 +318,8 @@ def init_db():
         'work_experience': 'TEXT',
         'industry': 'TEXT',
         'salary': 'TEXT',
-        'required_skills': 'TEXT'
+        'required_skills': 'TEXT',
+        'created_by': "TEXT DEFAULT 'admin'"
     }
     for col, dtype in new_jobs_cols.items():
         if col not in existing_jobs:
@@ -330,16 +344,16 @@ def init_db():
     # Seed default users if empty (do NOT wipe the table to preserve registered users!)
     cur.execute("SELECT COUNT(*) FROM users WHERE LOWER(username) = 'admin'")
     if cur.fetchone()[0] == 0:
-        cur.execute("INSERT INTO users (full_name, username, password, role, is_hr, is_admin) VALUES (?, ?, ?, ?, ?, ?)",
-                    ("System Admin", "admin", "admin", "admin", 1, 1))
+        cur.execute("INSERT INTO users (full_name, username, password, role, is_hr, is_admin, email) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    ("System Admin", "admin", "admin", "admin", 1, 1, "admin@gmail.com"))
     else:
         # Guarantee admin password is 'admin' as requested by the user
         cur.execute("UPDATE users SET password = ?, role = 'admin', is_hr = 1, is_admin = 1 WHERE LOWER(username) = 'admin'", ("admin",))
 
     cur.execute("SELECT COUNT(*) FROM users WHERE LOWER(username) = 'user'")
     if cur.fetchone()[0] == 0:
-        cur.execute("INSERT INTO users (full_name, username, password, role, is_hr, is_admin) VALUES (?, ?, ?, ?, ?, ?)",
-                    ("Test User", "user", "user", "user", 0, 0))
+        cur.execute("INSERT INTO users (full_name, username, password, role, is_hr, is_admin, email) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    ("Test User", "user", "user", "user", 0, 0, "user@gmail.com"))
 
     # Seed the 4 recruiters in user management if they do not exist
     for m in ["Boopathi", "Praveen", "Harish", "Sabari"]:
@@ -349,8 +363,8 @@ def init_db():
         is_hr = 1 if uname == "sabari" else 0
         cur.execute("SELECT COUNT(*) FROM users WHERE LOWER(username) = ?", (uname,))
         if cur.fetchone()[0] == 0:
-            cur.execute("INSERT INTO users (full_name, username, password, role, is_hr, is_admin) VALUES (?, ?, ?, ?, ?, ?)",
-                        (m, uname, uname, role, is_hr, is_admin))
+            cur.execute("INSERT INTO users (full_name, username, password, role, is_hr, is_admin, email) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (m, uname, uname, role, is_hr, is_admin, f"{uname}@gmail.com"))
         else:
             cur.execute("UPDATE users SET is_hr = ?, is_admin = ?, role = ? WHERE LOWER(username) = ?", (is_hr, is_admin, role, uname))
         
@@ -362,15 +376,22 @@ def init_db():
     # Pre-approve seeded/default users
     cur.execute("UPDATE users SET is_approved = 1 WHERE LOWER(username) IN ('admin', 'user', 'boopathi', 'praveen', 'harish', 'sabari')")
 
+    # Fix emails of existing seeded/default users and Somasekhar9 if they are NULL/empty
+    for uname in ["admin", "user", "boopathi", "praveen", "harish", "sabari", "somasekhar9"]:
+        cur.execute("UPDATE users SET email = ? WHERE LOWER(username) = ? AND (email IS NULL OR email = '')", (f"{uname}@gmail.com", uname))
+
     conn.commit()
     conn.close()
 
-def get_candidates_list() -> list:
+def get_candidates_list(username: Optional[str] = None, role: str = "user") -> list:
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     try:
-        cur.execute("SELECT * FROM candidate_metadata ORDER BY timestamp DESC")
+        if role == "admin" or not username:
+            cur.execute("SELECT * FROM candidate_metadata ORDER BY timestamp DESC")
+        else:
+            cur.execute("SELECT * FROM candidate_metadata WHERE LOWER(created_by) = LOWER(?) ORDER BY timestamp DESC", (username,))
         rows = [dict(r) for r in cur.fetchall()]
     except Exception:
         rows = []
@@ -623,20 +644,26 @@ def get_job_title(job_id: int) -> str:
 def list_candidates(request: Request):
     username = request.headers.get("x-user-username")
     
-    # Check if requesting user is external
+    is_user_admin = False
+    is_external = False
+    role = "user"
     if username:
         conn = sqlite3.connect(STATS_DB, timeout=30.0)
         cur = conn.cursor()
-        cur.execute("SELECT is_external FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+        cur.execute("SELECT is_external, is_admin, role FROM users WHERE LOWER(username) = LOWER(?)", (username,))
         row = cur.fetchone()
         conn.close()
-        if row and row[0] == 1:
-            raise HTTPException(status_code=403, detail="Forbidden")
+        if row:
+            is_external = (row[0] == 1)
+            is_user_admin = (row[1] == 1 or row[2] == "admin")
+            role = row[2]
+            if is_external:
+                raise HTTPException(status_code=403, detail="Forbidden")
             
     if not is_user_approved(username):
         return []
 
-    rows = get_candidates_list()
+    rows = get_candidates_list(username, role="admin" if is_user_admin else "user")
     
     # Replace None values with empty string
     for row in rows:
@@ -742,11 +769,26 @@ def delete_column(col_key: str, request: Request):
 @app.put("/api/candidates/{candidate_id}")
 async def update_candidate(candidate_id: int, request: Request, background_tasks: BackgroundTasks):
     username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
     role = get_user_role(username)
 
     body = await request.json()
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur  = conn.cursor()
+    
+    # Check permission
+    cur.execute("SELECT created_by FROM candidate_metadata WHERE id = ?", (candidate_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    created_by = row[0]
+    if role != "admin":
+        if created_by and created_by.lower() != username.lower():
+            conn.close()
+            raise HTTPException(status_code=403, detail="Forbidden")
+
     cur.execute("PRAGMA table_info(candidate_metadata)")
     allowed_cols = [c[1] for c in cur.fetchall()]
     updates = {k: v for k, v in body.items() if k in allowed_cols and k != 'id' and v is not None and v != '[HIDDEN]'}
@@ -798,9 +840,25 @@ async def update_candidate(candidate_id: int, request: Request, background_tasks
 @app.delete("/api/candidates/{candidate_id}")
 def delete_candidate(candidate_id: int, request: Request):
     username = request.headers.get("x-user-username")
-    cname = get_candidate_name(candidate_id)
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
+    role = get_user_role(username)
+    
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur  = conn.cursor()
+    
+    cur.execute("SELECT full_name, created_by FROM candidate_metadata WHERE id = ?", (candidate_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    cname, created_by = row
+    
+    if role != "admin":
+        if created_by and created_by.lower() != username.lower():
+            conn.close()
+            raise HTTPException(status_code=403, detail="Forbidden")
+            
     cur.execute("DELETE FROM job_candidates WHERE candidate_id=?", (candidate_id,))
     cur.execute("DELETE FROM candidate_metadata WHERE id=?", (candidate_id,))
     conn.commit()
@@ -809,10 +867,29 @@ def delete_candidate(candidate_id: int, request: Request):
     return {"status": "deleted"}
 
 @app.get("/api/candidates/{candidate_id}/jobs")
-def get_candidate_jobs(candidate_id: int):
+def get_candidate_jobs(candidate_id: int, request: Request):
+    username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
+    role = get_user_role(username)
+
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
+    
+    # Check candidate existence and permission
+    cur.execute("SELECT created_by FROM candidate_metadata WHERE id = ?", (candidate_id,))
+    cand_row = cur.fetchone()
+    if not cand_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Candidate not found")
+        
+    created_by = cand_row[0]
+    if role != "admin":
+        if created_by and created_by.lower() != username.lower():
+            conn.close()
+            raise HTTPException(status_code=403, detail="Forbidden")
+
     cur.execute("""
         SELECT j.*, jc.status as match_status, jc.ai_reason
         FROM jobs j
@@ -826,6 +903,10 @@ def get_candidate_jobs(candidate_id: int):
 @app.get("/api/candidates/{candidate_id}/formatted-resume")
 def get_formatted_resume_data(candidate_id: int, request: Request):
     username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
+    role = get_user_role(username)
+
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
@@ -837,6 +918,10 @@ def get_formatted_resume_data(candidate_id: int, request: Request):
         raise HTTPException(status_code=404, detail="Candidate not found")
 
     candidate = dict(row)
+    created_by = candidate.get("created_by")
+    if role != "admin":
+        if created_by and created_by.lower() != username.lower():
+            raise HTTPException(status_code=403, detail="Forbidden")
     filename = candidate.get("filename", "")
     
     # Try to load original text
@@ -1113,7 +1198,7 @@ def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, userna
         # Check for existing match (excluding the placeholder we just created)
         conn = sqlite3.connect(STATS_DB, timeout=30.0)
         cur = conn.cursor()
-        cur.execute("SELECT id, full_name, email, phone FROM candidate_metadata WHERE filename != ? OR filename IS NULL", (safe_name,))
+        cur.execute("SELECT id, full_name, email, phone FROM candidate_metadata WHERE (filename != ? OR filename IS NULL) AND LOWER(created_by) = LOWER(?)", (safe_name, username))
         existing_candidates = [
             {
                 "id": r[0],
@@ -1179,11 +1264,12 @@ def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, userna
             data['filename'] = safe_name
             data['candidate_status'] = 'New'
             data['is_approved'] = is_approved
+            data['created_by'] = username
             candidate_id = log_candidate(data)
             
     except Exception as e:
         error_msg = str(e)[:100]
-        data = {"filename": safe_name, "full_name": f"Processing Error: {error_msg}", "is_approved": is_approved}
+        data = {"filename": safe_name, "full_name": f"Processing Error: {error_msg}", "is_approved": is_approved, "created_by": username}
         candidate_id = log_candidate(data)
         return
 
@@ -1215,7 +1301,11 @@ def match_candidate_to_all_jobs(candidate_id: int):
         data = dict(row)
         
         # Query all jobs (JDs)
-        cur.execute("SELECT id, title, description FROM jobs")
+        cand_creator = data.get('created_by')
+        if cand_creator and cand_creator.lower() != "admin":
+            cur.execute("SELECT id, title, description FROM jobs WHERE LOWER(created_by) = LOWER(?)", (cand_creator,))
+        else:
+            cur.execute("SELECT id, title, description FROM jobs")
         jobs = [dict(r) for r in cur.fetchall()]
         conn.close()
 
@@ -1421,7 +1511,7 @@ def process_excel_file_logic(safe_name: str, path: str, username: str):
         }
         
         # Load existing candidates from DB
-        cur.execute("SELECT id, full_name, email, phone FROM candidate_metadata")
+        cur.execute("SELECT id, full_name, email, phone FROM candidate_metadata WHERE LOWER(created_by) = LOWER(?)", (username,))
         existing_candidates = [
             {
                 "id": r[0],
@@ -1551,6 +1641,7 @@ def process_excel_file_logic(safe_name: str, path: str, username: str):
                     db_data['is_approved'] = 1
                     db_data['candidate_status'] = 'New'
                     db_data['filename'] = ""
+                    db_data['created_by'] = username
                     cols_list = list(db_data.keys())
                     vals_list = list(db_data.values())
                     cur.execute(
@@ -1613,7 +1704,7 @@ async def upload_resume(request: Request, background_tasks: BackgroundTasks, fil
         return {"status": "processing", "message": "Excel sheet uploaded and is processing in the background."}
     else:
         # Placeholder while processing in background
-        log_candidate({"filename": safe_name, "full_name": f"⏳ Processing: {safe_name}", "is_approved": is_approved})
+        log_candidate({"filename": safe_name, "full_name": f"⏳ Processing: {safe_name}", "is_approved": is_approved, "created_by": username or "unknown"})
         
         # Process asynchronously
         log_activity_db(username or "unknown", f"uploaded resume '{safe_name}'")
@@ -1684,6 +1775,15 @@ def chat(body: ChatRequest, request: Request):
             "answer": "Your account access is currently pending administrator approval. Please contact your system administrator to view and query candidate data."
         }
 
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    cur.execute("SELECT is_admin, role FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+    user_row = cur.fetchone()
+    conn.close()
+    is_user_admin = False
+    if user_row:
+        is_user_admin = (user_row[0] == 1 or user_row[1] == "admin")
+
     global _embeddings, _llm, _models_loading
     if _embeddings is None or _llm is None:
         if _models_loading:
@@ -1705,7 +1805,7 @@ def chat(body: ChatRequest, request: Request):
         return {"type": "text", "answer": resp.content}
 
     # ── Route 2: Structured (SQLite) — always try this first ─────────────────
-    rows = get_candidates_list()
+    rows = get_candidates_list(username, role="admin" if is_user_admin else "user")
     if rows:
         for r in rows:
             for col in ['total_experience', 'pega_experience']:
@@ -1848,6 +1948,9 @@ def match_jd(req: JDMatchRequest):
     db_rows = [dict(r) for r in cur.fetchall()]
     conn.close()
 
+    if not is_user_admin:
+        db_rows = [r for r in db_rows if r.get('created_by') and r['created_by'].lower() == username.lower()]
+
     if not db_rows:
         return {"matches": []}
 
@@ -1977,11 +2080,13 @@ def list_jobs(request: Request):
     
     # Check if requesting user is external
     is_external = False
+    is_user_admin = False
     if username:
-        cur.execute("SELECT is_external FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+        cur.execute("SELECT is_external, is_admin, role FROM users WHERE LOWER(username) = LOWER(?)", (username,))
         row = cur.fetchone()
-        if row and row['is_external'] == 1:
-            is_external = True
+        if row:
+            is_external = (row['is_external'] == 1)
+            is_user_admin = (row['is_admin'] == 1 or row['role'] == "admin")
             
     if is_external:
         cur.execute("""
@@ -1991,7 +2096,10 @@ def list_jobs(request: Request):
             ORDER BY j.id DESC
         """, (username,))
     else:
-        cur.execute("SELECT * FROM jobs ORDER BY id DESC")
+        if is_user_admin:
+            cur.execute("SELECT * FROM jobs ORDER BY id DESC")
+        else:
+            cur.execute("SELECT * FROM jobs WHERE LOWER(created_by) = LOWER(?) ORDER BY id DESC", (username,))
         
     jobs = [dict(r) for r in cur.fetchall()]
     for job in jobs:
@@ -2010,18 +2118,21 @@ def list_jobs(request: Request):
 
 @app.post("/api/jobs")
 def create_job(job: JobCreate, request: Request):
+    username = request.headers.get("x-user-username") or "admin"
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
     cur.execute("""
         INSERT INTO jobs (
             title, description, client_name, contact_name, client_phone, account_manager,
             assigned_recruiter, target_date, job_type, job_status,
-            work_experience, industry, salary, required_skills
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            work_experience, industry, salary, required_skills, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         job.title, job.description, job.client_name, job.contact_name, job.client_phone, job.account_manager,
         job.assigned_recruiter, job.target_date, job.job_type, job.job_status,
-        job.work_experience, job.industry, job.salary, job.required_skills
+        job.work_experience, job.industry, job.salary, job.required_skills, username
     ))
     job_id = cur.lastrowid
     conn.commit()
@@ -2051,8 +2162,26 @@ def create_job(job: JobCreate, request: Request):
 
 @app.put("/api/jobs/{job_id}")
 def update_job(job_id: int, job: JobCreate, request: Request):
+    username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
+    role = get_user_role(username)
+
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
+    
+    cur.execute("SELECT created_by FROM jobs WHERE id = ?", (job_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+    created_by = row[0]
+    
+    if role != "admin":
+        if created_by and created_by.lower() != username.lower():
+            conn.close()
+            raise HTTPException(status_code=403, detail="Forbidden")
+
     cur.execute("""
         UPDATE jobs SET 
             title = ?, description = ?, client_name = ?, contact_name = ?, client_phone = ?, account_manager = ?,
@@ -2097,9 +2226,25 @@ def update_job(job_id: int, job: JobCreate, request: Request):
 @app.delete("/api/jobs/{job_id}")
 def delete_job(job_id: int, request: Request):
     username = request.headers.get("x-user-username")
-    job_title = get_job_title(job_id)
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
+    role = get_user_role(username)
+
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
+    
+    cur.execute("SELECT title, created_by FROM jobs WHERE id = ?", (job_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+    job_title, created_by = row
+    
+    if role != "admin":
+        if created_by and created_by.lower() != username.lower():
+            conn.close()
+            raise HTTPException(status_code=403, detail="Forbidden")
+
     cur.execute("DELETE FROM job_candidates WHERE job_id = ?", (job_id,))
     cur.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
     conn.commit()
@@ -2109,9 +2254,47 @@ def delete_job(job_id: int, request: Request):
 
 @app.get("/api/jobs/{job_id}/candidates")
 def get_job_candidates(job_id: int, request: Request):
+    username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
+    
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
+
+    # Get job creator
+    cur.execute("SELECT created_by FROM jobs WHERE id = ?", (job_id,))
+    job_row = cur.fetchone()
+    if not job_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+    job_creator = job_row['created_by']
+
+    # Get requesting user's roles
+    cur.execute("SELECT is_external, is_admin, role, full_name FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+    user_row = cur.fetchone()
+    is_external = False
+    is_user_admin = False
+    user_full_name = ""
+    if user_row:
+        is_external = (user_row['is_external'] == 1)
+        is_user_admin = (user_row['is_admin'] == 1 or user_row['role'] == "admin")
+        user_full_name = user_row['full_name']
+
+    # Enforce permission checks:
+    if not is_user_admin:
+        if is_external:
+            # Check share
+            cur.execute("SELECT 1 FROM job_shares WHERE job_id = ? AND LOWER(username) = LOWER(?)", (job_id, username))
+            if not cur.fetchone():
+                conn.close()
+                raise HTTPException(status_code=403, detail="Forbidden")
+        else:
+            # Internal user: must be creator of the job
+            if job_creator and job_creator.lower() != username.lower():
+                conn.close()
+                raise HTTPException(status_code=403, detail="Forbidden")
+
     cur.execute("""
         SELECT c.*, jc.ai_reason, jc.status as job_status
         FROM candidate_metadata c
@@ -2119,18 +2302,6 @@ def get_job_candidates(job_id: int, request: Request):
         WHERE jc.job_id = ?
     """, (job_id,))
     candidates = [dict(row) for row in cur.fetchall()]
-    
-    # Check if requesting user is external
-    username = request.headers.get("x-user-username")
-    is_external = False
-    user_full_name = ""
-    if username:
-        cur.execute("SELECT is_external, full_name FROM users WHERE LOWER(username) = LOWER(?)", (username,))
-        row = cur.fetchone()
-        if row:
-            is_external = (row['is_external'] == 1)
-            user_full_name = row['full_name']
-            
     conn.close()
     
     # Replace None values with empty string
@@ -2162,16 +2333,62 @@ def get_job_candidates(job_id: int, request: Request):
 
 @app.get("/api/jobs/{job_id}/unmatched-candidates")
 def get_unmatched_candidates(job_id: int, request: Request):
+    username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
+        
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
-    cur.execute("""
-        SELECT * FROM candidate_metadata 
-        WHERE id NOT IN (
-            SELECT candidate_id FROM job_candidates WHERE job_id = ?
-        )
-        ORDER BY full_name ASC
-    """, (job_id,))
+
+    # Get job creator
+    cur.execute("SELECT created_by FROM jobs WHERE id = ?", (job_id,))
+    job_row = cur.fetchone()
+    if not job_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+    job_creator = job_row['created_by']
+
+    # Get requesting user's roles
+    cur.execute("SELECT is_external, is_admin, role FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+    user_row = cur.fetchone()
+    is_external = False
+    is_user_admin = False
+    if user_row:
+        is_external = (user_row['is_external'] == 1)
+        is_user_admin = (user_row['is_admin'] == 1 or user_row['role'] == "admin")
+
+    # Enforce permission checks:
+    if not is_user_admin:
+        if is_external:
+            cur.execute("SELECT 1 FROM job_shares WHERE job_id = ? AND LOWER(username) = LOWER(?)", (job_id, username))
+            if not cur.fetchone():
+                conn.close()
+                raise HTTPException(status_code=403, detail="Forbidden")
+        else:
+            if job_creator and job_creator.lower() != username.lower():
+                conn.close()
+                raise HTTPException(status_code=403, detail="Forbidden")
+
+    # Filter unmatched candidates to only those owned by the user if not admin
+    if is_user_admin:
+        cur.execute("""
+            SELECT * FROM candidate_metadata 
+            WHERE id NOT IN (
+                SELECT candidate_id FROM job_candidates WHERE job_id = ?
+            )
+            ORDER BY full_name ASC
+        """, (job_id,))
+    else:
+        cur.execute("""
+            SELECT * FROM candidate_metadata 
+            WHERE LOWER(created_by) = LOWER(?)
+            AND id NOT IN (
+                SELECT candidate_id FROM job_candidates WHERE job_id = ?
+            )
+            ORDER BY full_name ASC
+        """, (username, job_id))
+
     candidates = [dict(row) for row in cur.fetchall()]
     conn.close()
 
@@ -2197,9 +2414,27 @@ def get_unmatched_candidates(job_id: int, request: Request):
 
 @app.post("/api/jobs/{job_id}/candidates/{candidate_id}")
 def add_job_candidate(job_id: int, candidate_id: int, request: Request):
+    username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
+    role = get_user_role(username)
+
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
     
+    # Verify job creator and existence
+    cur.execute("SELECT created_by FROM jobs WHERE id = ?", (job_id,))
+    job_row = cur.fetchone()
+    if not job_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+    job_creator = job_row[0]
+    
+    if role != "admin":
+        if job_creator and job_creator.lower() != username.lower():
+            conn.close()
+            raise HTTPException(status_code=403, detail="Forbidden")
+            
     # Check if already mapped
     cur.execute("SELECT 1 FROM job_candidates WHERE job_id = ? AND candidate_id = ?", (job_id, candidate_id))
     if cur.fetchone():
@@ -2234,8 +2469,26 @@ def add_job_candidate(job_id: int, candidate_id: int, request: Request):
 
 @app.put("/api/jobs/{job_id}/candidates/{candidate_id}")
 def update_job_candidate_status(job_id: int, candidate_id: int, update: JobStatusUpdate, request: Request):
+    username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
+    role = get_user_role(username)
+
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
+    
+    # Verify job creator and existence
+    cur.execute("SELECT created_by FROM jobs WHERE id = ?", (job_id,))
+    job_row = cur.fetchone()
+    if not job_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+    job_creator = job_row[0]
+    
+    if role != "admin":
+        if job_creator and job_creator.lower() != username.lower():
+            conn.close()
+            raise HTTPException(status_code=403, detail="Forbidden")
     
     if update.status is not None:
         if update.status not in ["matched", "selected"]:
@@ -2252,8 +2505,26 @@ def update_job_candidate_status(job_id: int, candidate_id: int, update: JobStatu
 
 @app.delete("/api/jobs/{job_id}/candidates/{candidate_id}")
 def delete_job_candidate(job_id: int, candidate_id: int, request: Request):
+    username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
+    role = get_user_role(username)
+
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
+    
+    # Verify job creator and existence
+    cur.execute("SELECT created_by FROM jobs WHERE id = ?", (job_id,))
+    job_row = cur.fetchone()
+    if not job_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+    job_creator = job_row[0]
+    
+    if role != "admin":
+        if job_creator and job_creator.lower() != username.lower():
+            conn.close()
+            raise HTTPException(status_code=403, detail="Forbidden")
     cur.execute("DELETE FROM job_candidates WHERE job_id = ? AND candidate_id = ?", (job_id, candidate_id))
     conn.commit()
     conn.close()
@@ -2264,16 +2535,20 @@ def match_candidates_for_job(job_id: int):
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
-    cur.execute("SELECT description FROM jobs WHERE id = ?", (job_id,))
+    cur.execute("SELECT description, created_by FROM jobs WHERE id = ?", (job_id,))
     job = cur.fetchone()
     if not job:
         conn.close()
         raise HTTPException(status_code=404, detail="Job not found")
     
     jd = job['description']
+    job_creator = job['created_by']
     
-    # Query all candidates directly from the database so that no candidate is missed by semantic chunking search
-    cur.execute("SELECT * FROM candidate_metadata")
+    # Query candidates directly from the database (only those owned by job creator unless admin)
+    if job_creator and job_creator.lower() != "admin":
+        cur.execute("SELECT * FROM candidate_metadata WHERE LOWER(created_by) = LOWER(?)", (job_creator,))
+    else:
+        cur.execute("SELECT * FROM candidate_metadata")
     db_rows = [dict(r) for r in cur.fetchall()]
 
     if not db_rows:
@@ -2364,6 +2639,25 @@ Return ONLY the raw JSON block, no markdown, no other text."""
 
 @app.post("/api/jobs/{job_id}/match")
 def match_candidates_for_job_endpoint(job_id: int, request: Request):
+    username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
+    role = get_user_role(username)
+    
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    cur.execute("SELECT created_by FROM jobs WHERE id = ?", (job_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+    created_by = row[0]
+    conn.close()
+    
+    if role != "admin":
+        if created_by and created_by.lower() != username.lower():
+            raise HTTPException(status_code=403, detail="Forbidden")
+            
     return match_candidates_for_job(job_id)
 
 # ── Reset ──────────────────────────────────────────────────────────────────────
@@ -2391,20 +2685,28 @@ def register(req: RegisterRequest):
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
     username_exists = False
+    email_limit_exceeded = False
     try:
         cur.execute("SELECT 1 FROM users WHERE LOWER(username) = LOWER(?)", (req.username,))
         if cur.fetchone():
             username_exists = True
         else:
-            is_approved_val = 1 if req.username.lower() in ("admin", "user", "boopathi", "praveen", "harish", "sabari") else 0
-            cur.execute("INSERT INTO users (full_name, username, password, email, role, is_approved) VALUES (?, ?, ?, ?, 'user', ?)",
-                        (req.full_name, req.username, req.password, req.email, is_approved_val))
-            if is_approved_val == 0:
-                cur.execute("""
-                    INSERT INTO change_requests (username, action_type, target_id, payload, description, status)
-                    VALUES (?, 'approve_user', ?, NULL, ?, 'pending')
-                """, (req.username, req.username, f"Approve access request for registered user {req.full_name} (@{req.username})"))
-            conn.commit()
+            base_email = get_base_email(req.email)
+            cur.execute("SELECT email FROM users")
+            all_emails = [r[0] for r in cur.fetchall() if r[0]]
+            same_email_count = sum(1 for e in all_emails if get_base_email(e) == base_email)
+            if same_email_count >= 5:
+                email_limit_exceeded = True
+            else:
+                is_approved_val = 1 if req.username.lower() in ("admin", "user", "boopathi", "praveen", "harish", "sabari") else 0
+                cur.execute("INSERT INTO users (full_name, username, password, email, role, is_approved) VALUES (?, ?, ?, ?, 'user', ?)",
+                            (req.full_name, req.username, req.password, req.email, is_approved_val))
+                if is_approved_val == 0:
+                    cur.execute("""
+                        INSERT INTO change_requests (username, action_type, target_id, payload, description, status)
+                        VALUES (?, 'approve_user', ?, NULL, ?, 'pending')
+                    """, (req.username, req.username, f"Approve access request for registered user {req.full_name} (@{req.username})"))
+                conn.commit()
     except sqlite3.IntegrityError:
         username_exists = True
     except Exception as e:
@@ -2414,6 +2716,8 @@ def register(req: RegisterRequest):
     
     if username_exists:
         raise HTTPException(status_code=400, detail="Username already exists")
+    if email_limit_exceeded:
+        raise HTTPException(status_code=400, detail="Maximum of 5 accounts can be created with the same email address.")
         
     return {"status": "registered", "username": req.username}
 
@@ -2428,6 +2732,8 @@ def login(req: LoginRequest):
     if not user:
         raise HTTPException(status_code=401, detail="Invalid username or password")
     user_dict = dict(user)
+    if user_dict.get("is_approved", 0) == 0:
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
     return {
         "username": user_dict["username"],
         "full_name": user_dict["full_name"],
@@ -2455,6 +2761,15 @@ def firebase_sync(req: FirebaseSyncRequest):
     user = cur.fetchone()
     
     if not user:
+        # Check email limit
+        base_email = get_base_email(req.email)
+        cur.execute("SELECT email FROM users")
+        all_emails = [r[0] for r in cur.fetchall() if r[0]]
+        same_email_count = sum(1 for e in all_emails if get_base_email(e) == base_email)
+        if same_email_count >= 5:
+            conn.close()
+            raise HTTPException(status_code=400, detail="Maximum of 5 accounts can be created with the same email address.")
+            
         try:
             is_approved_val = 1 if req.username.lower() in ("admin", "user", "boopathi", "praveen", "harish", "sabari") else 0
             cur.execute("INSERT INTO users (full_name, username, password, email, role, is_approved) VALUES (?, ?, ?, ?, 'user', ?)",
@@ -2472,9 +2787,23 @@ def firebase_sync(req: FirebaseSyncRequest):
         except Exception as e:
             conn.close()
             raise HTTPException(status_code=500, detail=f"Database synchronization error: {str(e)}")
+    else:
+        # User exists, let's make sure email is synced if it is missing
+        try:
+            user_dict = dict(user)
+            if (not user_dict.get("email") or user_dict.get("email") == "") and req.email:
+                cur.execute("UPDATE users SET email = ? WHERE LOWER(username) = LOWER(?)", (req.email, req.username.lower()))
+                conn.commit()
+                # Fetch again to get updated user dict
+                cur.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (req.username,))
+                user = cur.fetchone()
+        except Exception as e:
+            print(f"Failed to update user email during firebase sync: {e}")
             
     conn.close()
     user_dict = dict(user)
+    if user_dict.get("is_approved", 0) == 0:
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
     return {
         "username": user_dict["username"],
         "full_name": user_dict["full_name"],
@@ -2486,6 +2815,29 @@ def firebase_sync(req: FirebaseSyncRequest):
         "email": user_dict.get("email", ""),
         "hidden_fields": user_dict.get("hidden_fields", "")
     }
+
+@app.get("/api/auth/check-exists")
+def check_user_exists(username: str, email: str):
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    
+    # 1. Check if username exists
+    cur.execute("SELECT 1 FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+    if cur.fetchone():
+        conn.close()
+        return {"exists": True, "reason": "Username already exists."}
+        
+    # 2. Check email limit (5 accounts)
+    base_email = get_base_email(email)
+    cur.execute("SELECT email FROM users")
+    all_emails = [r[0] for r in cur.fetchall() if r[0]]
+    same_email_count = sum(1 for e in all_emails if get_base_email(e) == base_email)
+    if same_email_count >= 5:
+        conn.close()
+        return {"exists": True, "reason": "Maximum of 5 accounts can be created with the same email address."}
+        
+    conn.close()
+    return {"exists": False}
 
 OTP_STORE = {}
 
@@ -2535,7 +2887,7 @@ class ResetPasswordRequest(BaseModel):
     otp: str
     new_password: str
 
-def send_otp_email(to_email: str, otp: str) -> bool:
+def send_otp_email(to_email: str, otp: str, raise_on_error: bool = False) -> bool:
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
@@ -2547,6 +2899,8 @@ def send_otp_email(to_email: str, otp: str) -> bool:
     
     if not smtp_sender or not smtp_password:
         print(f"[SMTP] Credentials not set. Skipped sending real email.")
+        if raise_on_error:
+            raise ValueError("SMTP email credentials are not configured in your .env file. Please set SMTP_SENDER and SMTP_PASSWORD.")
         return False
         
     subject = "Hire AI - Password Reset OTP"
@@ -2568,6 +2922,8 @@ def send_otp_email(to_email: str, otp: str) -> bool:
         return True
     except Exception as e:
         print(f"[SMTP] Failed to send email to {to_email}: {str(e)}")
+        if raise_on_error:
+            raise RuntimeError(f"Failed to send email: {str(e)}")
         return False
 
 @app.post("/api/auth/forgot-password/request")
@@ -2575,14 +2931,38 @@ def request_otp(req: ForgotPasswordRequest):
     import random
     import time
     email = req.email.strip().lower()
+    base_email = get_base_email(email)
     
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
-    cur.execute("SELECT username FROM users WHERE LOWER(email) = LOWER(?)", (email,))
-    row = cur.fetchone()
+    cur.execute("SELECT email, username FROM users")
+    users = cur.fetchall()
+    matching_users = [u for u in users if u[0] and get_base_email(u[0]) == base_email]
+    
+    if not matching_users:
+        # If no user matches the email directly, attempt heuristic match on username using the local part of email.
+        # This helps seeded/default or manually created users whose email is NULL or empty in SQLite.
+        if "@" in email:
+            local_part = email.split("@")[0].split("+")[0].strip().lower()
+            # Try to find a user where the username matches or starts/ends with the local part
+            matching_username = None
+            for u_email, u_name in users:
+                u_name_lower = u_name.strip().lower()
+                if u_name_lower == local_part or u_name_lower.startswith(local_part) or local_part.startswith(u_name_lower):
+                    matching_username = u_name
+                    break
+            
+            if matching_username:
+                try:
+                    cur.execute("UPDATE users SET email = ? WHERE LOWER(username) = LOWER(?)", (email, matching_username))
+                    conn.commit()
+                    matching_users = [(email, matching_username)]
+                    print(f"[AUTH] Updated user {matching_username} email to {email} via heuristic match")
+                except Exception as e:
+                    print(f"[AUTH] Failed to update user email during heuristic match: {e}")
     conn.close()
     
-    if not row:
+    if not matching_users:
         raise HTTPException(status_code=404, detail="No registered account found with this email address.")
         
     otp = f"{random.randint(100000, 999999)}"
@@ -2595,14 +2975,31 @@ def request_otp(req: ForgotPasswordRequest):
     print(f"[OTP SIMULATION] Password reset OTP for {email}: {otp}")
     print(f"========================================")
     
-    # Try sending real email
-    sent = send_otp_email(email, otp)
+    require_real = os.getenv("REQUIRE_REAL_EMAIL", "true").lower() == "true"
     
+    sent = False
+    try:
+        sent = send_otp_email(email, otp, raise_on_error=require_real)
+    except Exception as e:
+        print(f"[SMTP] Error during send_otp_email: {str(e)}")
+        # If we require real email and it fails, but SMTP credentials are NOT configured,
+        # we treat it as a warning and fall back to returning simulated OTP rather than raising a 500 error.
+        smtp_sender = os.getenv("SMTP_SENDER", "")
+        smtp_password = os.getenv("SMTP_PASSWORD", "")
+        if require_real and smtp_sender and smtp_password:
+            # Only raise 500 if the credentials are set but the actual mail delivery fails
+            if email in OTP_STORE:
+                del OTP_STORE[email]
+            raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
+        else:
+            # Fall back to simulated OTP display
+            sent = False
+            
     return {
         "status": "success",
         "otp": otp if not sent else None,
         "sent_real_email": sent,
-        "message": "OTP has been sent to your email."
+        "message": "OTP has been sent to your email." if sent else "OTP has been simulated. Please use the demo code shown."
     }
 
 @app.post("/api/auth/forgot-password/reset")
@@ -2628,9 +3025,16 @@ def reset_password(req: ResetPasswordRequest):
         
     del OTP_STORE[email]
     
+    base_email = get_base_email(email)
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
-    cur.execute("UPDATE users SET password = ? WHERE LOWER(email) = LOWER(?)", (new_pass, email))
+    cur.execute("SELECT email, username FROM users")
+    users = cur.fetchall()
+    matching_users = [u for u in users if get_base_email(u[0]) == base_email]
+    
+    for mu in matching_users:
+        cur.execute("UPDATE users SET password = ? WHERE LOWER(email) = LOWER(?)", (new_pass, mu[0].lower()))
+        
     conn.commit()
     conn.close()
     
@@ -2663,6 +3067,7 @@ def add_candidate_manually(request: Request, body: dict):
         insert_data['source'] = 'Manual Entry'
     if 'candidate_status' not in insert_data or not insert_data['candidate_status']:
         insert_data['candidate_status'] = 'New'
+    insert_data['created_by'] = username or "admin"
         
     if not insert_data.get('full_name'):
         conn.close()
@@ -2788,11 +3193,27 @@ class JobShareRequest(BaseModel):
 @app.post("/api/jobs/{job_id}/share")
 def share_job(job_id: int, req: JobShareRequest, request: Request):
     username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
     if not is_admin_or_hr(username):
         raise HTTPException(status_code=403, detail="Forbidden")
         
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
+    
+    # Verify job creator and existence
+    cur.execute("SELECT created_by FROM jobs WHERE id = ?", (job_id,))
+    job_row = cur.fetchone()
+    if not job_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    created_by = job_row[0]
+    role = get_user_role(username)
+    if role != "admin":
+        if created_by and created_by.lower() != username.lower():
+            conn.close()
+            raise HTTPException(status_code=403, detail="Forbidden")
     
     # Verify job exists
     cur.execute("SELECT 1 FROM jobs WHERE id = ?", (job_id,))
@@ -2819,11 +3240,27 @@ def share_job(job_id: int, req: JobShareRequest, request: Request):
 @app.get("/api/jobs/{job_id}/shares")
 def get_job_shares(job_id: int, request: Request):
     username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
     if not is_admin_or_hr(username):
         raise HTTPException(status_code=403, detail="Forbidden")
         
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
+    
+    # Verify job creator and existence
+    cur.execute("SELECT created_by FROM jobs WHERE id = ?", (job_id,))
+    job_row = cur.fetchone()
+    if not job_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    created_by = job_row[0]
+    role = get_user_role(username)
+    if role != "admin":
+        if created_by and created_by.lower() != username.lower():
+            conn.close()
+            raise HTTPException(status_code=403, detail="Forbidden")
     cur.execute("SELECT username FROM job_shares WHERE job_id = ?", (job_id,))
     rows = cur.fetchall()
     conn.close()
@@ -2890,16 +3327,70 @@ def delete_user_endpoint(user_id: int, request: Request):
         
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
-    # Prevent self-deletion
-    cur.execute("SELECT username FROM users WHERE id = ?", (user_id,))
+    # Prevent self-deletion and get email/fullname
+    cur.execute("SELECT username, email, full_name FROM users WHERE id = ?", (user_id,))
     row = cur.fetchone()
-    if row and row[0].lower() == username.lower():
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    deleted_username = row[0]
+    deleted_email = row[1]
+    deleted_fullname = row[2]
+    
+    if deleted_username.lower() == username.lower():
         conn.close()
         raise HTTPException(status_code=400, detail="You cannot delete yourself.")
         
+    # Delete from users table
     cur.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    
+    # Delete from change_requests (where requester or target is this user)
+    cur.execute("DELETE FROM change_requests WHERE LOWER(username) = LOWER(?) OR LOWER(target_id) = LOWER(?)", (deleted_username, deleted_username))
+    
+    # Delete from job_shares
+    cur.execute("DELETE FROM job_shares WHERE LOWER(username) = LOWER(?)", (deleted_username,))
+    
+    # Delete from team_members (by full name and by username, if exists)
+    cur.execute("DELETE FROM team_members WHERE LOWER(name) = LOWER(?) OR LOWER(name) = LOWER(?)", (deleted_fullname, deleted_username))
+    
+    # Delete from activity_logs
+    cur.execute("DELETE FROM activity_logs WHERE LOWER(username) = LOWER(?)", (deleted_username,))
+    
+    # Delete candidate records and their resume files owned/created by this user
+    cur.execute("SELECT id, filename FROM candidate_metadata WHERE LOWER(created_by) = LOWER(?)", (deleted_username,))
+    candidates = cur.fetchall()
+    if candidates:
+        candidate_ids = [c[0] for c in candidates]
+        placeholders = ",".join("?" for _ in candidate_ids)
+        
+        # Delete resume files from disk
+        for c_id, fname in candidates:
+            if fname:
+                fpath = os.path.join(UPLOAD_DIR, fname)
+                if os.path.exists(fpath):
+                    try:
+                        os.remove(fpath)
+                    except Exception as e:
+                        print(f"Error removing resume file {fpath}: {e}")
+                        
+        # Delete from DB
+        cur.execute(f"DELETE FROM job_candidates WHERE candidate_id IN ({placeholders})", candidate_ids)
+        cur.execute(f"DELETE FROM candidate_metadata WHERE id IN ({placeholders})", candidate_ids)
+        
+    # Delete job records created by this user
+    cur.execute("SELECT id FROM jobs WHERE LOWER(created_by) = LOWER(?)", (deleted_username,))
+    job_ids = [r[0] for r in cur.fetchall()]
+    if job_ids:
+        placeholders = ",".join("?" for _ in job_ids)
+        cur.execute(f"DELETE FROM job_candidates WHERE job_id IN ({placeholders})", job_ids)
+        cur.execute(f"DELETE FROM job_shares WHERE job_id IN ({placeholders})", job_ids)
+        cur.execute(f"DELETE FROM jobs WHERE id IN ({placeholders})", job_ids)
+        
     conn.commit()
     conn.close()
+    
+    log_activity_db(username, f"completely deleted user '{deleted_username}' from system")
     return {"status": "deleted"}
 
 @app.post("/api/admin/requests/{request_id}/approve")
@@ -3037,14 +3528,18 @@ def reject_change_request(request_id: int, request: Request):
         
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
-    cur.execute("SELECT status FROM change_requests WHERE id = ?", (request_id,))
+    cur.execute("SELECT status, action_type, target_id FROM change_requests WHERE id = ?", (request_id,))
     row = cur.fetchone()
     if not row:
         conn.close()
         raise HTTPException(status_code=404, detail="Request not found")
-    if row[0] != "pending":
+    status, action_type, target_id = row
+    if status != "pending":
         conn.close()
         raise HTTPException(status_code=400, detail="Request is already resolved")
+        
+    if action_type == "approve_user":
+        cur.execute("DELETE FROM users WHERE LOWER(username) = LOWER(?)", (target_id,))
         
     cur.execute("UPDATE change_requests SET status = 'rejected' WHERE id = ?", (request_id,))
     conn.commit()

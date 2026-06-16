@@ -5,6 +5,17 @@ import alamaticzLogo from '../assets/alamaticz-logo.jpg'
 import { auth } from '../firebase'
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth'
 
+function getFirebaseEmail(email, username) {
+    if (!email) return '';
+    const trimmed = email.trim();
+    if (trimmed.includes('@')) {
+        const parts = trimmed.split('@');
+        const local = parts[0].split('+')[0]; // strip any existing subaddressing
+        return `${local}+${username.trim().toLowerCase()}@${parts[1]}`;
+    }
+    return trimmed;
+}
+
 export default function LoginPage({ onLogin }) {
     const [mode, setMode] = useState('login')   // login | register | forgot | team-selection
     const [cred, setCred] = useState('')
@@ -71,6 +82,9 @@ export default function LoginPage({ onLogin }) {
                 })
                 loginData = res.data;
             } catch (fbErr) {
+                if (fbErr.response?.status === 403) {
+                    throw fbErr;
+                }
                 console.log("Firebase auth failed, trying SQLite fallback...", fbErr);
                 const res = await axios.post('/api/auth/login', {
                     username: usernameLower,
@@ -113,21 +127,56 @@ export default function LoginPage({ onLogin }) {
         if (pass !== pass2) { setError('Passwords do not match!'); return }
         
         try {
-            const registerEmail = email.trim()
-            await createUserWithEmailAndPassword(auth, registerEmail, pass)
+            const usernameLower = cred.trim().toLowerCase();
+            const registerEmail = email.trim();
             
-            await axios.post('/api/auth/firebase-sync', {
-                email: registerEmail,
-                full_name: name,
-                username: cred.trim().toLowerCase()
-            })
+            // 1. Check if username exists or email limit exceeded in SQLite first!
+            const checkRes = await axios.get(`/api/auth/check-exists?username=${encodeURIComponent(usernameLower)}&email=${encodeURIComponent(registerEmail)}`);
+            if (checkRes.data.exists) {
+                setError(checkRes.data.reason || 'Username or email already in use.');
+                return;
+            }
             
-            setInfo(`Account created for ${name}! Please sign in.`)
+            // 2. Generate unique Firebase email (Gmail subaddressing support)
+            const firebaseEmail = getFirebaseEmail(email, cred);
+            
+            try {
+                await createUserWithEmailAndPassword(auth, firebaseEmail, pass);
+            } catch (fbErr) {
+                if (fbErr.code === 'auth/email-already-in-use') {
+                    // This is the case where they were deleted from SQLite but still exist in Firebase Auth.
+                    // We can just proceed to sync them!
+                    console.log("User exists in Firebase Auth but not SQLite. Synchronizing...");
+                } else {
+                    throw fbErr;
+                }
+            }
+            
+            try {
+                await axios.post('/api/auth/firebase-sync', {
+                    email: firebaseEmail,
+                    full_name: name,
+                    username: usernameLower
+                });
+            } catch (syncErr) {
+                if (syncErr.response?.status === 403) {
+                    setInfo(`Registration request sent! Please wait for admin approval before signing in.`);
+                    setTimeout(() => {
+                        changeMode('login');
+                        setPass('');
+                        setPass2('');
+                    }, 4000);
+                    return;
+                }
+                throw syncErr;
+            }
+            
+            setInfo(`Account created for ${name}! Please sign in.`);
             setTimeout(() => {
-                changeMode('login')
-                setPass('')
-                setPass2('')
-            }, 2000)
+                changeMode('login');
+                setPass('');
+                setPass2('');
+            }, 2000);
         } catch (err) {
             console.error("Register error:", err);
             const detail = err.response?.data?.detail;
