@@ -105,12 +105,17 @@ load_dotenv()
 BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
 
-CHROMA_PATH  = os.path.join(BASE_DIR, "chroma_db")
-UPLOAD_DIR   = os.path.join(BASE_DIR, "static")
-STATS_DB     = os.getenv("STATS_DB_PATH", os.path.join(BASE_DIR, "stats.db"))
+# Support persistent volume directory /data (e.g. on Render)
+DATA_DIR = "/data" if os.path.exists("/data") and os.access("/data", os.W_OK) else BASE_DIR
+
+CHROMA_PATH  = os.path.join(DATA_DIR, "chroma_db")
+UPLOAD_DIR   = os.path.join(DATA_DIR, "static")
+STATS_DB     = os.getenv("STATS_DB_PATH", os.path.join(DATA_DIR, "stats.db"))
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(CHROMA_PATH, exist_ok=True)
+os.makedirs(os.path.dirname(STATS_DB), exist_ok=True)
 
 # ── FastAPI App ────────────────────────────────────────────────────────────────
 app = FastAPI(title="Hire AI API")

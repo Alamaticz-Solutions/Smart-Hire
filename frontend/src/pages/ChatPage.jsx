@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useOutletContext } from 'react-router-dom'
 import axios from 'axios'
 import ReactMarkdown from 'react-markdown'
 import { Send, Bot, User } from 'lucide-react'
@@ -141,11 +142,25 @@ function TypingIndicator() {
 }
 
 export default function ChatPage() {
-    const [messages, setMessages] = useState([])
+    const { user } = useOutletContext()
+    const [messages, setMessages] = useState(() => {
+        try {
+            const saved = localStorage.getItem(`hire_ai_chat_msgs_${user?.username || ''}`)
+            return saved ? JSON.parse(saved) : []
+        } catch {
+            return []
+        }
+    })
     const [input, setInput] = useState('')
     const [loading, setLoading] = useState(false)
     const bottomRef = useRef(null)
     const textareaRef = useRef(null)
+
+    useEffect(() => {
+        if (user?.username) {
+            localStorage.setItem(`hire_ai_chat_msgs_${user.username}`, JSON.stringify(messages))
+        }
+    }, [messages, user])
 
     useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading])
 
