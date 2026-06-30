@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { useOutletContext } from 'react-router-dom'
 import axios from 'axios'
-import { UploadCloud, Trash2, CheckCircle, FileText, Search, Plus, Filter, Loader, RefreshCw, Download, Upload, X, Check, Eye } from 'lucide-react'
+import { UploadCloud, Trash2, CheckCircle, FileText, Search, Plus, Filter, Loader, RefreshCw, Download, Upload, X, Check, Eye, Link } from 'lucide-react'
 import { exportToExcel, formatCandidatesForExcel } from '../utils/excelUtils'
 
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -121,7 +121,7 @@ const BASE_WIDTHS = {
     full_name: '180px', total_experience: '150px', pega_experience: '150px',
     cdh_exp: '140px', ctc: '120px', expected_ctc: '120px', percentage_hike: '140px',
     candidate_interview_status: '180px', candidate_status: '150px', availability_in_days: '140px', notice_period: '120px',
-    phone: '140px', email: '220px', linkedin: '140px', current_location: '140px',
+    phone: '140px', email: '220px', sender_email: '220px', linkedin: '140px', current_location: '140px',
     pref_locations: '150px', current_organization: '180px', current_client: '160px',
     domain: '130px', tier: '100px', certification_version: '120px',
     skills: '220px', certifications: '200px', notescomments: '220px'
@@ -158,12 +158,23 @@ export default function UploadPage() {
     const [showAddCandidate, setShowAddCandidate] = useState(false)
     const [newCandidateForm, setNewCandidateForm] = useState({})
     const [viewingPdf, setViewingPdf] = useState(null)
+    const [selectedCandidateForDetails, setSelectedCandidateForDetails] = useState(null)
     const [showFilter, setShowFilter] = useState(false)
     const [filters, setFilters] = useState({ minTotalExp: '', minPegaExp: '', certs: [] })
     const [customFilters, setCustomFilters] = useState([])
     const [columnFilters, setColumnFilters] = useState({})
      const [activeTab, setActiveTab] = useState('all') // 'all' or 'qualified'
     const [newColForm, setNewColForm] = useState({ label: '', desc: '' })
+    
+    const [showIntegrations, setShowIntegrations] = useState(false)
+    const [integrationsTab, setIntegrationsTab] = useState('mail')
+    const [integrationsSettings, setIntegrationsSettings] = useState({
+        email_enabled: 0, imap_host: 'imap.gmail.com', imap_port: 993,
+        smtp_host: 'smtp.gmail.com', smtp_port: 587, email_user: '',
+        email_pass: '', keywords: 'resume,alamaticz,solution,job', drive_enabled: 0
+    })
+    const [testStatus, setTestStatus] = useState({ status: 'idle', message: '' })
+    const [testingConnection, setTestingConnection] = useState(false)
     
     const [showColVisibility, setShowColVisibility] = useState(false)
     const [hiddenColumnKeys, setHiddenColumnKeys] = useState([])
@@ -339,6 +350,50 @@ export default function UploadPage() {
         setCols(allLoaded)
     }).catch(() => { })
 
+    const fetchIntegrationsSettings = useCallback(async () => {
+        try {
+            const res = await axios.get(`${BACKEND_URL}/api/integrations`, {
+                headers: { 'x-user-username': user?.username }
+            })
+            setIntegrationsSettings(res.data)
+        } catch (err) {
+            console.error('Error fetching integrations settings:', err)
+        }
+    }, [user?.username])
+
+    useEffect(() => {
+        if (showIntegrations && user?.role === 'admin') {
+            fetchIntegrationsSettings()
+        }
+    }, [showIntegrations, fetchIntegrationsSettings, user])
+
+    const runConnectionTest = async () => {
+        setTestingConnection(true)
+        setTestStatus({ status: 'testing', message: 'Testing IMAP connection...' })
+        try {
+            const res = await axios.get(`${BACKEND_URL}/api/integrations/status`, {
+                headers: { 'x-user-username': user?.username }
+            })
+            setTestStatus({ status: res.data.status, message: res.data.message })
+        } catch (err) {
+            setTestStatus({ status: 'error', message: 'Failed to run connection test: ' + (err.response?.data?.detail || err.message) })
+        } finally {
+            setTestingConnection(false)
+        }
+    }
+
+    const saveIntegrationsSettings = async () => {
+        try {
+            await axios.post(`${BACKEND_URL}/api/integrations`, integrationsSettings, {
+                headers: { 'x-user-username': user?.username }
+            })
+            showToast("Integration settings saved successfully!", "success")
+            setShowIntegrations(false)
+        } catch (err) {
+            alert(err.response?.data?.detail || "Failed to save integration settings")
+        }
+    }
+
     useEffect(() => { load(); loadCols() }, [])
 
     // Polling mechanism to auto-refresh the table when resumes are processing in the background
@@ -425,9 +480,9 @@ export default function UploadPage() {
     })
 
     const startEdit = (ri, col, val) => {
-        const isAdmin = user?.role === 'admin' || user?.is_admin === 1;
+        const isAdmin = user?.role === 'admin' || user?.is_admin === 1 || user?.is_hr === 1;
         if (col === 'certifications' && !isAdmin) {
-            showToast("Only Admins can view or edit certifications.", "error");
+            showToast("Only Admins and HR users can view or edit certifications.", "error");
             return;
         }
         if (val === '[HIDDEN]') {
@@ -473,7 +528,7 @@ export default function UploadPage() {
     }
 
     const getTableWidth = () => {
-        let total = 0
+        let total = 60 // Width for S.No column
         activeCols.forEach(c => {
             const w = c.pct
             if (w && typeof w === 'string' && w.endsWith('px')) {
@@ -635,6 +690,11 @@ export default function UploadPage() {
                         <button className="btn btn-secondary" onClick={() => { load(); loadCols(); }} style={{ gap: 6 }}>
                             <RefreshCw size={14} /> Refresh
                         </button>
+                        {user?.role === 'admin' && (
+                            <button className="btn btn-secondary" onClick={() => setShowIntegrations(true)} style={{ gap: 6, color: 'var(--gold)', borderColor: 'rgba(var(--gold-rgb), 0.3)' }}>
+                                <Link size={14} /> Connect
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -648,10 +708,21 @@ export default function UploadPage() {
                         <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', borderRadius: 10, border: '1px solid var(--border)', width: '100%' }}>
                             <table style={{ width: getTableWidth(), tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
                                 <colgroup>
+                                    <col style={{ width: '60px' }} />
                                     {activeCols.map(c => <col key={c.key} style={{ width: c.pct }} />)}
                                 </colgroup>
                                 <thead>
                                     <tr>
+                                        <th style={{
+                                            ...TH,
+                                            position: 'sticky',
+                                            top: 0,
+                                            zIndex: 12,
+                                            width: '60px',
+                                            textAlign: 'center'
+                                        }}>
+                                            S.No
+                                        </th>
                                         {activeCols.map(c => {
                                             const isActions = c.key === '_actions';
                                             const isDragged = draggedColKey === c.key;
@@ -752,6 +823,23 @@ export default function UploadPage() {
                                         })}
                                     </tr>
                                     <tr style={{ background: 'rgba(var(--navy-dark-rgb), 0.5)' }}>
+                                        <th
+                                            key="filter-s_no"
+                                            style={{
+                                                padding: '6px 10px',
+                                                borderBottom: '2px solid var(--border)',
+                                                background: 'rgba(var(--navy-rgb), 0.97)',
+                                                position: 'sticky',
+                                                top: '38px',
+                                                zIndex: 11,
+                                                textAlign: 'center',
+                                                color: 'var(--gold)',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 800
+                                            }}
+                                        >
+                                            #
+                                        </th>
                                         {activeCols.map(c => {
                                             const isActions = c.key === '_actions';
                                             if (isActions) {
@@ -847,7 +935,7 @@ export default function UploadPage() {
                                 <tbody>
                                     {filteredCandidates.length === 0 ? (
                                         <tr>
-                                            <td colSpan={activeCols.length} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-dim)' }}>
+                                            <td colSpan={activeCols.length + 1} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-dim)' }}>
                                                 <div style={{ fontSize: '2rem', marginBottom: 8 }}>🔍</div>
                                                 <p style={{ margin: 0 }}>No candidates match the applied filters.</p>
                                             </td>
@@ -859,6 +947,15 @@ export default function UploadPage() {
                                             onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.07)'}
                                             onMouseLeave={e => e.currentTarget.style.background = ri % 2 === 0 ? 'rgba(var(--navy-rgb), 0.25)' : 'transparent'}
                                         >
+                                            <td style={{
+                                                ...TD_BASE,
+                                                textAlign: 'center',
+                                                fontWeight: 800,
+                                                color: 'var(--gold)',
+                                                borderRight: '1px solid rgba(var(--sky-rgb), 0.07)'
+                                            }}>
+                                                {ri + 1}
+                                            </td>
                                             {activeCols.map(({ key }) => {
                                                 /* ── Actions column ── */
                                                 if (key === '_actions') return (
@@ -1013,9 +1110,9 @@ export default function UploadPage() {
                                                         wordBreak: key === 'email' ? 'break-all' : undefined,
                                                         cursor: key === 'candidate_status' ? 'pointer' : 'text',
                                                     }}>
-                                                        {key === 'full_name' && row.filename && !row.filename.toLowerCase().endsWith('.xlsx') && !row.filename.toLowerCase().endsWith('.xls') && !row.filename.toLowerCase().endsWith('.csv') ? (
+                                                        {key === 'full_name' ? (
                                                             <span
-                                                                onClick={() => setViewingPdf({ url: `${BACKEND_URL}/static/${row.filename}`, name: row.full_name })}
+                                                                onClick={() => setSelectedCandidateForDetails(row)}
                                                                 style={{
                                                                     display: 'inline-flex',
                                                                     alignItems: 'center',
@@ -1026,7 +1123,7 @@ export default function UploadPage() {
                                                                     fontWeight: 700,
                                                                     transition: 'color 0.2s'
                                                                 }}
-                                                                title={`View ${row.filename}`}
+                                                                title="View Candidate Details"
                                                             >
                                                                 <FileText size={14} style={{ flexShrink: 0, color: 'var(--gold)' }} />
                                                                 {display}
@@ -1305,7 +1402,681 @@ export default function UploadPage() {
                     </div>
                 </div>
             )}
+
+            {/* Integrations settings modal */}
+            {showIntegrations && (
+                <div className="modal-overlay" style={{ zIndex: 9999 }}>
+                    <div className="card" style={{ width: 620, maxWidth: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+                            <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                🔗 System Integrations
+                            </h3>
+                            <button onClick={() => setShowIntegrations(false)} style={{ background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', display: 'flex' }}><X size={18} /></button>
+                        </div>
+                        
+                        {/* Tabs */}
+                        <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'rgba(var(--navy-dark-rgb), 0.2)' }}>
+                            <button 
+                                onClick={() => setIntegrationsTab('mail')}
+                                style={{
+                                    flex: 1, padding: '12px', border: 'none', background: integrationsTab === 'mail' ? 'rgba(var(--sky-rgb), 0.1)' : 'transparent',
+                                    color: integrationsTab === 'mail' ? 'var(--gold)' : 'var(--text-dim)', fontWeight: 700, cursor: 'pointer', borderBottom: integrationsTab === 'mail' ? '2px solid var(--gold)' : 'none',
+                                    fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
+                                }}
+                            >
+                                📧 Connect with Mail
+                            </button>
+                            <button 
+                                onClick={() => setIntegrationsTab('drive')}
+                                style={{
+                                    flex: 1, padding: '12px', border: 'none', background: integrationsTab === 'drive' ? 'rgba(var(--sky-rgb), 0.1)' : 'transparent',
+                                    color: integrationsTab === 'drive' ? 'var(--gold)' : 'var(--text-dim)', fontWeight: 700, cursor: 'pointer', borderBottom: integrationsTab === 'drive' ? '2px solid var(--gold)' : 'none',
+                                    fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
+                                }}
+                            >
+                                💾 Connect with Drive
+                            </button>
+                        </div>
+
+                        <div style={{ overflowY: 'auto', flex: 1, padding: '20px', display: 'flex', flexDirection: 'column', gap: 15 }}>
+                            {integrationsTab === 'mail' ? (
+                                <>
+                                    {/* Enable switch */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderRadius: 8, background: 'rgba(var(--sky-rgb), 0.05)', border: '1px solid rgba(var(--sky-rgb), 0.15)' }}>
+                                        <div>
+                                            <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text)' }}>Enable Candidate Email Sync</div>
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Polls Gmail unseen messages for attached resumes matching keywords.</div>
+                                        </div>
+                                        <label style={{ position: 'relative', display: 'inline-block', width: 44, height: 22, cursor: 'pointer' }}>
+                                            <input 
+                                                type="checkbox" 
+                                                checked={integrationsSettings.email_enabled === 1}
+                                                onChange={e => setIntegrationsSettings(prev => ({ ...prev, email_enabled: e.target.checked ? 1 : 0 }))}
+                                                style={{ opacity: 0, width: 0, height: 0 }}
+                                            />
+                                            <span style={{
+                                                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                                                backgroundColor: integrationsSettings.email_enabled === 1 ? 'var(--gold)' : '#334155',
+                                                transition: '0.3s', borderRadius: 24, display: 'block'
+                                            }} />
+                                            <span style={{
+                                                position: 'absolute', content: '""', height: 16, width: 16, left: integrationsSettings.email_enabled === 1 ? 24 : 4, bottom: 3,
+                                                backgroundColor: '#000', transition: '0.3s', borderRadius: '50%'
+                                            }} />
+                                        </label>
+                                    </div>
+
+                                    {/* Mail Credentials Form */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, opacity: integrationsSettings.email_enabled === 1 ? 1 : 0.5, pointerEvents: integrationsSettings.email_enabled === 1 ? 'auto' : 'none' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                                            <div>
+                                                <label className="modern-label" style={{ fontSize: '0.75rem' }}>Gmail Address / User</label>
+                                                <input 
+                                                    value={integrationsSettings.email_user || ''}
+                                                    onChange={e => setIntegrationsSettings(prev => ({ ...prev, email_user: e.target.value }))}
+                                                    placeholder="example@gmail.com"
+                                                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="modern-label" style={{ fontSize: '0.75rem' }}>Google App Password</label>
+                                                <input 
+                                                    type="password"
+                                                    value={integrationsSettings.email_pass || ''}
+                                                    onChange={e => setIntegrationsSettings(prev => ({ ...prev, email_pass: e.target.value }))}
+                                                    placeholder={integrationsSettings.email_pass === '****' ? '••••••••••••••••' : '16-character app password'}
+                                                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Trigger Keywords config */}
+                                        <div>
+                                            <label className="modern-label" style={{ fontSize: '0.75rem', marginBottom: 2 }}>Gmail Trigger Keywords</label>
+                                            <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginBottom: 6 }}>
+                                                Only emails whose subject or body contain one of these keywords will be scanned.
+                                            </div>
+                                            
+                                            {/* Keyword Tags display */}
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8, padding: 8, background: 'rgba(var(--navy-dark-rgb), 0.2)', borderRadius: 6, border: '1px solid var(--border)' }}>
+                                                {(integrationsSettings.keywords ? integrationsSettings.keywords.split(',').map(k => k.trim()).filter(Boolean) : []).map(kw => (
+                                                    <span key={kw} style={{
+                                                        background: 'rgba(var(--sky-rgb), 0.15)', border: '1px solid rgba(var(--sky-rgb), 0.3)',
+                                                        borderRadius: 6, padding: '4px 8px', fontSize: '0.75rem', color: 'var(--sky-dim)',
+                                                        display: 'inline-flex', alignItems: 'center', gap: 5
+                                                    }}>
+                                                        {kw}
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={() => {
+                                                                const kws = integrationsSettings.keywords.split(',').map(k => k.trim()).filter(Boolean);
+                                                                const updated = kws.filter(k => k !== kw).join(',');
+                                                                setIntegrationsSettings(prev => ({ ...prev, keywords: updated }));
+                                                            }} 
+                                                            style={{ background: 'none', border: 'none', color: '#ef233c', cursor: 'pointer', padding: 0, display: 'flex' }}
+                                                        >
+                                                            <X size={10} />
+                                                        </button>
+                                                    </span>
+                                                ))}
+                                                {(integrationsSettings.keywords ? integrationsSettings.keywords.split(',').map(k => k.trim()).filter(Boolean) : []).length === 0 && (
+                                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>No keywords set (system defaults to resume, alamaticz, solution, job)</span>
+                                                )}
+                                            </div>
+
+                                            <input 
+                                                placeholder="Type a word (e.g. cv) and press Enter to add keyword"
+                                                onKeyDown={e => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        const val = e.target.value.trim().toLowerCase();
+                                                        if (val) {
+                                                            const kws = integrationsSettings.keywords ? integrationsSettings.keywords.split(',').map(k => k.trim()).filter(Boolean) : [];
+                                                            if (!kws.includes(val)) {
+                                                                const updated = [...kws, val].join(',');
+                                                                setIntegrationsSettings(prev => ({ ...prev, keywords: updated }));
+                                                            }
+                                                        }
+                                                        e.target.value = '';
+                                                    }
+                                                }}
+                                                style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                                            />
+                                        </div>
+
+                                        {/* Server Ports (Collapsible/Advanced) */}
+                                        <div style={{ marginTop: 5 }}>
+                                            <details style={{ cursor: 'pointer' }}>
+                                                <summary style={{ fontSize: '0.75rem', color: 'var(--gold)', fontWeight: 600 }}>Advanced IMAP/SMTP Connection Details</summary>
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 10, cursor: 'default' }}>
+                                                    <div>
+                                                        <label className="modern-label" style={{ fontSize: '0.72rem' }}>IMAP Host</label>
+                                                        <input 
+                                                            value={integrationsSettings.imap_host || ''}
+                                                            onChange={e => setIntegrationsSettings(prev => ({ ...prev, imap_host: e.target.value }))}
+                                                            style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', fontSize: '0.8rem' }}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="modern-label" style={{ fontSize: '0.72rem' }}>IMAP Port</label>
+                                                        <input 
+                                                            type="number"
+                                                            value={integrationsSettings.imap_port || 993}
+                                                            onChange={e => setIntegrationsSettings(prev => ({ ...prev, imap_port: parseInt(e.target.value) || 993 }))}
+                                                            style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', fontSize: '0.8rem' }}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="modern-label" style={{ fontSize: '0.72rem' }}>SMTP Host</label>
+                                                        <input 
+                                                            value={integrationsSettings.smtp_host || ''}
+                                                            onChange={e => setIntegrationsSettings(prev => ({ ...prev, smtp_host: e.target.value }))}
+                                                            style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', fontSize: '0.8rem' }}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="modern-label" style={{ fontSize: '0.72rem' }}>SMTP Port</label>
+                                                        <input 
+                                                            type="number"
+                                                            value={integrationsSettings.smtp_port || 587}
+                                                            onChange={e => setIntegrationsSettings(prev => ({ ...prev, smtp_port: parseInt(e.target.value) || 587 }))}
+                                                            style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', fontSize: '0.8rem' }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </details>
+                                        </div>
+
+                                        {/* Live connection check status banner */}
+                                        <div style={{
+                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                            padding: '10px 14px', borderRadius: 8,
+                                            background: testStatus.status === 'connected' ? 'rgba(74, 222, 128, 0.08)' : 
+                                                        testStatus.status === 'error' ? 'rgba(239, 35, 60, 0.08)' : 'rgba(255, 255, 255, 0.03)',
+                                            border: '1px solid ' + (
+                                                        testStatus.status === 'connected' ? 'rgba(74, 222, 128, 0.3)' : 
+                                                        testStatus.status === 'error' ? 'rgba(239, 35, 60, 0.3)' : 'var(--border)'
+                                                    )
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                {testStatus.status === 'testing' ? (
+                                                    <Loader size={14} className="spin" style={{ color: 'var(--sky-dim)' }} />
+                                                ) : testStatus.status === 'connected' ? (
+                                                    <span style={{ color: '#4ade80', fontSize: '0.9rem' }}>✔</span>
+                                                ) : testStatus.status === 'error' ? (
+                                                    <span style={{ color: '#ef233c', fontSize: '0.9rem' }}>✘</span>
+                                                ) : (
+                                                    <span style={{ color: 'var(--text-dim)', fontSize: '0.9rem' }}>⚪</span>
+                                                )}
+                                                <span style={{
+                                                    fontSize: '0.78rem',
+                                                    color: testStatus.status === 'connected' ? '#4ade80' : 
+                                                           testStatus.status === 'error' ? '#ef233c' : 'var(--text-dim)',
+                                                    fontWeight: 600
+                                                }}>
+                                                    {testStatus.message || 'Gmail Status: Not Checked'}
+                                                </span>
+                                            </div>
+                                            <button 
+                                                type="button" 
+                                                className="btn btn-secondary" 
+                                                onClick={runConnectionTest} 
+                                                disabled={testingConnection || !integrationsSettings.email_enabled}
+                                                style={{ padding: '4px 12px', fontSize: '0.73rem', cursor: 'pointer', height: 'fit-content' }}
+                                            >
+                                                {testingConnection ? 'Testing...' : 'Test Connection'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    {/* Google Drive Tab */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderRadius: 8, background: 'rgba(var(--sky-rgb), 0.05)', border: '1px solid rgba(var(--sky-rgb), 0.15)' }}>
+                                        <div>
+                                            <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text)' }}>Enable Google Drive Sync (Placeholder)</div>
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Synchronize candidate resumes from a shared Google Drive directory.</div>
+                                        </div>
+                                        <label style={{ position: 'relative', display: 'inline-block', width: 44, height: 22, cursor: 'pointer' }}>
+                                            <input 
+                                                type="checkbox" 
+                                                checked={integrationsSettings.drive_enabled === 1}
+                                                onChange={e => setIntegrationsSettings(prev => ({ ...prev, drive_enabled: e.target.checked ? 1 : 0 }))}
+                                                style={{ opacity: 0, width: 0, height: 0 }}
+                                            />
+                                            <span style={{
+                                                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                                                backgroundColor: integrationsSettings.drive_enabled === 1 ? 'var(--gold)' : '#334155',
+                                                transition: '0.3s', borderRadius: 24, display: 'block'
+                                            }} />
+                                            <span style={{
+                                                position: 'absolute', content: '""', height: 16, width: 16, left: integrationsSettings.drive_enabled === 1 ? 24 : 4, bottom: 3,
+                                                backgroundColor: '#000', transition: '0.3s', borderRadius: '50%'
+                                            }} />
+                                        </label>
+                                    </div>
+
+                                    {/* Google Drive Setup Instructions */}
+                                    <div style={{ padding: 15, background: 'rgba(var(--navy-dark-rgb), 0.3)', border: '1px solid var(--border)', borderRadius: 12 }}>
+                                        <h4 style={{ margin: '0 0 10px 0', color: 'var(--gold)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.04rem' }}>🛠 Connection Instructions</h4>
+                                        <ol style={{ margin: 0, paddingLeft: 16, fontSize: '0.78rem', color: 'var(--text-dim)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                            <li>Go to the <strong>Google Cloud Console</strong>.</li>
+                                            <li>Create a new project and enable the <strong>Google Drive API</strong>.</li>
+                                            <li>Create credentials of type <strong>OAuth client ID</strong>.</li>
+                                            <li>Download the client secrets JSON configuration file.</li>
+                                            <li>Save the file as <code>client_secrets.json</code> inside the <code>backend/</code> folder.</li>
+                                            <li>Toggle Drive sync on to authorize connection.</li>
+                                        </ol>
+                                        
+                                        {integrationsSettings.drive_enabled === 1 && (
+                                            <div style={{ marginTop: 12, padding: '8px 12px', border: '1px solid rgba(var(--sky-rgb), 0.3)', background: 'rgba(var(--sky-rgb), 0.05)', borderRadius: 6, display: 'flex', gap: 6, alignItems: 'center' }}>
+                                                <Loader size={14} className="spin" style={{ color: 'var(--sky-dim)' }} />
+                                                <span style={{ fontSize: '0.75rem', color: 'var(--sky-dim)' }}>
+                                                    Looking for credentials: <code>client_secrets.json</code>... (Simulating Drive Sync)
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+
+                        {/* Actions */}
+                        <div style={{ display: 'flex', gap: 10, padding: '16px 20px', borderTop: '1px solid var(--border)' }}>
+                            <button className="btn btn-secondary" onClick={() => setShowIntegrations(false)} style={{ flex: 1 }}>
+                                Cancel
+                            </button>
+                            <button className="btn" onClick={saveIntegrationsSettings} style={{ flex: 1, background: 'var(--gradient-gold)', color: '#000', fontWeight: 'bold' }}>
+                                Save Settings
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {selectedCandidateForDetails && (
+                <CandidateDetailsModal
+                    candidate={selectedCandidateForDetails}
+                    onClose={() => setSelectedCandidateForDetails(null)}
+                    onViewPdf={(filename, name) => {
+                        setSelectedCandidateForDetails(null);
+                        setViewingPdf({ url: `${BACKEND_URL}/static/${filename}`, name });
+                    }}
+                />
+            )}
         </div>
     )
+}
+
+/* ─── Candidate Details Modal ────────────────────────────────────────────── */
+function CandidateDetailsModal({ candidate, onClose, onViewPdf }) {
+    const [activeTab, setActiveTab] = useState('profile');
+    const [jobs, setJobs] = useState([]);
+    const [loadingJobs, setLoadingJobs] = useState(false);
+
+    useEffect(() => {
+        if (candidate?.id) {
+            setLoadingJobs(true);
+            axios.get(`${API_URL}/api/candidates/${candidate.id}/jobs`)
+                .then(res => setJobs(res.data || []))
+                .catch(err => console.error("Failed to load candidate matched jobs", err))
+                .finally(() => setLoadingJobs(false));
+        }
+    }, [candidate]);
+
+    const isImmediate = (val) => {
+        if (val === 0 || val === '0') return true;
+        return String(val || '').toLowerCase().includes('immediate');
+    };
+
+    const isPdf = candidate.filename && candidate.filename.toLowerCase().endsWith('.pdf');
+
+    const hasViewableResume = candidate.filename && 
+        !candidate.filename.toLowerCase().endsWith('.xlsx') && 
+        !candidate.filename.toLowerCase().endsWith('.xls') && 
+        !candidate.filename.toLowerCase().endsWith('.csv');
+
+    return (
+        <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.75)', zIndex: 99998,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            backdropFilter: 'blur(4px)'
+        }} onClick={onClose}>
+            <div className="card" onClick={e => e.stopPropagation()} style={{
+                width: '95%', 
+                maxWidth: hasViewableResume ? '1400px' : '800px', 
+                height: hasViewableResume ? '90vh' : 'auto',
+                maxHeight: '90vh',
+                display: 'flex', 
+                flexDirection: 'row', 
+                padding: 0,
+                overflow: 'hidden', 
+                border: '1px solid var(--border)',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+                background: 'var(--navy-dark)'
+            }}>
+                {/* Left Panel: Candidate details */}
+                <div style={{
+                    flex: hasViewableResume ? '1 1 50%' : '1 1 100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    height: '100%',
+                    overflow: 'hidden',
+                    borderRight: hasViewableResume ? '1px solid var(--border)' : 'none'
+                }}>
+                    {/* Header */}
+                    <div style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '16px 24px', background: 'rgba(var(--navy-rgb), 0.95)',
+                        borderBottom: '1px solid var(--border)'
+                    }}>
+                        <div>
+                            <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.25rem', fontWeight: 800 }}>
+                                {candidate.full_name || 'Candidate Details'}
+                            </h3>
+                            <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)', marginTop: '4px', display: 'flex', gap: '15px' }}>
+                                <span>Source: <strong style={{ color: 'var(--gold)' }}>{candidate.source || 'Resume Upload'}</strong></span>
+                                {candidate.timestamp && <span>Analyzed: {new Date(candidate.timestamp).toLocaleDateString()}</span>}
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                            {candidate.filename && !candidate.filename.toLowerCase().endsWith('.xlsx') && !candidate.filename.toLowerCase().endsWith('.xls') && !candidate.filename.toLowerCase().endsWith('.csv') && (
+                                isPdf ? (
+                                    <button 
+                                        onClick={() => onViewPdf(candidate.filename, candidate.full_name)}
+                                        style={{
+                                            background: 'rgba(var(--sky-rgb), 0.15)', border: '1px solid rgba(var(--sky-rgb), 0.3)',
+                                            color: 'var(--sky-dim)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
+                                            fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 700,
+                                            display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s'
+                                        }}
+                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.25)'}
+                                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.15)'}
+                                    >
+                                        <FileText size={14} /> Open in New Tab
+                                    </button>
+                                ) : (
+                                    <a 
+                                        href={`${import.meta.env.VITE_API_URL || ''}/static/${candidate.filename}`}
+                                        download={candidate.filename}
+                                        style={{
+                                            background: 'rgba(var(--sky-rgb), 0.15)', border: '1px solid rgba(var(--sky-rgb), 0.3)',
+                                            color: 'var(--sky-dim)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
+                                            fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 700,
+                                            display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s',
+                                            textDecoration: 'none'
+                                        }}
+                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.25)'}
+                                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.15)'}
+                                    >
+                                        <Download size={14} /> Download Resume
+                                    </a>
+                                )
+                            )}
+                            <button onClick={onClose} style={{
+                                background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
+                                color: 'var(--gold)', cursor: 'pointer', padding: '6px', borderRadius: '8px',
+                                display: 'flex', transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.2)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.1)'}
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Tabs Selector */}
+                    <div style={{ display: 'flex', background: 'rgba(var(--navy-rgb), 0.3)', padding: '0 24px', borderBottom: '1px solid var(--border)' }}>
+                        <button 
+                            onClick={() => setActiveTab('profile')}
+                            style={{
+                                padding: '12px 20px', background: 'transparent', border: 'none',
+                                borderBottom: `3px solid ${activeTab === 'profile' ? 'var(--gold)' : 'transparent'}`,
+                                color: activeTab === 'profile' ? 'var(--gold)' : 'var(--text-dim)',
+                                fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
+                                transition: 'all 0.2s', outline: 'none'
+                            }}
+                        >
+                            👤 Profile Details
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('jobs')}
+                            style={{
+                                padding: '12px 20px', background: 'transparent', border: 'none',
+                                borderBottom: `3px solid ${activeTab === 'jobs' ? 'var(--gold)' : 'transparent'}`,
+                                color: activeTab === 'jobs' ? 'var(--gold)' : 'var(--text-dim)',
+                                fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
+                                transition: 'all 0.2s', outline: 'none'
+                            }}
+                        >
+                            💼 Matched & Selected Jobs ({jobs.length})
+                        </button>
+                    </div>
+
+                    {/* Content */}
+                    <div style={{ flex: 1, overflowY: 'auto', padding: '24px', color: 'var(--text)' }}>
+                        {activeTab === 'profile' ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                {/* Grid fields */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Name</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.full_name || '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Source</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--gold)', background: 'rgba(var(--gold-rgb), 0.1)', padding: '2px 8px', borderRadius: '6px', display: 'inline-block' }}>
+                                            {candidate.source || 'Resume Upload'}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Total Experience</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.total_experience ? `${candidate.total_experience} yrs` : '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Pega Experience</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.pega_experience ? `${candidate.pega_experience} yrs` : '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>CDH Experience</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.cdh_exp ? `${candidate.cdh_exp} yrs` : '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Current CTC / salary</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.ctc || '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Expected CTC</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.expected_ctc || '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Percentage Hike</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.percentage_hike || '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Notice Period</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>
+                                            <span className={`badge ${isImmediate(candidate.notice_period) ? 'badge-green' : 'badge-sky'}`}>
+                                                {candidate.notice_period === 0 || candidate.notice_period === '0' ? 'Immediate' : (candidate.notice_period ? `${candidate.notice_period} days` : '—')}
+                                            </span>
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Current Location</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.current_location || '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Preferred Location</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.pref_locations || '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Current Employment</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.current_organization || '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Phone Number</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.phone || '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Email Address</span>
+                                        {candidate.email ? (
+                                            <a 
+                                                href={`https://mail.google.com/mail/?view=cm&fs=1&to=${candidate.email}`} 
+                                                target="_blank" 
+                                                rel="noreferrer" 
+                                                style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--sky-dim)', textDecoration: 'underline', wordBreak: 'break-all' }}
+                                                title="Click to compose in Gmail"
+                                            >
+                                                ✉️ {candidate.email}
+                                            </a>
+                                        ) : '—'}
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>LinkedIn Profile</span>
+                                        {candidate.linkedin ? (
+                                            <a href={candidate.linkedin.startsWith('http') ? candidate.linkedin : `https://${candidate.linkedin}`} target="_blank" rel="noreferrer" style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--gold)', textDecoration: 'underline' }}>
+                                                View LinkedIn
+                                            </a>
+                                        ) : '—'}
+                                    </div>
+                                </div>
+
+                                <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '10px 0' }} />
+
+                                {/* Long Text Areas */}
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Skills</span>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                        {candidate.skills ? String(candidate.skills).split(',').map((s, idx) => (
+                                            <span key={idx} style={{
+                                                background: 'rgba(var(--sky-rgb), 0.12)', border: '1px solid rgba(var(--sky-rgb), 0.25)',
+                                                borderRadius: 5, padding: '3px 8px', fontSize: '0.75rem', color: 'var(--sky-dim)'
+                                            }}>{s.trim()}</span>
+                                        )) : <span style={{ opacity: 0.35 }}>—</span>}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Certifications</span>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                        {candidate.certifications ? String(candidate.certifications).split(',').map((c, idx) => (
+                                            <span key={idx} style={{
+                                                background: 'rgba(var(--gold-rgb), 0.12)', border: '1px solid rgba(var(--gold-rgb), 0.25)',
+                                                borderRadius: 5, padding: '3px 8px', fontSize: '0.75rem', color: 'var(--gold)'
+                                            }}>{c.trim()}</span>
+                                        )) : <span style={{ opacity: 0.35 }}>—</span>}
+                                    </div>
+                                </div>
+
+                                {candidate.notescomments && (
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Notes / Recruiter Comments</span>
+                                        <div style={{ padding: '12px', background: 'rgba(var(--navy-dark-rgb), 0.3)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.88rem', whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>
+                                            {candidate.notescomments}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {candidate.email_message && (
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>✉️ Imported Email Message</span>
+                                        <div style={{ 
+                                            padding: '12px', 
+                                            background: 'rgba(var(--navy-dark-rgb), 0.5)', 
+                                            border: '1px solid var(--border)', 
+                                            borderRadius: '8px', 
+                                            fontSize: '0.84rem', 
+                                            whiteSpace: 'pre-wrap', 
+                                            lineHeight: '1.45',
+                                            maxHeight: '200px',
+                                            overflowY: 'auto',
+                                            color: 'var(--text)',
+                                            fontFamily: 'monospace'
+                                        }}>
+                                            {candidate.email_message}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div>
+                                {loadingJobs ? (
+                                    <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
+                                        <Loader className="spin" size={24} style={{ color: 'var(--gold)' }} />
+                                    </div>
+                                ) : jobs.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-dim)', border: '1px dashed var(--border)', borderRadius: '12px' }}>
+                                        No associated job mappings found for this candidate.
+                                    </div>
+                                ) : (
+                                    <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem', textAlign: 'left' }}>
+                                            <thead>
+                                                <tr style={{ background: 'rgba(var(--navy-rgb), 0.85)', borderBottom: '2px solid var(--border)' }}>
+                                                    <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800 }}>Job Title</th>
+                                                    <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800 }}>Client</th>
+                                                    <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800 }}>Status</th>
+                                                    <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800, width: '45%' }}>AI Match Reason</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {jobs.map((job, idx) => {
+                                                    const s = String(job.match_status || 'matched').trim();
+                                                    const isSelected = s === 'selected';
+                                                    
+                                                    return (
+                                                        <tr key={idx} style={{ 
+                                                            borderBottom: '1px solid rgba(var(--sky-rgb), 0.08)',
+                                                            background: idx % 2 === 0 ? 'rgba(var(--navy-rgb), 0.15)' : 'transparent'
+                                                        }}>
+                                                            <td style={{ padding: '10px 12px', fontWeight: 'bold' }}>{job.title}</td>
+                                                            <td style={{ padding: '10px 12px' }}>{job.client_name || '—'}</td>
+                                                            <td style={{ padding: '10px 12px' }}>
+                                                                <span style={{
+                                                                    background: isSelected ? 'rgba(45, 212, 191, 0.12)' : 'rgba(56, 189, 248, 0.12)',
+                                                                    color: isSelected ? '#2dd4bf' : '#38bdf8',
+                                                                    border: isSelected ? '1px solid rgba(45, 212, 191, 0.25)' : '1px solid rgba(56, 189, 248, 0.25)',
+                                                                    borderRadius: 5, padding: '2px 8px', fontSize: '0.72rem', fontWeight: 700,
+                                                                    textTransform: 'uppercase', display: 'inline-block'
+                                                                }}>
+                                                                    {s}
+                                                                </span>
+                                                            </td>
+                                                            <td style={{ padding: '10px 12px', color: 'var(--text-dim)', fontSize: '0.8rem', lineHeight: '1.45' }}>
+                                                                {job.ai_reason || '—'}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Right Panel: Resume PDF embedded directly or Download Placeholder */}
+                {hasViewableResume && (
+                    <div style={{
+                        flex: '1 1 50%',
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        background: '#525659'
+                    }}>
+                        <iframe 
+                            src={`${API_URL}/static/${candidate.filename}#view=FitH`} 
+                            style={{ width: '100%', height: '100%', border: 'none', background: '#525659' }} 
+                            title="Candidate Resume"
+                        />
+                    </div>
+                )}
+            </div>
+        </div>
+    );
 }
 

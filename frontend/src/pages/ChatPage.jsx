@@ -198,7 +198,7 @@ export default function ChatPage() {
                     {messages.length === 0 && !loading ? (
                         <div className="chat-empty">
                             <div className="chat-empty-icon">🤖</div>
-                            <div className="chat-empty-title">Chat with Hire AI</div>
+                            <div className="chat-empty-title">Chat with Hire-Ai</div>
                             <div className="chat-empty-sub">
                                 Ask me anything about your candidates — I'll show results in a table when possible.
                             </div>
@@ -236,7 +236,7 @@ export default function ChatPage() {
                         </button>
                     </div>
                     <p style={{ textAlign: 'center', fontSize: '0.73rem', color: 'rgba(var(--sky-dim-rgb), 0.4)', marginTop: '0.5rem' }}>
-                        Hire AI may make mistakes — always verify important candidate information.
+                        Hire-Ai may make mistakes — always verify important candidate information.
                     </p>
                 </div>
             </div>

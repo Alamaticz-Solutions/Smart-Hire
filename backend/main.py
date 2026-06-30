@@ -88,9 +88,32 @@ from fastapi.responses import JSONResponse, FileResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
+import fitz
+from langchain_core.documents import Document
+
+class SafePyMuPDFLoader:
+    def __init__(self, file_path: str):
+        self.file_path = file_path
+
+    def load(self):
+        docs = []
+        try:
+            doc = fitz.open(self.file_path) 
+            for page_num, page in enumerate(doc):
+                text = page.get_text()
+                metadata = {
+                    "source": self.file_path,
+                    "page": page_num,
+                }
+                docs.append(Document(page_content=text, metadata=metadata))
+            doc.close()
+        except Exception as e:
+            print(f"Error loading PDF {self.file_path} with fitz: {e}")
+            raise e
+        return docs
 
 # LangChain / AI
-from langchain_community.document_loaders import PyMuPDFLoader, Docx2txtLoader
+from langchain_community.document_loaders import Docx2txtLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
@@ -134,12 +157,13 @@ app.mount("/static", StaticFiles(directory=UPLOAD_DIR), name="static")
 # ── Models (loaded once) ───────────────────────────────────────────────────────
 _embeddings = None
 _llm        = None
+_active_groq_key = None
 _models_loading = False
 _model_lock = threading.Lock()
 _processing_lock = threading.Lock()
 
 def get_models():
-    global _embeddings, _llm, _models_loading
+    global _embeddings, _llm, _models_loading, _active_groq_key
     with _model_lock:
         _models_loading = True
         if _embeddings is None:
@@ -148,14 +172,26 @@ def get_models():
             except Exception as e:
                 print(f"Warning: Failed to load HuggingFaceEmbeddings: {e}")
                 _embeddings = None
-        if _llm is None:
-            _llm = ChatGroq(temperature=0.1, model_name="llama-3.1-8b-instant", groq_api_key=GROQ_API_KEY)
+        
+        # Load env variables dynamically in case the key has changed in the file
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(override=True)
+        except Exception:
+            pass
+        current_key = os.getenv("GROQ_API_KEY", "")
+        
+        if _llm is None or _active_groq_key != current_key:
+            _llm = ChatGroq(temperature=0.1, model_name="llama-3.1-8b-instant", groq_api_key=current_key)
+            _active_groq_key = current_key
+            
         _models_loading = False
     return _embeddings, _llm
 
 @app.on_event("startup")
 def load_models_in_background():
     threading.Thread(target=get_models, daemon=True).start()
+    threading.Thread(target=poll_emails_and_process, daemon=True).start()
 
 # ── DB Helpers ─────────────────────────────────────────────────────────────────
 def init_db():
@@ -300,6 +336,9 @@ def init_db():
         'email': 'TEXT',
         'phone': 'TEXT',
         'linkedin': 'TEXT',
+        'email_message': 'TEXT',
+        'formatted_json': 'TEXT',
+        'sender_email': 'TEXT',
         'is_qualified': 'INTEGER DEFAULT 0',
         'is_approved': 'INTEGER DEFAULT 1',
         'created_by': "TEXT DEFAULT 'admin'"
@@ -385,6 +424,43 @@ def init_db():
     for uname in ["admin", "user", "boopathi", "praveen", "harish", "sabari", "somasekhar9"]:
         cur.execute("UPDATE users SET email = ? WHERE LOWER(username) = ? AND (email IS NULL OR email = '')", (f"{uname}@gmail.com", uname))
 
+    # Create integrations_settings table
+    cur.execute('''
+    CREATE TABLE IF NOT EXISTS integrations_settings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email_enabled INTEGER DEFAULT 0,
+        imap_host TEXT DEFAULT 'imap.gmail.com',
+        imap_port INTEGER DEFAULT 993,
+        smtp_host TEXT DEFAULT 'smtp.gmail.com',
+        smtp_port INTEGER DEFAULT 587,
+        email_user TEXT,
+        email_pass TEXT,
+        keywords TEXT DEFAULT 'resume,alamaticz,solution,job',
+        drive_enabled INTEGER DEFAULT 0
+    )
+    ''')
+
+    # Seed integrations_settings if empty, loading from environment variables if present
+    cur.execute("SELECT COUNT(*) FROM integrations_settings")
+    if cur.fetchone()[0] == 0:
+        env_user = os.getenv("SMTP_SENDER", "")
+        env_pass = os.getenv("SMTP_PASSWORD", "")
+        env_imap = os.getenv("IMAP_HOST", "imap.gmail.com")
+        env_smtp = os.getenv("SMTP_HOST", "smtp.gmail.com")
+        email_enabled = 1 if env_user and env_pass else 0
+        cur.execute("""
+        INSERT INTO integrations_settings (email_enabled, imap_host, imap_port, smtp_host, smtp_port, email_user, email_pass, keywords, drive_enabled)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (email_enabled, env_imap, 993, env_smtp, 587, env_user, env_pass, "resume,alamaticz,solution,job", 0))
+
+    # Create processed_emails table
+    cur.execute('''
+    CREATE TABLE IF NOT EXISTS processed_emails (
+        msg_uid TEXT PRIMARY KEY,
+        processed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
     conn.commit()
     conn.close()
 
@@ -393,7 +469,10 @@ def get_candidates_list(username: Optional[str] = None, role: str = "user") -> l
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     try:
-        if role == "admin" or not username:
+        is_hr_or_admin = False
+        if username:
+            is_hr_or_admin = is_admin_or_hr(username)
+        if role == "admin" or is_hr_or_admin or not username:
             cur.execute("SELECT * FROM candidate_metadata ORDER BY timestamp DESC")
         else:
             cur.execute("SELECT * FROM candidate_metadata WHERE LOWER(created_by) = LOWER(?) ORDER BY timestamp DESC", (username,))
@@ -660,7 +739,7 @@ def list_candidates(request: Request):
         conn.close()
         if row:
             is_external = (row[0] == 1)
-            is_user_admin = (row[1] == 1 or row[2] == "admin")
+            is_user_admin = (row[1] == 1 or row[2] == "admin" or is_admin_or_hr(username))
             role = row[2]
             if is_external:
                 raise HTTPException(status_code=403, detail="Forbidden")
@@ -676,9 +755,9 @@ def list_candidates(request: Request):
             if v is None:
                 row[k] = ""
 
-    # Mask certifications for non-admin users (like HR users)
-    is_user_admin = (get_user_role(username) == "admin")
-    if not is_user_admin:
+    # Mask certifications for non-admin and non-HR users
+    is_user_admin_or_hr = is_admin_or_hr(username)
+    if not is_user_admin_or_hr:
         for row in rows:
             row["certifications"] = "[HIDDEN]"
 
@@ -740,6 +819,7 @@ def get_columns():
         {"col_key": "notice_period", "col_label": "Notice Period"},
         {"col_key": "phone", "col_label": "Phone No"},
         {"col_key": "email", "col_label": "Email"},
+        {"col_key": "sender_email", "col_label": "Mail From"},
         {"col_key": "linkedin", "col_label": "LinkedIn"},
         {"col_key": "current_location", "col_label": "Current Location"},
         {"col_key": "pref_locations", "col_label": "Pref Locations"},
@@ -789,7 +869,7 @@ async def update_candidate(candidate_id: int, request: Request, background_tasks
         conn.close()
         raise HTTPException(status_code=404, detail="Candidate not found")
     created_by = row[0]
-    if role != "admin":
+    if not is_admin_or_hr(username):
         if created_by and created_by.lower() != username.lower():
             conn.close()
             raise HTTPException(status_code=403, detail="Forbidden")
@@ -859,7 +939,7 @@ def delete_candidate(candidate_id: int, request: Request):
         raise HTTPException(status_code=404, detail="Candidate not found")
     cname, created_by = row
     
-    if role != "admin":
+    if not is_admin_or_hr(username):
         if created_by and created_by.lower() != username.lower():
             conn.close()
             raise HTTPException(status_code=403, detail="Forbidden")
@@ -890,7 +970,7 @@ def get_candidate_jobs(candidate_id: int, request: Request):
         raise HTTPException(status_code=404, detail="Candidate not found")
         
     created_by = cand_row[0]
-    if role != "admin":
+    if not is_admin_or_hr(username):
         if created_by and created_by.lower() != username.lower():
             conn.close()
             raise HTTPException(status_code=403, detail="Forbidden")
@@ -924,9 +1004,17 @@ def get_formatted_resume_data(candidate_id: int, request: Request):
 
     candidate = dict(row)
     created_by = candidate.get("created_by")
-    if role != "admin":
+    if not is_admin_or_hr(username):
         if created_by and created_by.lower() != username.lower():
             raise HTTPException(status_code=403, detail="Forbidden")
+
+    # Check cache first
+    if candidate.get("formatted_json"):
+        try:
+            return json.loads(candidate.get("formatted_json"))
+        except Exception:
+            pass
+
     filename = candidate.get("filename", "")
     
     # Try to load original text
@@ -936,7 +1024,7 @@ def get_formatted_resume_data(candidate_id: int, request: Request):
         if os.path.exists(path) and not filename.lower().endswith(('.xlsx', '.xls', '.csv')):
             try:
                 if filename.lower().endswith(".pdf"):
-                    loader = PyMuPDFLoader(path)
+                    loader = SafePyMuPDFLoader(path)
                 else:
                     loader = Docx2txtLoader(path)
                 docs = loader.load()
@@ -1027,6 +1115,17 @@ JSON:"""
         if start != -1 and end != -1:
             raw = raw[start:end+1]
         data = json.loads(raw)
+
+        # Cache the result in DB
+        try:
+            conn = sqlite3.connect(STATS_DB, timeout=30.0)
+            cur = conn.cursor()
+            cur.execute("UPDATE candidate_metadata SET formatted_json = ? WHERE id = ?", (json.dumps(data), candidate_id))
+            conn.commit()
+            conn.close()
+        except Exception as e_cache:
+            print(f"Error caching formatted resume: {e_cache}")
+
     except Exception as e:
         print(f"Error parsing resume via LLM: {e}")
         # Return fallback structured data
@@ -1056,9 +1155,43 @@ JSON:"""
 
     return data
 
+@app.put("/api/candidates/{candidate_id}/formatted-resume")
+async def update_formatted_resume_data(candidate_id: int, request: Request):
+    username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
+    
+    body = await request.json()
+    
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT created_by FROM candidate_metadata WHERE id = ?", (candidate_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Candidate not found")
+            
+        created_by = row[0]
+        if not is_admin_or_hr(username):
+            if created_by and created_by.lower() != username.lower():
+                raise HTTPException(status_code=403, detail="Forbidden")
+                
+        cur.execute("UPDATE candidate_metadata SET formatted_json = ? WHERE id = ?", (json.dumps(body), candidate_id))
+        conn.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+    
+    cname = get_candidate_name(candidate_id)
+    log_activity_db(username or "unknown", f"updated formatted resume for candidate '{cname}'")
+    return {"status": "updated"}
+
 # ── Upload & Extract ────────────────────────────────────────────────────────────
-EXTRACT_PROMPT = """You are an expert resume parser. Extract EVERY piece of information from the resume below.
-Be extremely thorough — search all sections: Summary, Experience, Skills, Education, Certifications, Contact, Headers, Footers.
+EXTRACT_PROMPT = """You are an expert resume and email parser. Extract EVERY piece of information from the resume and the email message (if provided) below.
+Be extremely thorough — search all sections: Summary, Experience, Skills, Education, Certifications, Contact, Headers, Footers, and the email body.
 
 Map the extracted data according to the database keys and their corresponding column headings/labels.
 
@@ -1066,9 +1199,9 @@ Return ONLY a valid JSON object with these exact keys (no extra text, no markdow
 
 {{
   "full_name": "<Full name from top of resume. Matching column heading: 'Name'>",
-  "total_experience": <number — total years of professional work experience. Calculate if needed. 0 if fresher. Matching column heading: 'Total Exp'>,
-  "pega_experience": <number — years of Pega PRPC/BPM experience specifically. 0 if none. Matching column heading: 'Pega Exp'>,
-  "cdh_exp": <number — years of Pega Customer Decision Hub (CDH) experience specifically. 0 if none. Matching column heading: 'CDH Exp'>,
+  "total_experience": <number — total years of professional work experience. MUST be extracted from the resume document itself (do not take this from the email body). Calculate if needed. 0 if fresher. Matching column heading: 'Total Exp'>,
+  "pega_experience": <number — years of Pega PRPC/BPM experience specifically. If the email body specifies Pega experience (e.g. '5 yrs into pega'), MUST extract this value from the email body. 0 if none. Matching column heading: 'Pega Exp'>,
+  "cdh_exp": <number — years of Pega Customer Decision Hub (CDH) experience specifically. If the email body specifies CDH experience, take that. Otherwise, calculate it from the resume (look at durations of CDH-related projects or roles). 0 if none. Matching column heading: 'CDH Exp'>,
   "ctc": "<Current CTC / current salary / current package. E.g. '8 LPA', '10.5 Lacs', '900000'. Look for salary, CTC, package, LPA, Lakhs. Empty if not found. Matching column heading: 'Current CTC'>",
   "expected_ctc": "<Expected CTC / expected salary / expected package. E.g. '12 LPA', '15 Lacs'. Look for expected CTC, ECTC, expected salary, expected package, expectation. Empty if not found. Matching column heading: 'Exp CTC'>",
   "percentage_hike": "<Expected percentage hike. Calculate if both current and expected CTC are present, else empty. Matching column heading: 'Percentage Hike'>",
@@ -1095,21 +1228,22 @@ Rules:
 - notice_period: Must be strictly an integer (0, 15, 30, 60). No strings.
 - availability_in_days: Integer number of days.
 - If a field is not found, use an empty string "" (or null for numbers). Do not invent data.
+- If both a resume and an email message are provided, extract and merge the details. The email message may contain more recent or specific details (such as current/expected CTC, notice period, or Pega/CDH experience); prioritize information from the email message in case of conflict. However, the total_experience (total years of experience) MUST always be extracted from the resume document itself (not the email body), as the resume lists the full work history.
 
-Resume Text:
+Resume and Email Content:
 {text}
 
 JSON:"""
 
 
-def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, username: str = "unknown"):
+def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, username: str = "unknown", email_message: str = None, sender_email: str = None):
     try:
         _, llm = get_models()
         embeddings, _ = get_models()
 
         # Load document
         if safe_name.lower().endswith(".pdf"):
-            loader = PyMuPDFLoader(path)
+            loader = SafePyMuPDFLoader(path)
         else:
             loader = Docx2txtLoader(path)
         docs = loader.load()
@@ -1131,7 +1265,11 @@ def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, userna
                     desc_str += f" ({desc})"
                 custom_fields_str += f',\n  "{col_key}": "<{desc_str}>"'
                 
-        prompt_str = EXTRACT_PROMPT.format(text=text[:7000], custom_fields=custom_fields_str)
+        combined_text = text[:7000]
+        if email_message:
+            combined_text += f"\n\n=== EMAIL MESSAGE BODY ===\n{email_message}\n=========================="
+            
+        prompt_str = EXTRACT_PROMPT.format(text=combined_text, custom_fields=custom_fields_str)
         
         # Add a simple retry mechanism for rate limits
         max_retries = 3
@@ -1161,6 +1299,12 @@ def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, userna
             raw = raw[start:end+1]
 
         data = json.loads(raw)
+        if username == "email_worker":
+            data['source'] = 'Import from Mail'
+        if email_message:
+            data['email_message'] = email_message
+        if sender_email:
+            data['sender_email'] = sender_email
 
         # -- Start Data Validation & Normalization --
         import re
@@ -1203,36 +1347,51 @@ def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, userna
         # Check for existing match (excluding the placeholder we just created)
         conn = sqlite3.connect(STATS_DB, timeout=30.0)
         cur = conn.cursor()
-        cur.execute("SELECT id, full_name, email, phone FROM candidate_metadata WHERE (filename != ? OR filename IS NULL) AND LOWER(created_by) = LOWER(?)", (safe_name, username))
-        existing_candidates = [
-            {
-                "id": r[0],
-                "full_name": r[1] or "",
-                "email": r[2] or "",
-                "phone": r[3] or ""
-            }
-            for r in cur.fetchall()
-        ]
         
-        email = data.get('email', '')
-        phone = data.get('phone', '')
-        name = data.get('full_name', '')
-        
-        norm_email = normalize_email(email)
-        
+        # Match by sender_email first if provided
         match_id = None
-        for ec in existing_candidates:
-            ec_email = normalize_email(ec["email"])
+        if sender_email:
+            cur.execute("SELECT id FROM candidate_metadata WHERE LOWER(sender_email) = ? OR LOWER(email) = ? ORDER BY id DESC LIMIT 1", (sender_email.lower(), sender_email.lower()))
+            row = cur.fetchone()
+            if row:
+                match_id = row[0]
+                
+        if not match_id:
+            cur.execute("SELECT id, full_name, email, phone, sender_email FROM candidate_metadata WHERE (filename != ? OR filename IS NULL)", (safe_name,))
+            existing_candidates = [
+                {
+                    "id": r[0],
+                    "full_name": r[1] or "",
+                    "email": r[2] or "",
+                    "phone": r[3] or "",
+                    "sender_email": r[4] or ""
+                }
+                for r in cur.fetchall()
+            ]
             
-            if norm_email and norm_email == ec_email:
-                match_id = ec["id"]
-                break
-            if phone and ec["phone"] and phones_match(phone, ec["phone"]):
-                match_id = ec["id"]
-                break
-            if name and ec["full_name"] and is_similar_name(name, ec["full_name"]):
-                match_id = ec["id"]
-                break
+            email = data.get('email', '')
+            phone = data.get('phone', '')
+            name = data.get('full_name', '')
+            
+            norm_email = normalize_email(email)
+            norm_sender_email = normalize_email(sender_email)
+            
+            for ec in existing_candidates:
+                ec_email = normalize_email(ec["email"])
+                ec_sender = normalize_email(ec["sender_email"])
+                
+                if norm_email and (norm_email == ec_email or norm_email == ec_sender):
+                    match_id = ec["id"]
+                    break
+                if norm_sender_email and (norm_sender_email == ec_email or norm_sender_email == ec_sender):
+                    match_id = ec["id"]
+                    break
+                if phone and ec["phone"] and phones_match(phone, ec["phone"]):
+                    match_id = ec["id"]
+                    break
+                if name and ec["full_name"] and is_similar_name(name, ec["full_name"]):
+                    match_id = ec["id"]
+                    break
                 
         if match_id:
             # Match found! Delete the placeholder record we created in upload_resume
@@ -1251,17 +1410,23 @@ def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, userna
                 if k in allowed_cols and k != 'id' and k != 'filename':
                     if v is not None and v != "":
                         existing_val = existing_row.get(k)
-                        if existing_val is None or str(existing_val).strip() == "" or existing_val == 0.0 or existing_val == 0:
+                        if username == "email_worker" or existing_val is None or str(existing_val).strip() == "" or existing_val == 0.0 or existing_val == 0:
                             updates[k] = v
             # Always update or attach the filename to the matched candidate
             updates['filename'] = safe_name
+            if username == "email_worker":
+                updates['source'] = 'Import from Mail'
+                if email_message:
+                    updates['email_message'] = email_message
+                if sender_email:
+                    updates['sender_email'] = sender_email
             
             if updates:
                 set_clause = ", ".join(f"{k}=?" for k in updates)
                 cur.execute(f"UPDATE candidate_metadata SET {set_clause} WHERE id=?", list(updates.values()) + [match_id])
             
             candidate_id = match_id
-            print(f"INFO: Auto-attached uploaded resume {safe_name} to existing candidate profile ID {match_id} ({name})")
+            print(f"INFO: Auto-attached uploaded resume {safe_name} to existing candidate profile ID {match_id} ({data.get('full_name', '')})")
             conn.commit()
             conn.close()
         else:
@@ -1273,9 +1438,25 @@ def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, userna
             candidate_id = log_candidate(data)
             
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         error_msg = str(e)[:100]
-        data = {"filename": safe_name, "full_name": f"Processing Error: {error_msg}", "is_approved": is_approved, "created_by": username}
-        candidate_id = log_candidate(data)
+        print(f"Error processing resume {safe_name}: {error_msg}")
+        try:
+            conn = sqlite3.connect(STATS_DB, timeout=30.0)
+            cur = conn.cursor()
+            cur.execute("DELETE FROM candidate_metadata WHERE filename = ?", (safe_name,))
+            conn.commit()
+            conn.close()
+        except Exception as db_err:
+            print(f"Error deleting placeholder from DB: {db_err}")
+            
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+                print(f"Cleaned up failed resume file: {path}")
+            except Exception as file_err:
+                print(f"Error cleaning up failed resume file {path}: {file_err}")
         return
 
     # Add to ChromaDB
@@ -1666,6 +1847,12 @@ def process_excel_file_logic(safe_name: str, path: str, username: str):
                 
     except Exception as e:
         print(f"Error parsing Excel file {safe_name}: {e}")
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+                print(f"Cleaned up failed Excel file: {path}")
+            except Exception as file_err:
+                print(f"Error cleaning up failed Excel file {path}: {file_err}")
     finally:
         try:
             cur.execute("DELETE FROM candidate_metadata WHERE filename = ? AND full_name LIKE '⏳ Parsing Excel:%'", (safe_name,))
@@ -1681,11 +1868,11 @@ def process_excel_file(safe_name: str, path: str, username: str = "unknown"):
     with _processing_lock:
         process_excel_file_logic(safe_name, path, username)
 
-def process_resume(safe_name: str, path: str, is_approved: int = 1, username: str = "unknown"):
+def process_resume(safe_name: str, path: str, is_approved: int = 1, username: str = "unknown", email_message: str = None, sender_email: str = None):
     # Use a lock to ensure only one resume is processed at a time
     # This prevents Render memory crashes (OOM), Groq Rate Limits, and SQLite database locks
     with _processing_lock:
-        process_resume_logic(safe_name, path, is_approved, username)
+        process_resume_logic(safe_name, path, is_approved, username, email_message, sender_email)
 
 
 @app.post("/api/upload")
@@ -1740,6 +1927,107 @@ def _is_conversational(msg: str) -> bool:
         return True
     return False
 
+def extract_search_filters(prompt: str, llm) -> dict:
+    filter_extraction_prompt = f"""You are an HR database query assistant.
+Extract search parameters from the following HR question into a JSON object.
+
+HR Question: "{prompt}"
+
+JSON Schema:
+{{
+  "name_query": "string or null (extract a candidate name if the user is asking about a specific person, e.g., 'Naresh' or 'Gopinath')",
+  "skills_keywords": "array of strings or null (extract skills or certifications, e.g., ['pega', 'cssa', 'csa', 'lsa', 'clda'])",
+  "min_pega_exp": "number or null (minimum years of Pega experience requested)",
+  "min_total_exp": "number or null (minimum years of total experience requested)",
+  "notice_period_max": "number or null (maximum notice period in days)",
+  "current_location": "string or null (location name, e.g., 'Hyderabad')"
+}}
+
+Respond ONLY with the JSON object. Do not include any explanation or markdown formatting."""
+
+    try:
+        resp = llm.invoke([HumanMessage(content=filter_extraction_prompt)])
+        ans = resp.content.strip()
+        if ans.startswith("```json"):
+            ans = ans[7:]
+        if ans.endswith("```"):
+            ans = ans[:-3]
+        return json.loads(ans.strip())
+    except Exception as e:
+        print(f"Error extracting search filters: {e}")
+        return {}
+
+def query_candidates_by_filters(filters: dict, username: str, role: str) -> list:
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    
+    query = "SELECT * FROM candidate_metadata WHERE 1=1"
+    params = []
+    
+    # Non-admins and non-HRs can only see their own candidates
+    if not is_admin_or_hr(username) and username:
+        query += " AND LOWER(created_by) = LOWER(?)"
+        params.append(username)
+        
+    name_q = filters.get("name_query")
+    if name_q:
+        query += " AND (full_name LIKE ? OR current_organization LIKE ? OR email LIKE ?)"
+        params.append(f"%{name_q}%")
+        params.append(f"%{name_q}%")
+        params.append(f"%{name_q}%")
+        
+    skills = filters.get("skills_keywords")
+    if skills and isinstance(skills, list):
+        for sk in skills:
+            if sk.strip():
+                query += " AND (skills LIKE ? OR certifications LIKE ?)"
+                params.append(f"%{sk.strip()}%")
+                params.append(f"%{sk.strip()}%")
+            
+    min_pega = filters.get("min_pega_exp")
+    if min_pega is not None:
+        try:
+            query += " AND pega_experience >= ?"
+            params.append(float(min_pega))
+        except ValueError:
+            pass
+            
+    min_tot = filters.get("min_total_exp")
+    if min_tot is not None:
+        try:
+            query += " AND total_experience >= ?"
+            params.append(float(min_tot))
+        except ValueError:
+            pass
+
+    max_notice = filters.get("notice_period_max")
+    if max_notice is not None:
+        try:
+            query += " AND (CAST(notice_period AS INTEGER) <= ? OR notice_period LIKE '%immediate%')"
+            params.append(int(max_notice))
+        except ValueError:
+            pass
+
+    loc = filters.get("current_location")
+    if loc:
+        query += " AND (current_location LIKE ? OR pref_locations LIKE ?)"
+        params.append(f"%{loc}%")
+        params.append(f"%{loc}%")
+
+    query += " ORDER BY timestamp DESC"
+    
+    try:
+        cur.execute(query, params)
+        rows = [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        print(f"Error running database query: {e}")
+        rows = []
+    finally:
+        conn.close()
+    return rows
+
+
 def _find_matching_rows(rows: list, names: list) -> list:
     """Return matching exact DB rows for the given candidate names."""
     lower_names = [n.strip().lower() for n in names]
@@ -1787,7 +2075,7 @@ def chat(body: ChatRequest, request: Request):
     conn.close()
     is_user_admin = False
     if user_row:
-        is_user_admin = (user_row[0] == 1 or user_row[1] == "admin")
+        is_user_admin = (user_row[0] == 1 or user_row[1] == "admin" or is_admin_or_hr(username))
 
     global _embeddings, _llm, _models_loading
     if _embeddings is None or _llm is None:
@@ -1810,55 +2098,72 @@ def chat(body: ChatRequest, request: Request):
         return {"type": "text", "answer": resp.content}
 
     # ── Route 2: Structured (SQLite) — always try this first ─────────────────
-    rows = get_candidates_list(username, role="admin" if is_user_admin else "user")
-    if rows:
-        for r in rows:
-            for col in ['total_experience', 'pega_experience']:
-                if col in r:
-                    try:
-                        r[col] = float(r[col]) if str(r[col]).strip() != "" else 0
-                    except:
-                        r[col] = 0
+    try:
+        # Step 2a: Extract query filters
+        filters = extract_search_filters(prompt, llm)
+        
+        # Step 2b: Query SQLite with extracted filters
+        user_role = "admin" if is_user_admin else "user"
+        matched_candidates = query_candidates_by_filters(filters, username, user_role)
+        
+        # Fall back to all candidates if query returned nothing, but limit to top 15
+        if not matched_candidates:
+            all_candidates = get_candidates_list(username, role=user_role)
+            matched_candidates = all_candidates[:15]
+        else:
+            matched_candidates = matched_candidates[:15]
+            
+        if matched_candidates:
+            for r in matched_candidates:
+                for col in ['total_experience', 'pega_experience']:
+                    if col in r:
+                        try:
+                            r[col] = float(r[col]) if str(r[col]).strip() != "" else 0
+                        except:
+                            r[col] = 0
 
-        # Build a compact summary of each candidate for the LLM
-        candidate_lines = []
-        for r in rows:
-            line = (
-                f"Name: {r.get('full_name','?')} | "
-                f"Total Exp: {r.get('total_experience',0)} yrs | "
-                f"Pega Exp: {r.get('pega_experience',0)} yrs | "
-                f"Skills: {r.get('skills','') or 'none'} | "
-                f"Certifications: {r.get('certifications','') or 'none'} | "
-                f"CTC: {r.get('ctc','') or '?'} | "
-                f"Notice: {r.get('notice_period','') or '?'} | "
-                f"Company: {r.get('current_organization','') or '?'} | "
-                f"Email: {r.get('email','') or '?'} | "
-                f"Phone: {r.get('phone','') or '?'}"
-            )
-            candidate_lines.append(line)
-        candidates_text = "\n".join(candidate_lines)
+            # Build compact summary of matches
+            candidate_lines = []
+            for r in matched_candidates:
+                line = (
+                    f"Name: {r.get('full_name','?')} | "
+                    f"Total Exp: {r.get('total_experience',0)} yrs | "
+                    f"Pega Exp: {r.get('pega_experience',0)} yrs | "
+                    f"Skills: {r.get('skills','') or 'none'} | "
+                    f"Certifications: {r.get('certifications','') or 'none'} | "
+                    f"CTC: {r.get('ctc','') or '?'} | "
+                    f"Notice: {r.get('notice_period','') or '?'} | "
+                    f"Company: {r.get('current_organization','') or '?'} | "
+                    f"Email: {r.get('email','') or '?'} | "
+                    f"Phone: {r.get('phone','') or '?'}"
+                )
+                candidate_lines.append(line)
+            candidates_text = "\n".join(candidate_lines)
 
-        filter_prompt = f"""You are an expert HR data analyst. I have the following candidate database:
+            total_db_count = len(get_candidates_list(username, role=user_role))
+
+            filter_prompt = f"""You are an expert HR data analyst. I have the following candidate database:
+
+Total candidates in database: {total_db_count}
 
 {candidates_text}
 
 HR question: "{prompt}"
 
-Instructions:
-1. Read the question carefully.
-2. If the question asks to LIST / SHOW / FIND candidates:
-   - Return EXACTLY this JSON format (no other text before or after):
-   MATCH_RESULT: {{"type":"table","matched_names":[<exact full_name values>],"intro":"<one sentence intro>"}}
-3. If the question asks for a COUNT or YES/NO:
-   - Return EXACTLY: MATCH_RESULT: {{"type":"count","answer":"<direct answer>"}}
-4. If the question is about a SPECIFIC candidate's detail:
-   - Return EXACTLY: MATCH_RESULT: {{"type":"table","matched_names":[<that candidate's name>],"intro":"Here are the details:"}}
-5. IMPORTANT: Use ONLY exact full_name values from the database above. Do NOT invent names.
-6. 'Pega Exp: 0 yrs' = ZERO Pega experience.
+            Instructions:
+            1. Read the question carefully.
+            2. If the question asks to LIST / SHOW / FIND candidates:
+               - Return EXACTLY this JSON format (no other text before or after):
+               MATCH_RESULT: {{"type":"table","matched_names":["Candidate Name 1", "Candidate Name 2"],"intro":"Here are the candidates:"}}
+            3. If the question asks for a COUNT or YES/NO:
+               - Return EXACTLY: MATCH_RESULT: {{"type":"count","answer":"There are 3 candidates matching your criteria."}}
+            4. If the question is about a SPECIFIC candidate's detail:
+               - Return EXACTLY: MATCH_RESULT: {{"type":"table","matched_names":["Candidate Name"],"intro":"Here are the details:"}}
+            5. IMPORTANT: Use ONLY exact full_name values from the database above. Do NOT invent names.
+            6. 'Pega Exp: 0 yrs' = ZERO Pega experience.
+            
+            Respond with ONLY the MATCH_RESULT line, nothing else."""
 
-Respond with ONLY the MATCH_RESULT line, nothing else."""
-
-        try:
             resp = llm.invoke([HumanMessage(content=filter_prompt)])
             ans  = resp.content.strip()
 
@@ -1876,13 +2181,17 @@ Respond with ONLY the MATCH_RESULT line, nothing else."""
                         names = result.get("matched_names", [])
                         intro = result.get("intro", "Here are the matching candidates:")
                         if names:
-                            matched_rows = _find_matching_rows(rows, names)
+                            matched_rows = _find_matching_rows(matched_candidates, names)
                             if matched_rows:
                                 return {"type": "table", "answer": intro, "rows": matched_rows}
-                        # No matches found
+                        if matched_candidates:
+                            fallback_rows = _find_matching_rows(matched_candidates, [r['full_name'] for r in matched_candidates[:5]])
+                            if fallback_rows:
+                                return {"type": "table", "answer": intro, "rows": fallback_rows}
                         return {"type": "text", "answer": "No candidates match your query. Try a different filter."}
-        except Exception:
-            pass  # Fall through to RAG
+    except Exception as e:
+        print(f"Route 2 error, falling back to RAG: {e}")
+        pass  # Fall through to RAG
 
     # ── Route 3: RAG (ChromaDB) — for very specific resume content ────────────
     if not os.path.exists(CHROMA_PATH):
@@ -2091,7 +2400,7 @@ def list_jobs(request: Request):
         row = cur.fetchone()
         if row:
             is_external = (row['is_external'] == 1)
-            is_user_admin = (row['is_admin'] == 1 or row['role'] == "admin")
+            is_user_admin = (row['is_admin'] == 1 or row['role'] == "admin" or is_admin_or_hr(username))
             
     if is_external:
         cur.execute("""
@@ -2182,7 +2491,7 @@ def update_job(job_id: int, job: JobCreate, request: Request):
         raise HTTPException(status_code=404, detail="Job not found")
     created_by = row[0]
     
-    if role != "admin":
+    if not is_admin_or_hr(username):
         if created_by and created_by.lower() != username.lower():
             conn.close()
             raise HTTPException(status_code=403, detail="Forbidden")
@@ -2245,7 +2554,7 @@ def delete_job(job_id: int, request: Request):
         raise HTTPException(status_code=404, detail="Job not found")
     job_title, created_by = row
     
-    if role != "admin":
+    if not is_admin_or_hr(username):
         if created_by and created_by.lower() != username.lower():
             conn.close()
             raise HTTPException(status_code=403, detail="Forbidden")
@@ -2283,7 +2592,7 @@ def get_job_candidates(job_id: int, request: Request):
     user_full_name = ""
     if user_row:
         is_external = (user_row['is_external'] == 1)
-        is_user_admin = (user_row['is_admin'] == 1 or user_row['role'] == "admin")
+        is_user_admin = (user_row['is_admin'] == 1 or user_row['role'] == "admin" or is_admin_or_hr(username))
         user_full_name = user_row['full_name']
 
     # Enforce permission checks:
@@ -2323,9 +2632,9 @@ def get_job_candidates(job_id: int, request: Request):
                 if key not in allowed_keys:
                     c[key] = ""
 
-    # Mask certifications for non-admin users (like HR users)
-    is_user_admin = (get_user_role(username) == "admin")
-    if not is_user_admin:
+    # Mask certifications for non-admin and non-HR users
+    is_user_admin_or_hr = is_admin_or_hr(username)
+    if not is_user_admin_or_hr:
         for row in candidates:
             row["certifications"] = "[HIDDEN]"
 
@@ -2361,7 +2670,7 @@ def get_unmatched_candidates(job_id: int, request: Request):
     is_user_admin = False
     if user_row:
         is_external = (user_row['is_external'] == 1)
-        is_user_admin = (user_row['is_admin'] == 1 or user_row['role'] == "admin")
+        is_user_admin = (user_row['is_admin'] == 1 or user_row['role'] == "admin" or is_admin_or_hr(username))
 
     # Enforce permission checks:
     if not is_user_admin:
@@ -2404,9 +2713,9 @@ def get_unmatched_candidates(job_id: int, request: Request):
                 row[k] = ""
 
     username = request.headers.get("x-user-username")
-    # Mask certifications for non-admin users (like HR users)
-    is_user_admin = (get_user_role(username) == "admin")
-    if not is_user_admin:
+    # Mask certifications for non-admin and non-HR users
+    is_user_admin_or_hr = is_admin_or_hr(username)
+    if not is_user_admin_or_hr:
         for row in candidates:
             row["certifications"] = "[HIDDEN]"
 
@@ -2435,7 +2744,7 @@ def add_job_candidate(job_id: int, candidate_id: int, request: Request):
         raise HTTPException(status_code=404, detail="Job not found")
     job_creator = job_row[0]
     
-    if role != "admin":
+    if not is_admin_or_hr(username):
         if job_creator and job_creator.lower() != username.lower():
             conn.close()
             raise HTTPException(status_code=403, detail="Forbidden")
@@ -2490,7 +2799,7 @@ def update_job_candidate_status(job_id: int, candidate_id: int, update: JobStatu
         raise HTTPException(status_code=404, detail="Job not found")
     job_creator = job_row[0]
     
-    if role != "admin":
+    if not is_admin_or_hr(username):
         if job_creator and job_creator.lower() != username.lower():
             conn.close()
             raise HTTPException(status_code=403, detail="Forbidden")
@@ -2526,7 +2835,7 @@ def delete_job_candidate(job_id: int, candidate_id: int, request: Request):
         raise HTTPException(status_code=404, detail="Job not found")
     job_creator = job_row[0]
     
-    if role != "admin":
+    if not is_admin_or_hr(username):
         if job_creator and job_creator.lower() != username.lower():
             conn.close()
             raise HTTPException(status_code=403, detail="Forbidden")
@@ -2549,8 +2858,8 @@ def match_candidates_for_job(job_id: int):
     jd = job['description']
     job_creator = job['created_by']
     
-    # Query candidates directly from the database (only those owned by job creator unless admin)
-    if job_creator and job_creator.lower() != "admin":
+    # Query candidates directly from the database (only those owned by job creator unless admin or HR)
+    if job_creator and not is_admin_or_hr(job_creator):
         cur.execute("SELECT * FROM candidate_metadata WHERE LOWER(created_by) = LOWER(?)", (job_creator,))
     else:
         cur.execute("SELECT * FROM candidate_metadata")
@@ -2659,7 +2968,7 @@ def match_candidates_for_job_endpoint(job_id: int, request: Request):
     created_by = row[0]
     conn.close()
     
-    if role != "admin":
+    if not is_admin_or_hr(username):
         if created_by and created_by.lower() != username.lower():
             raise HTTPException(status_code=403, detail="Forbidden")
             
@@ -3550,6 +3859,763 @@ def reject_change_request(request_id: int, request: Request):
     conn.commit()
     conn.close()
     return {"status": "rejected"}
+
+# ── Integrations Settings Endpoints ───────────────────────────────────────────
+class IntegrationSettingsRequest(BaseModel):
+    email_enabled: int
+    imap_host: str
+    imap_port: int
+    smtp_host: str
+    smtp_port: int
+    email_user: str
+    email_pass: str
+    keywords: str
+    drive_enabled: int
+
+@app.get("/api/integrations")
+def get_integrations_settings(request: Request):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+        
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    cur.execute("SELECT email_enabled, imap_host, imap_port, smtp_host, smtp_port, email_user, email_pass, keywords, drive_enabled FROM integrations_settings LIMIT 1")
+    row = cur.fetchone()
+    conn.close()
+    
+    if not row:
+        return {
+            "email_enabled": 0, "imap_host": "imap.gmail.com", "imap_port": 993,
+            "smtp_host": "smtp.gmail.com", "smtp_port": 587, "email_user": "",
+            "email_pass": "", "keywords": "resume,alamaticz,solution,job", "drive_enabled": 0
+        }
+        
+    masked_pass = ""
+    if row[6]:
+        masked_pass = "****"
+        
+    return {
+        "email_enabled": row[0],
+        "imap_host": row[1] or "imap.gmail.com",
+        "imap_port": row[2] or 993,
+        "smtp_host": row[3] or "smtp.gmail.com",
+        "smtp_port": row[4] or 587,
+        "email_user": row[5] or "",
+        "email_pass": masked_pass,
+        "keywords": row[7] or "resume,alamaticz,solution,job",
+        "drive_enabled": row[8]
+    }
+
+@app.post("/api/integrations")
+def save_integrations_settings(settings: IntegrationSettingsRequest, request: Request):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+        
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    
+    cur.execute("SELECT id, email_pass FROM integrations_settings LIMIT 1")
+    row = cur.fetchone()
+    
+    final_pass = settings.email_pass
+    if final_pass == "****" and row:
+        final_pass = row[1]
+        
+    if row:
+        cur.execute("""
+        UPDATE integrations_settings SET
+            email_enabled = ?, imap_host = ?, imap_port = ?,
+            smtp_host = ?, smtp_port = ?, email_user = ?,
+            email_pass = ?, keywords = ?, drive_enabled = ?
+        WHERE id = ?
+        """, (settings.email_enabled, settings.imap_host, settings.imap_port,
+              settings.smtp_host, settings.smtp_port, settings.email_user,
+              final_pass, settings.keywords, settings.drive_enabled, row[0]))
+    else:
+        cur.execute("""
+        INSERT INTO integrations_settings (
+            email_enabled, imap_host, imap_port, smtp_host, smtp_port, email_user, email_pass, keywords, drive_enabled
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (settings.email_enabled, settings.imap_host, settings.imap_port,
+              settings.smtp_host, settings.smtp_port, settings.email_user,
+              final_pass, settings.keywords, settings.drive_enabled))
+              
+    if settings.email_enabled == 0:
+        try:
+            cur.execute("SELECT id, filename FROM candidate_metadata WHERE source = 'Import from Mail'")
+            email_candidates = cur.fetchall()
+            for cand_id, filename in email_candidates:
+                if filename:
+                    file_path = os.path.join(UPLOAD_DIR, filename)
+                    if os.path.exists(file_path):
+                        try:
+                            os.remove(file_path)
+                            print(f"Deleted email candidate file: {file_path}")
+                        except Exception as file_err:
+                            print(f"Error deleting file {file_path}: {file_err}")
+                
+                cur.execute("DELETE FROM job_candidates WHERE candidate_id = ?", (cand_id,))
+                cur.execute("DELETE FROM candidate_metadata WHERE id = ?", (cand_id,))
+            print(f"Deleted {len(email_candidates)} email-imported candidates because email sync was disabled.")
+        except Exception as delete_err:
+            print(f"Error purging email candidates: {delete_err}")
+
+    conn.commit()
+    conn.close()
+    
+    log_activity_db(username, "updated integrations settings")
+    return {"status": "saved"}
+
+@app.get("/api/integrations/status")
+def test_integrations_connection(request: Request):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+        
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    cur.execute("SELECT email_enabled, imap_host, imap_port, email_user, email_pass FROM integrations_settings LIMIT 1")
+    row = cur.fetchone()
+    conn.close()
+    
+    if not row or not row[0]:
+        return {"status": "disabled", "message": "Email integration is disabled."}
+        
+    imap_host = row[1]
+    imap_port = row[2] or 993
+    email_user = row[3]
+    email_pass = row[4]
+    
+    if not imap_host or not email_user or not email_pass:
+        return {"status": "unconfigured", "message": "Credentials are not fully configured."}
+        
+    import imaplib
+    try:
+        mail = imaplib.IMAP4_SSL(imap_host, imap_port, timeout=10)
+        mail.login(email_user, email_pass)
+        mail.logout()
+        return {"status": "connected", "message": "Successfully connected to Gmail!"}
+    except Exception as e:
+        err_msg = str(e)
+        if "Application-specific password required" in err_msg:
+            return {"status": "error", "message": "Authentication failed: Application-specific password required."}
+        return {"status": "error", "message": f"Connection failed: {err_msg}"}
+
+def poll_emails_and_process():
+    import time
+    import imaplib
+    import email
+    from email.header import decode_header
+    import hashlib
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+
+    print("INFO: Starting background email worker thread...")
+    while True:
+        try:
+            # Fetch settings from DB
+            conn = sqlite3.connect(STATS_DB, timeout=30.0)
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT email_enabled, imap_host, imap_port, smtp_host, smtp_port, 
+                       email_user, email_pass, keywords 
+                FROM integrations_settings LIMIT 1
+            """)
+            row = cur.fetchone()
+            conn.close()
+
+            if not row or not row[0]: # Not enabled or not configured
+                time.sleep(15)
+                continue
+
+            email_enabled, imap_host, imap_port, smtp_host, smtp_port, email_user, email_pass, keywords_str = row
+            if not imap_host or not email_user or not email_pass:
+                time.sleep(15)
+                continue
+
+            # Parse keywords
+            keywords = [k.strip().lower() for k in keywords_str.split(",") if k.strip()]
+            if not keywords:
+                keywords = ["resume", "alamaticz", "solution", "job"]
+
+            # Connect IMAP
+            mail = imaplib.IMAP4_SSL(imap_host, imap_port or 993, timeout=15)
+            mail.login(email_user, email_pass)
+            mail.select("inbox")
+
+            # Search unseen or recent messages to catch already read messages
+            unseen_nums = []
+            status_unseen, response_unseen = mail.search(None, "UNSEEN")
+            if status_unseen == "OK" and response_unseen[0]:
+                unseen_nums = response_unseen[0].split()
+
+            all_nums = []
+            status_all, response_all = mail.search(None, "ALL")
+            if status_all == "OK" and response_all[0]:
+                all_nums = response_all[0].split()
+
+            # Take the last 30 messages in the inbox (regardless of read status)
+            recent_nums = all_nums[-30:]
+
+            # Combine them, deduplicate, and sort as integers to process in chronological order
+            msg_nums_set = set(unseen_nums + recent_nums)
+            msg_nums = sorted(list(msg_nums_set), key=lambda x: int(x))
+            for num in msg_nums:
+                try:
+                    # Fetch message-id and headers without marking as seen
+                    status, header_data = mail.fetch(num, '(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])')
+                    msg_id = None
+                    if status == "OK" and header_data[0]:
+                        header_text = header_data[0][1].decode('utf-8', errors='ignore')
+                        match = re.search(r'Message-ID:\s*<([^>]+)>', header_text, re.IGNORECASE)
+                        if match:
+                            msg_id = match.group(1)
+                    
+                    if not msg_id:
+                        # Fallback: hash of headers to make a pseudo ID
+                        status, header_data2 = mail.fetch(num, '(BODY.PEEK[HEADER.FIELDS (SUBJECT DATE FROM)])')
+                        header_text2 = ""
+                        if status == "OK" and header_data2[0]:
+                            header_text2 = header_data2[0][1].decode('utf-8', errors='ignore')
+                        msg_id = hashlib.md5(header_text2.encode('utf-8', errors='ignore')).hexdigest()
+
+                    # Check if already processed
+                    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+                    cur = conn.cursor()
+                    cur.execute("SELECT 1 FROM processed_emails WHERE msg_uid = ?", (msg_id,))
+                    exists = cur.fetchone()
+                    conn.close()
+
+                    if exists:
+                        continue
+
+                    # Fetch full message content without marking read
+                    status, msg_data = mail.fetch(num, '(BODY.PEEK[])')
+                    if status != "OK" or not msg_data[0]:
+                        continue
+
+                    raw_email = msg_data[0][1]
+                    msg = email.message_from_bytes(raw_email)
+
+                    # Extract Subject, From, Body
+                    subject_header = msg.get("Subject", "")
+                    decoded_subject = ""
+                    for part, encoding in decode_header(subject_header):
+                        if isinstance(part, bytes):
+                            decoded_subject += part.decode(encoding or "utf-8", errors="ignore")
+                        else:
+                            decoded_subject += str(part)
+                    
+                    from_header = msg.get("From", "")
+                    decoded_from = ""
+                    for part, encoding in decode_header(from_header):
+                        if isinstance(part, bytes):
+                            decoded_from += part.decode(encoding or "utf-8", errors="ignore")
+                        else:
+                            decoded_from += str(part)
+
+                    # Extract plain text body
+                    body_text = ""
+                    attachments = []
+                    if msg.is_multipart():
+                        for part in msg.walk():
+                            content_type = part.get_content_type()
+                            content_disposition = str(part.get("Content-Disposition"))
+                            if content_type == "text/plain" and "attachment" not in content_disposition:
+                                payload = part.get_payload(decode=True)
+                                if payload:
+                                    body_text += payload.decode(part.get_content_charset() or "utf-8", errors="ignore")
+                            elif "attachment" in content_disposition or part.get_filename():
+                                filename = part.get_filename()
+                                if filename:
+                                    decoded_filename = ""
+                                    for filename_part, encoding in decode_header(filename):
+                                        if isinstance(filename_part, bytes):
+                                            decoded_filename += filename_part.decode(encoding or "utf-8", errors="ignore")
+                                        else:
+                                            decoded_filename += str(filename_part)
+                                    if decoded_filename:
+                                        attachments.append((decoded_filename, part.get_payload(decode=True)))
+                    else:
+                        payload = msg.get_payload(decode=True)
+                        if payload:
+                            body_text = payload.decode(msg.get_content_charset() or "utf-8", errors="ignore")
+                    # Check if this email is from an existing candidate (via Ref tag in Subject, or matching sender email)
+                    import email.utils
+                    sender_name, sender_email = email.utils.parseaddr(decoded_from)
+                    matched_candidate_row = None
+
+                    # 1. Search by reference ID in subject
+                    match_ref = re.search(r'Ref:\s*CAND-(\d+)', decoded_subject, re.IGNORECASE)
+                    if match_ref:
+                        try:
+                            ref_candidate_id = int(match_ref.group(1))
+                            conn = sqlite3.connect(STATS_DB, timeout=30.0)
+                            conn.row_factory = sqlite3.Row
+                            cur = conn.cursor()
+                            cur.execute("SELECT * FROM candidate_metadata WHERE id = ?", (ref_candidate_id,))
+                            matched_candidate_row = cur.fetchone()
+                            conn.close()
+                        except Exception as e_ref:
+                            print(f"ERROR matching by Ref ID in subject: {e_ref}")
+                    # 2. Fall back to search by sender email address
+                    if not matched_candidate_row and sender_email:
+                        try:
+                            conn = sqlite3.connect(STATS_DB, timeout=30.0)
+                            conn.row_factory = sqlite3.Row
+                            cur = conn.cursor()
+                            cur.execute("SELECT * FROM candidate_metadata WHERE LOWER(sender_email) = ? OR LOWER(email) = ? ORDER BY id DESC LIMIT 1", (sender_email.lower(), sender_email.lower()))
+                            matched_candidate_row = cur.fetchone()
+                            conn.close()
+                        except Exception as e_email:
+                            print(f"ERROR matching by sender email: {e_email}")
+
+                    if matched_candidate_row:
+                        existing_candidate = dict(matched_candidate_row)
+                        print(f"INFO: Identified follow-up email from existing candidate ID {existing_candidate['id']} ({existing_candidate['full_name']})")
+                        
+                        # Check if a new resume file is attached and download/index it
+                        new_filename = None
+                        resume_text = ""
+                        if attachments:
+                            has_resume = any(
+                                fname.lower().endswith((".pdf", ".docx"))
+                                for fname, _ in attachments if fname
+                            )
+                            if has_resume:
+                                for fname, content in attachments:
+                                    if not content:
+                                        continue
+                                    f_lower = fname.lower()
+                                    if f_lower.endswith(".pdf") or f_lower.endswith(".docx"):
+                                        safe_name = re.sub(r'[^a-zA-Z0-9._-]', '_', fname)
+                                        safe_name = f"mail_{hashlib.md5(msg_id.encode()).hexdigest()[:8]}_{safe_name}"
+                                        fpath = os.path.join(UPLOAD_DIR, safe_name)
+                                        with open(fpath, "wb") as f_out:
+                                            f_out.write(content)
+                                        new_filename = safe_name
+                                        
+                                        # Index in ChromaDB and extract text
+                                        try:
+                                            if safe_name.lower().endswith(".pdf"):
+                                                loader = SafePyMuPDFLoader(fpath)
+                                            else:
+                                                loader = Docx2txtLoader(fpath)
+                                            docs = loader.load()
+                                            resume_text = "\n".join([d.page_content for d in docs])
+                                            embeddings, _ = get_models()
+                                            for d in docs:
+                                                d.metadata['source'] = safe_name
+                                            splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+                                            chunks = splitter.split_documents(docs)
+                                            Chroma.from_documents(chunks, embeddings, persist_directory=CHROMA_PATH)
+                                        except Exception as chroma_err:
+                                            print(f"Error adding updated resume to Chroma: {chroma_err}")
+                                        break
+
+                        # Use EXTRACT_PROMPT to parse the combined new resume content and/or email text
+                        combined_text = resume_text[:7000] if resume_text else ""
+                        if body_text:
+                            combined_text += f"\n\n=== EMAIL MESSAGE BODY ===\n{body_text}\n=========================="
+
+                        conn = sqlite3.connect(STATS_DB, timeout=30.0)
+                        cur = conn.cursor()
+                        cur.execute("SELECT col_key, col_label, description FROM custom_columns")
+                        custom_cols = cur.fetchall()
+                        conn.close()
+                        
+                        custom_fields_str = ""
+                        if custom_cols:
+                            for col_key, col_label, desc in custom_cols:
+                                desc_str = f"Extract data corresponding to column heading '{col_label}'"
+                                if desc:
+                                    desc_str += f" ({desc})"
+                                custom_fields_str += f',\n  "{col_key}": "<{desc_str}>"'
+                                
+                        prompt_str = EXTRACT_PROMPT.format(text=combined_text, custom_fields=custom_fields_str)
+                        
+                        _, llm = get_models()
+                        parsed_data = {}
+                        try:
+                            # Add a simple retry mechanism for rate limits
+                            max_retries = 3
+                            resp = None
+                            for attempt in range(max_retries):
+                                try:
+                                    resp = llm.invoke([HumanMessage(content=prompt_str)])
+                                    break
+                                except Exception as api_err:
+                                    if "429" in str(api_err) and attempt < max_retries - 1:
+                                        import time
+                                        time.sleep(3)
+                                        continue
+                                    raise api_err
+                                    
+                            if resp is not None:
+                                raw_resp = resp.content.strip()
+                                if "```json" in raw_resp:
+                                    raw_resp = raw_resp.split("```json")[1].split("```")[0].strip()
+                                elif "```" in raw_resp:
+                                    raw_resp = raw_resp.split("```")[1].split("```")[0].strip()
+                                start_idx, end_idx = raw_resp.find('{'), raw_resp.rfind('}')
+                                if start_idx != -1 and end_idx != -1:
+                                    raw_resp = raw_resp[start_idx:end_idx+1]
+                                parsed_data = json.loads(raw_resp)
+                        except Exception as llm_err:
+                            print(f"ERROR parsing follow-up email/resume via LLM: {llm_err}")
+
+                        # Normalization & Validation
+                        # Phone: Keep only digits and +
+                        if 'phone' in parsed_data and parsed_data['phone']:
+                            parsed_data['phone'] = re.sub(r'[^\d+]', '', str(parsed_data['phone']))
+                            
+                        # Email: Basic validation
+                        if 'email' in parsed_data and parsed_data['email']:
+                            if '@' not in str(parsed_data['email']):
+                                parsed_data['email'] = ""
+                                
+                        # Experience: Force float
+                        for exp_field in ['total_experience', 'pega_experience', 'cdh_exp']:
+                            if exp_field in parsed_data and parsed_data[exp_field] not in [None, ""]:
+                                try:
+                                    match = re.search(r'\d+(\.\d+)?', str(parsed_data[exp_field]))
+                                    parsed_data[exp_field] = float(match.group()) if match else 0.0
+                                except Exception:
+                                    parsed_data[exp_field] = 0.0
+                                    
+                        # Integer fields
+                        for num_field in ['notice_period', 'availability_in_days']:
+                            if num_field in parsed_data and parsed_data[num_field] not in [None, ""]:
+                                np_str = str(parsed_data[num_field]).lower()
+                                if 'immediate' in np_str:
+                                    parsed_data[num_field] = 0
+                                else:
+                                    try:
+                                        match = re.search(r'\d+', np_str)
+                                        val = int(match.group()) if match else ""
+                                        if match and 'month' in np_str:
+                                            val = val * 30
+                                        parsed_data[num_field] = val
+                                    except Exception:
+                                        parsed_data[num_field] = ""
+
+                        # Update existing row with all dynamic columns
+                        updates = {}
+                        conn = sqlite3.connect(STATS_DB, timeout=30.0)
+                        cur = conn.cursor()
+                        cur.execute("PRAGMA table_info(candidate_metadata)")
+                        allowed_cols = {c[1] for c in cur.fetchall()}
+                        conn.close()
+
+                        for k, v in parsed_data.items():
+                            if k in allowed_cols and k != 'id' and k != 'filename':
+                                if v is not None and str(v).strip() not in ("", "null", "None"):
+                                    updates[k] = v
+
+                        if new_filename:
+                            updates['filename'] = new_filename
+                        if sender_email:
+                            updates['sender_email'] = sender_email
+
+                        # Merge email message body
+                        old_msg = existing_candidate.get('email_message') or ""
+                        new_msg = f"{old_msg}\n\n=== FOLLOW-UP EMAIL MESSAGE ===\n{body_text}".strip()
+                        updates['email_message'] = new_msg
+                        
+                        # Reset formatted resume cache
+                        updates['formatted_json'] = None
+
+                        if updates:
+                            try:
+                                conn = sqlite3.connect(STATS_DB, timeout=30.0)
+                                cur = conn.cursor()
+                                set_clause = ", ".join(f"{col}=?" for col in updates)
+                                cur.execute(f"UPDATE candidate_metadata SET {set_clause} WHERE id=?", list(updates.values()) + [existing_candidate['id']])
+                                conn.commit()
+                                conn.close()
+                                print(f"INFO: Successfully updated candidate ID {existing_candidate['id']} with follow-up details.")
+                            except Exception as db_update_err:
+                                print(f"ERROR updating candidate from follow-up email: {db_update_err}")
+
+                        # Recheck missing fields on updated profile
+                        try:
+                            conn = sqlite3.connect(STATS_DB, timeout=30.0)
+                            conn.row_factory = sqlite3.Row
+                            cur = conn.cursor()
+                            cur.execute("SELECT * FROM candidate_metadata WHERE id=?", (existing_candidate['id'],))
+                            updated_candidate = dict(cur.fetchone())
+                            conn.close()
+
+                            candidate_name = updated_candidate.get('full_name') or sender_name or 'Candidate'
+                            missing_fields = []
+                            total_exp = updated_candidate.get('total_experience')
+                            if total_exp is None or str(total_exp).strip() == "" or float(total_exp) == 0.0:
+                                missing_fields.append("Total years of experience")
+                            
+                            pega_exp = updated_candidate.get('pega_experience')
+                            cdh_exp = updated_candidate.get('cdh_exp')
+                            has_pega = pega_exp is not None and str(pega_exp).strip() != "" and float(pega_exp) > 0.0
+                            has_cdh = cdh_exp is not None and str(cdh_exp).strip() != "" and float(cdh_exp) > 0.0
+                            if not has_pega and not has_cdh:
+                                missing_fields.append("Relevant experience for this role")
+                            
+                            ctc = updated_candidate.get('ctc')
+                            if not ctc or str(ctc).strip() in ("", "—", "-", "None", "null"):
+                                missing_fields.append("Current CTC")
+                            
+                            expected_ctc = updated_candidate.get('expected_ctc')
+                            if not expected_ctc or str(expected_ctc).strip() in ("", "—", "-", "None", "null"):
+                                missing_fields.append("Expected CTC")
+                            
+                            notice_period = updated_candidate.get('notice_period')
+                            if notice_period is None or str(notice_period).strip() in ("", "—", "-", "None", "null"):
+                                missing_fields.append("Notice period / Earliest joining date")
+                            
+                            current_location = updated_candidate.get('current_location')
+                            if not current_location or str(current_location).strip() in ("", "—", "-", "None", "null"):
+                                missing_fields.append("Current location")
+                            
+                            pref_locations = updated_candidate.get('pref_locations')
+                            if not pref_locations or str(pref_locations).strip() in ("", "—", "-", "None", "null"):
+                                missing_fields.append("Preferred work location(s)")
+                            
+                            linkedin = updated_candidate.get('linkedin')
+                            if not linkedin or str(linkedin).strip() in ("", "—", "-", "None", "null"):
+                                missing_fields.append("LinkedIn profile URL")
+
+                            if missing_fields:
+                                missing_list_str = "\n".join(f"* {field}:" for field in missing_fields)
+                                body_reply = f"Dear {candidate_name},\n\n" \
+                                             f"Thank you for providing the details.\n\n" \
+                                             f"We noticed that the following required details are still missing. Kindly share them to proceed further:\n\n" \
+                                             f"{missing_list_str}\n\n" \
+                                             f"Once we receive the above information, our recruitment team will review your profile and get back to you regarding the next steps in the selection process.\n\n" \
+                                             f"We look forward to hearing from you.\n\n" \
+                                             f"Best regards,\n\n" \
+                                             f"HR Team\n" \
+                                             f"Alamaticz Solutions"
+                            else:
+                                body_reply = f"Dear {candidate_name},\n\n" \
+                                             f"Thank you for your interest in Alamaticz Solutions and for submitting your application.\n\n" \
+                                             f"We have successfully received all required details. Our recruitment team will review your profile and get back to you regarding the next steps in the selection process.\n\n" \
+                                             f"Best regards,\n\n" \
+                                             f"HR Team\n" \
+                                             f"Alamaticz Solutions"
+
+                            ack_msg = MIMEMultipart()
+                            ack_msg['From'] = email_user
+                            ack_msg['To'] = sender_email
+                            ack_msg['Subject'] = f"Re: {decoded_subject} (Ref: CAND-{updated_candidate['id']})"
+                            ack_msg.attach(MIMEText(body_reply, 'plain'))
+
+                            s_server = smtplib.SMTP(smtp_host, smtp_port or 587, timeout=10.0)
+                            s_server.starttls()
+                            s_server.login(email_user, email_pass)
+                            s_server.sendmail(email_user, sender_email, ack_msg.as_string())
+                            s_server.quit()
+                            print(f"INFO: Sent follow-up acknowledgment to {sender_email}")
+                        except Exception as reply_err:
+                            print(f"ERROR sending follow-up email reply: {reply_err}")
+
+                        # Mark email as read and processed
+                        try:
+                            mail.store(num, '+FLAGS', '\\Seen')
+                            conn = sqlite3.connect(STATS_DB, timeout=30.0)
+                            cur = conn.cursor()
+                            cur.execute("INSERT INTO processed_emails (msg_uid) VALUES (?)", (msg_id,))
+                            conn.commit()
+                            conn.close()
+                        except Exception as mark_err:
+                            print(f"ERROR marking email as processed: {mark_err}")
+                            
+                        continue
+
+                    # Check if the email contains any resume attachments (.pdf or .docx)
+                    has_resume_attachment = False
+                    if attachments:
+                        has_resume_attachment = any(
+                            fname.lower().endswith((".pdf", ".docx"))
+                            for fname, _ in attachments if fname
+                        )
+
+                    # Always match if there is a resume attachment, otherwise fall back to keyword match
+                    match_found = has_resume_attachment
+                    if not match_found:
+                        search_content = f"{decoded_subject} {body_text}".lower()
+                        for kw in keywords:
+                            if kw in search_content:
+                                match_found = True
+                                break
+
+                    processed_attachment = False
+                    if match_found and attachments:
+                        # Only proceed if there is at least one resume attachment (.pdf or .docx)
+                        has_resume = any(
+                            fname.lower().endswith(".pdf") or fname.lower().endswith(".docx")
+                            for fname, _ in attachments if fname
+                        )
+                        if has_resume:
+                            # Process attachments
+                            for fname, content in attachments:
+                                if not content:
+                                    continue
+                                f_lower = fname.lower()
+                                if f_lower.endswith(".pdf") or f_lower.endswith(".docx"):
+                                    safe_name = re.sub(r'[^a-zA-Z0-9._-]', '_', fname)
+                                    safe_name = f"mail_{hashlib.md5(msg_id.encode()).hexdigest()[:8]}_{safe_name}"
+                                    fpath = os.path.join(UPLOAD_DIR, safe_name)
+                                    with open(fpath, "wb") as f_out:
+                                        f_out.write(content)
+                                    
+                                    try:
+                                        process_resume(safe_name, fpath, is_approved=1, username="email_worker", email_message=body_text, sender_email=sender_email)
+                                        processed_attachment = True
+                                    except Exception as e_proc:
+                                        print(f"ERROR: Failed processing resume {safe_name} from email: {e_proc}")
+                        
+                        if processed_attachment:
+                            # Mark email as read on server
+                            mail.store(num, '+FLAGS', '\\Seen')
+                            
+                            # Send auto acknowledgment
+                            try:
+                                import email.utils
+                                sender_name, sender_email = email.utils.parseaddr(from_header)
+                                if sender_email:
+                                    # Fetch parsed candidate metadata to find missing fields
+                                    candidate = None
+                                    try:
+                                        conn = sqlite3.connect(STATS_DB, timeout=30.0)
+                                        conn.row_factory = sqlite3.Row
+                                        cur = conn.cursor()
+                                        cur.execute("SELECT * FROM candidate_metadata WHERE filename = ? ORDER BY id DESC LIMIT 1", (safe_name,))
+                                        candidate_row = cur.fetchone()
+                                        if candidate_row:
+                                            candidate = dict(candidate_row)
+                                        conn.close()
+                                    except Exception as db_err:
+                                        print(f"ERROR: Failed to fetch candidate metadata for auto-acknowledgement: {db_err}")
+
+                                    candidate_name = 'Candidate'
+                                    missing_fields = []
+                                    if candidate:
+                                        candidate_name = candidate.get('full_name') or sender_name or 'Candidate'
+                                        
+                                        # 1. Total years of experience
+                                        total_exp = candidate.get('total_experience')
+                                        if total_exp is None or str(total_exp).strip() == "" or float(total_exp) == 0.0:
+                                            missing_fields.append("Total years of experience")
+                                            
+                                        # 2. Relevant experience for this role
+                                        pega_exp = candidate.get('pega_experience')
+                                        cdh_exp = candidate.get('cdh_exp')
+                                        has_pega = pega_exp is not None and str(pega_exp).strip() != "" and float(pega_exp) > 0.0
+                                        has_cdh = cdh_exp is not None and str(cdh_exp).strip() != "" and float(cdh_exp) > 0.0
+                                        if not has_pega and not has_cdh:
+                                            missing_fields.append("Relevant experience for this role")
+                                            
+                                        # 3. Current CTC
+                                        ctc = candidate.get('ctc')
+                                        if not ctc or str(ctc).strip() in ("", "—", "-", "None", "null"):
+                                            missing_fields.append("Current CTC")
+                                            
+                                        # 4. Expected CTC
+                                        expected_ctc = candidate.get('expected_ctc')
+                                        if not expected_ctc or str(expected_ctc).strip() in ("", "—", "-", "None", "null"):
+                                            missing_fields.append("Expected CTC")
+                                            
+                                        # 5. Notice period / Earliest joining date
+                                        notice_period = candidate.get('notice_period')
+                                        if notice_period is None or str(notice_period).strip() in ("", "—", "-", "None", "null"):
+                                            missing_fields.append("Notice period / Earliest joining date")
+                                            
+                                        # 6. Current location
+                                        current_location = candidate.get('current_location')
+                                        if not current_location or str(current_location).strip() in ("", "—", "-", "None", "null"):
+                                            missing_fields.append("Current location")
+                                            
+                                        # 7. Preferred work location(s)
+                                        pref_locations = candidate.get('pref_locations')
+                                        if not pref_locations or str(pref_locations).strip() in ("", "—", "-", "None", "null"):
+                                            missing_fields.append("Preferred work location(s)")
+                                            
+                                        # 8. LinkedIn profile URL
+                                        linkedin = candidate.get('linkedin')
+                                        if not linkedin or str(linkedin).strip() in ("", "—", "-", "None", "null"):
+                                            missing_fields.append("LinkedIn profile URL")
+                                    else:
+                                        candidate_name = sender_name or 'Candidate'
+                                        missing_fields = [
+                                            "Total years of experience",
+                                            "Relevant experience for this role",
+                                            "Current CTC",
+                                            "Expected CTC",
+                                            "Notice period / Earliest joining date",
+                                            "Current location",
+                                            "Preferred work location(s)",
+                                            "LinkedIn profile URL"
+                                        ]
+
+                                    if missing_fields:
+                                        missing_list_str = "\n".join(f"* {field}:" for field in missing_fields)
+                                        body_reply = f"Dear {candidate_name},\n\n" \
+                                                     f"Thank you for your interest in Alamaticz Solutions and for submitting your application.\n\n" \
+                                                     f"We appreciate the time you have taken to apply for this opportunity. To help us evaluate your profile further, kindly share the following details:\n\n" \
+                                                     f"{missing_list_str}\n\n" \
+                                                     f"Once we receive the above information, our recruitment team will review your profile and get back to you regarding the next steps in the selection process.\n\n" \
+                                                     f"We look forward to hearing from you.\n\n" \
+                                                     f"Best regards,\n\n" \
+                                                     f"HR Team\n" \
+                                                     f"Alamaticz Solutions"
+                                    else:
+                                        body_reply = f"Dear {candidate_name},\n\n" \
+                                                     f"Thank you for your interest in Alamaticz Solutions and for submitting your application.\n\n" \
+                                                     f"We appreciate the time you have taken to apply for this opportunity. Our recruitment team will review your profile and get back to you regarding the next steps in the selection process.\n\n" \
+                                                     f"Best regards,\n\n" \
+                                                     f"HR Team\n" \
+                                                     f"Alamaticz Solutions"
+
+                                    ack_msg = MIMEMultipart()
+                                    ack_msg['From'] = email_user
+                                    ack_msg['To'] = sender_email
+                                    cand_id = candidate.get('id') if candidate else 0
+                                    if cand_id:
+                                        ack_msg['Subject'] = f"Re: {decoded_subject} (Ref: CAND-{cand_id})"
+                                    else:
+                                        ack_msg['Subject'] = f"Re: {decoded_subject}"
+                                    ack_msg.attach(MIMEText(body_reply, 'plain'))
+                                    
+                                    s_server = smtplib.SMTP(smtp_host, smtp_port or 587, timeout=10.0)
+                                    s_server.starttls()
+                                    s_server.login(email_user, email_pass)
+                                    s_server.sendmail(email_user, sender_email, ack_msg.as_string())
+                                    s_server.quit()
+                                    print(f"INFO: Sent auto-acknowledgement to {sender_email}")
+                            except Exception as smtp_err:
+                                print(f"ERROR: Failed sending auto-acknowledgement: {smtp_err}")
+
+                    # Insert to processed_emails
+                    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+                    cur = conn.cursor()
+                    cur.execute("INSERT OR IGNORE INTO processed_emails (msg_uid) VALUES (?)", (msg_id,))
+                    conn.commit()
+                    conn.close()
+
+                except Exception as msg_err:
+                    print(f"ERROR: Failed processing single email: {msg_err}")
+
+            mail.logout()
+
+        except Exception as conn_err:
+            print(f"ERROR: Email background loop connection error: {conn_err}")
+        
+        time.sleep(30)
 
 # ── Serve React Frontend ───────────────────────────────────────────────────────
 FRONTEND_DIST = os.path.join(PROJECT_ROOT, "frontend", "dist")

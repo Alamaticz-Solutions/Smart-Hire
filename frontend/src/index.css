@@ -907,7 +907,7 @@ tbody tr:last-child td {
   background: linear-gradient(135deg, rgba(var(--primary-rgb), 0.25), rgba(var(--gold-rgb), 0.2));
   border: 1px solid rgba(var(--gold-rgb), 0.3);
   border-top-right-radius: 4px;
-  color: #fff;
+  color: var(--text);
 }
 
 .message.ai .msg-bubble {
@@ -1788,4 +1788,12 @@ div[style*="position:fixed"] .card {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04rem;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.spin {
+  animation: spin 1s linear infinite;
 }

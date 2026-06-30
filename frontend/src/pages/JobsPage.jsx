@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import { Briefcase, Plus, Trash2, Search, UserCheck, Loader, ChevronRight, Edit, Calendar, User, Building, DollarSign, Award, Target, X, Phone, Eye, Filter, Check, FileText, Download, MoreVertical, Share2 } from 'lucide-react';
 import { useOutletContext } from 'react-router-dom';
+import alamaticzLogo from '../assets/alamaticz-logo.jpg';
 import ReactMarkdown from 'react-markdown';
 import { exportToExcel, formatCandidatesForExcel } from '../utils/excelUtils';
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -113,12 +114,1187 @@ function ExpandableCell({ value, onEdit }) {
     )
 }
 
+/* ─── Resume Preview component (Alamaticz Solutions Template) ────────────── */
+function ResumePreview({ data, logoUrl }) {
+    React.useEffect(() => {
+        const link = document.createElement('link');
+        link.href = 'https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap';
+        link.rel = 'stylesheet';
+        document.head.appendChild(link);
+        return () => {
+            document.head.removeChild(link);
+        };
+    }, []);
+
+    if (!data) {
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-dim)', gap: '12px', padding: '40px' }}>
+                <Loader className="spin" size={28} style={{ color: 'var(--gold)' }} />
+                <span>Loading formatted resume...</span>
+            </div>
+        );
+    }
+
+    const {
+        full_name = '',
+        job_title = '',
+        profile_summary = '',
+        domain_skills = [],
+        technical_skills = {},
+        education = [],
+        certifications = [],
+        work_experience = [],
+        recognitions = []
+    } = data;
+
+    return (
+        <div className="resume-preview-container" style={{
+            flex: 1,
+            overflowY: 'auto',
+            background: '#525659',
+            padding: '24px',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'flex-start'
+        }}>
+            <div className="resume-a4-sheet" style={{
+                width: '100%',
+                maxWidth: '800px',
+                minHeight: '1130px',
+                background: '#ffffff',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.35)',
+                display: 'flex',
+                color: '#333333',
+                fontFamily: "'Outfit', 'Segoe UI', sans-serif",
+                fontSize: '13px',
+                lineHeight: '1.5'
+            }}>
+                {/* Left Panel (Light Blue) */}
+                <div style={{
+                    width: '32%',
+                    background: '#e6f0fa',
+                    padding: '24px 18px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '24px',
+                    boxSizing: 'border-box',
+                    borderRight: '1px solid rgba(0,0,0,0.05)'
+                }}>
+                    {/* Education Section */}
+                    {education && education.length > 0 && (
+                        <div>
+                            <h4 style={{
+                                margin: '0 0 6px 0',
+                                color: '#004b87',
+                                fontSize: '0.85rem',
+                                fontWeight: 700,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.05em',
+                                borderBottom: '2px solid #004b87',
+                                paddingBottom: '4px'
+                            }}>Education</h4>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '8px' }}>
+                                {education.map((edu, idx) => (
+                                    <div key={idx}>
+                                        <div style={{ fontWeight: 700, color: '#333', fontSize: '0.8rem' }}>
+                                            {edu.degree}{edu.field ? ` - ${edu.field}` : ''}
+                                        </div>
+                                        <div style={{ color: '#555', fontSize: '0.75rem', marginTop: '2px' }}>{edu.school}</div>
+                                        {edu.years && <div style={{ color: '#777', fontSize: '0.72rem' }}>{edu.years}</div>}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Certifications Section */}
+                    {certifications && certifications.length > 0 && (
+                        <div>
+                            <h4 style={{
+                                margin: '0 0 6px 0',
+                                color: '#004b87',
+                                fontSize: '0.85rem',
+                                fontWeight: 700,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.05em',
+                                borderBottom: '2px solid #004b87',
+                                paddingBottom: '4px'
+                            }}>Certifications</h4>
+                            <ul style={{ margin: '8px 0 0 0', paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                {certifications.map((cert, idx) => (
+                                    <li key={idx} style={{ color: '#333', fontSize: '0.78rem' }}>{cert}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+
+                    {/* Technical Skills Section */}
+                    {technical_skills && Object.keys(technical_skills).length > 0 && (
+                        <div>
+                            <h4 style={{
+                                margin: '0 0 6px 0',
+                                color: '#004b87',
+                                fontSize: '0.85rem',
+                                fontWeight: 700,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.05em',
+                                borderBottom: '2px solid #004b87',
+                                paddingBottom: '4px'
+                            }}>Technical Skills</h4>
+                            <ul style={{ margin: '8px 0 0 0', paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.75rem', color: '#333' }}>
+                                {technical_skills.primary && (
+                                    <li><strong>Primary:</strong> {technical_skills.primary}</li>
+                                )}
+                                {technical_skills.languages && (
+                                    <li><strong>Languages:</strong> {technical_skills.languages}</li>
+                                )}
+                                {technical_skills.frontend && (
+                                    <li><strong>Frontend:</strong> {technical_skills.frontend}</li>
+                                )}
+                                {technical_skills.others && (
+                                    <li><strong>Others:</strong> {technical_skills.others}</li>
+                                )}
+                            </ul>
+                        </div>
+                    )}
+
+                    {/* Recognitions Section */}
+                    {recognitions && recognitions.length > 0 && (
+                        <div>
+                            <h4 style={{
+                                margin: '0 0 6px 0',
+                                color: '#004b87',
+                                fontSize: '0.85rem',
+                                fontWeight: 700,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.05em',
+                                borderBottom: '2px solid #004b87',
+                                paddingBottom: '4px'
+                            }}>Recognitions</h4>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px', fontSize: '0.75rem' }}>
+                                {recognitions.map((rec, idx) => (
+                                    <div key={idx} style={{ marginBottom: '6px' }}>
+                                        <span style={{ fontWeight: 700, color: '#333' }}>{rec.date ? `[${rec.date}] ` : ''}</span>
+                                        <span style={{ color: '#555' }}>{rec.description}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Right Panel (White) */}
+                <div style={{
+                    width: '68%',
+                    padding: '24px 28px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '20px',
+                    boxSizing: 'border-box'
+                }}>
+                    {/* Header: Logo & Candidate Name */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px' }}>
+                            {logoUrl && (
+                                <img src={logoUrl} alt="Logo ribbon" style={{ height: '36px', objectFit: 'contain' }} />
+                            )}
+                            <div style={{ display: 'flex', flexDirection: 'column', fontFamily: "'Outfit', sans-serif", lineHeight: 1.1, textAlign: 'left' }}>
+                                <span style={{ fontWeight: 800, fontSize: '1.2rem', color: '#0f172a', letterSpacing: '0.05em' }}>ALAMATICZ</span>
+                                <span style={{ fontWeight: 400, fontSize: '0.68rem', color: '#64748b', letterSpacing: '0.18em' }}>SOLUTIONS</span>
+                            </div>
+                        </div>
+                        <div style={{ borderBottom: '1px solid #ddd', paddingBottom: '4px' }} />
+                        <div style={{ marginTop: '8px' }}>
+                            <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 800, color: '#004b87', textTransform: 'uppercase', letterSpacing: '0.02em', fontFamily: "'Outfit', sans-serif" }}>
+                                {full_name}
+                            </h1>
+                            <div style={{ fontSize: '0.85rem', color: '#4b779a', fontWeight: 600, marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                {job_title}
+                            </div>
+                        </div>
+                        <div style={{ borderBottom: '1px solid #004b87', marginTop: '2px' }} />
+                    </div>
+
+                    {/* Profile Summary */}
+                    {profile_summary && (
+                        <div>
+                            <h4 style={{
+                                margin: '0 0 8px 0',
+                                color: '#004b87',
+                                fontSize: '0.85rem',
+                                fontWeight: 700,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.05em',
+                                borderBottom: '1px solid #ddd',
+                                paddingBottom: '4px'
+                            }}>Profile Summary</h4>
+                            <p style={{ margin: '8px 0 0 0', fontSize: '0.82rem', color: '#444', textAlign: 'justify', lineHeight: '1.6' }}>
+                                {profile_summary}
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Domain Skills */}
+                    {domain_skills && domain_skills.length > 0 && (
+                        <div>
+                            <h4 style={{
+                                margin: '0 0 8px 0',
+                                color: '#004b87',
+                                fontSize: '0.85rem',
+                                fontWeight: 700,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.05em',
+                                borderBottom: '1px solid #ddd',
+                                paddingBottom: '4px'
+                            }}>Domain Skills</h4>
+                            <ul style={{ margin: '8px 0 0 0', paddingLeft: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '0.8rem' }}>
+                                {domain_skills.map((skill, idx) => (
+                                    <li key={idx} style={{ color: '#444' }}>{skill}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+
+                    {/* Work Experience */}
+                    {work_experience && work_experience.length > 0 && (
+                        <div>
+                            <h4 style={{
+                                margin: '0 0 8px 0',
+                                color: '#004b87',
+                                fontSize: '0.85rem',
+                                fontWeight: 700,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.05em',
+                                borderBottom: '1px solid #ddd',
+                                paddingBottom: '4px'
+                            }}>Work Experience</h4>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '10px' }}>
+                                {work_experience.map((exp, idx) => (
+                                    <div key={idx}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                                            <span style={{ fontWeight: 700, color: '#333', fontSize: '0.85rem' }}>{exp.company}</span>
+                                            <span style={{ fontSize: '0.75rem', color: '#666', fontStyle: 'italic' }}>{exp.dates}</span>
+                                        </div>
+                                        <div style={{ fontStyle: 'italic', color: '#555', fontSize: '0.78rem', marginTop: '2px', fontWeight: 600 }}>{exp.role}</div>
+                                        {exp.bullets && exp.bullets.length > 0 && (
+                                            <ul style={{ margin: '6px 0 0 0', paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.78rem' }}>
+                                                {exp.bullets.map((bullet, bIdx) => (
+                                                    <li key={bIdx} style={{ color: '#555', textAlign: 'justify' }}>{bullet}</li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function getResumeHtml(data, logoUrl) {
+    const {
+        full_name = '',
+        job_title = '',
+        profile_summary = '',
+        domain_skills = [],
+        technical_skills = {},
+        education = [],
+        certifications = [],
+        work_experience = [],
+        recognitions = []
+    } = data;
+
+    const fullLogoUrl = logoUrl && (logoUrl.startsWith('data:') || logoUrl.startsWith('http') ? logoUrl : window.location.origin + logoUrl);
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+    <title>Resume - ${full_name}</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
+        
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', 'Segoe UI', sans-serif;
+            background: #ffffff;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            color: #333333;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        
+        .resume-container {
+            display: flex;
+            width: 210mm;
+            min-height: 297mm;
+            box-sizing: border-box;
+            background: #ffffff;
+        }
+        
+        .left-panel {
+            width: 32%;
+            background-color: #e6f0fa !important;
+            padding: 24px 18px;
+            box-sizing: border-box;
+            border-right: 1px solid rgba(0,0,0,0.05);
+        }
+        
+        .right-panel {
+            width: 68%;
+            padding: 24px 28px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .section {
+            margin-bottom: 20px;
+        }
+        
+        h4 {
+            margin: 0 0 6px 0;
+            color: #004b87;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 2px solid #004b87;
+            padding-bottom: 4px;
+        }
+        
+        .right-panel h4 {
+            border-bottom: 1px solid #ddd;
+            font-size: 11px;
+        }
+        
+        .edu-item, .rec-item {
+            margin-bottom: 12px;
+        }
+        
+        .edu-degree, .rec-date {
+            font-weight: 700;
+            color: #333;
+        }
+        
+        .edu-school, .rec-desc {
+            color: #555;
+            font-size: 11px;
+            margin-top: 2px;
+        }
+        
+        .edu-years {
+            color: #777;
+            font-size: 10px;
+        }
+        
+        ul {
+            margin: 6px 0 0 0;
+            padding-left: 16px;
+        }
+        
+        li {
+            margin-bottom: 4px;
+            font-size: 11px;
+            color: #333;
+        }
+        
+        .right-panel li {
+            color: #444;
+        }
+        
+        .header-section {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .logo-container {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .logo-img {
+            height: 36px;
+            object-fit: contain;
+        }
+        
+        .company-fallback {
+            font-size: 13px;
+            font-weight: 800;
+            color: #004b87;
+            letter-spacing: 0.05em;
+        }
+        
+        .divider-light {
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 4px;
+        }
+        
+        .name-designation {
+            margin-top: 8px;
+        }
+        
+        .candidate-name {
+            margin: 0;
+            font-size: 22px;
+            font-weight: 800;
+            color: #004b87;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+        
+        .candidate-title {
+            font-size: 12px;
+            color: #4b779a;
+            font-weight: 600;
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .divider-blue {
+            border-bottom: 1px solid #004b87;
+            margin-top: 2px;
+        }
+        
+        .summary-text {
+            margin: 8px 0 0 0;
+            font-size: 11px;
+            color: #444;
+            text-align: justify;
+            line-height: 1.6;
+        }
+        
+        .domain-grid {
+            margin: 8px 0 0 0;
+            padding-left: 16px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+        
+        .exp-item {
+            margin-bottom: 14px;
+        }
+        
+        .exp-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+        }
+        
+        .exp-company {
+            font-weight: 700;
+            color: #333;
+            font-size: 12px;
+        }
+        
+        .exp-dates {
+            font-size: 10px;
+            color: #666;
+            font-style: italic;
+        }
+        
+        .exp-role {
+            font-style: italic;
+            color: #555;
+            font-size: 11px;
+            margin-top: 2px;
+            font-weight: 600;
+        }
+        
+        .exp-bullets {
+            margin: 6px 0 0 0;
+            padding-left: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-size: 11px;
+        }
+        
+        .exp-bullets li {
+            color: #555;
+            text-align: justify;
+        }
+
+        @media print {
+            body {
+                background: #ffffff;
+            }
+            .resume-container {
+                width: 100%;
+                min-height: 100%;
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="resume-container">
+        <!-- Left Panel -->
+        <div class="left-panel">
+            <!-- Education -->
+            ${education && education.length > 0 ? `
+            <div class="section">
+                <h4>Education</h4>
+                <div style="margin-top: 8px;">
+                    ${education.map(edu => `
+                    <div class="edu-item">
+                        <div class="edu-degree">${edu.degree}${edu.field ? ` - ${edu.field}` : ''}</div>
+                        <div class="edu-school">${edu.school}</div>
+                        ${edu.years ? `<div class="edu-years">${edu.years}</div>` : ''}
+                    </div>
+                    `).join('')}
+                </div>
+            </div>
+            ` : ''}
+            
+            <!-- Certifications -->
+            ${certifications && certifications.length > 0 ? `
+            <div class="section">
+                <h4>Certifications</h4>
+                <ul>
+                    ${certifications.map(cert => `
+                    <li>${cert}</li>
+                    `).join('')}
+                </ul>
+            </div>
+            ` : ''}
+            
+            <!-- Technical Skills -->
+            ${technical_skills && Object.keys(technical_skills).length > 0 ? `
+            <div class="section">
+                <h4>Technical Skills</h4>
+                <ul style="font-size: 10px;">
+                    ${technical_skills.primary ? `<li><strong>Primary:</strong> ${technical_skills.primary}</li>` : ''}
+                    ${technical_skills.languages ? `<li><strong>Languages:</strong> ${technical_skills.languages}</li>` : ''}
+                    ${technical_skills.frontend ? `<li><strong>Frontend:</strong> ${technical_skills.frontend}</li>` : ''}
+                    ${technical_skills.others ? `<li><strong>Others:</strong> ${technical_skills.others}</li>` : ''}
+                </ul>
+            </div>
+            ` : ''}
+            
+            <!-- Recognitions -->
+            ${recognitions && recognitions.length > 0 ? `
+            <div class="section">
+                <h4>Recognitions</h4>
+                <div style="margin-top: 8px;">
+                    ${recognitions.map(rec => `
+                    <div class="rec-item">
+                        <span class="edu-degree">${rec.date ? `[${rec.date}] ` : ''}</span>
+                        <span class="edu-school">${rec.description}</span>
+                    </div>
+                    `).join('')}
+                </div>
+            </div>
+            ` : ''}
+        </div>
+        
+        <!-- Right Panel -->
+        <div class="right-panel">
+            <!-- Header -->
+            <div class="header-section">
+                <div class="logo-container">
+                    ${fullLogoUrl ? `<img class="logo-img" src="${fullLogoUrl}" alt="Logo" />` : ''}
+                    <div style="display: flex; flex-direction: column; font-family: 'Outfit', sans-serif; line-height: 1.1; text-align: left;">
+                        <span style="font-weight: 800; font-size: 20px; color: #0f172a; letter-spacing: 0.05em; text-transform: uppercase;">ALAMATICZ</span>
+                        <span style="font-weight: 400; font-size: 11px; color: #64748b; letter-spacing: 0.18em; text-transform: uppercase;">SOLUTIONS</span>
+                    </div>
+                </div>
+                <div class="divider-light"></div>
+                <div class="name-designation">
+                    <h1 class="candidate-name">${full_name}</h1>
+                    <div class="candidate-title">${job_title}</div>
+                </div>
+                <div class="divider-blue"></div>
+            </div>
+            
+            <!-- Profile Summary -->
+            ${profile_summary ? `
+            <div class="section">
+                <h4>Profile Summary</h4>
+                <p class="summary-text">${profile_summary}</p>
+            </div>
+            ` : ''}
+            
+            <!-- Domain Skills -->
+            ${domain_skills && domain_skills.length > 0 ? `
+            <div class="section">
+                <h4>Domain Skills</h4>
+                <ul class="domain-grid">
+                    ${domain_skills.map(skill => `
+                    <li>${skill}</li>
+                    `).join('')}
+                </ul>
+            </div>
+            ` : ''}
+            
+            <!-- Work Experience -->
+            ${work_experience && work_experience.length > 0 ? `
+            <div class="section">
+                <h4>Work Experience</h4>
+                <div style="margin-top: 10px;">
+                    ${work_experience.map(exp => `
+                    <div class="exp-item">
+                        <div class="exp-header">
+                            <span class="exp-company">${exp.company}</span>
+                            <span class="exp-dates">${exp.dates}</span>
+                        </div>
+                        <div class="exp-role">${exp.role}</div>
+                        ${exp.bullets && exp.bullets.length > 0 ? `
+                        <ul class="exp-bullets">
+                            ${exp.bullets.map(bullet => `
+                            <li>${bullet}</li>
+                            `).join('')}
+                        </ul>
+                        ` : ''}
+                    </div>
+                    `).join('')}
+                </div>
+            </div>
+            ` : ''}
+        </div>
+    </div>
+    <script>
+        window.onload = function() {
+            setTimeout(function() {
+                window.print();
+            }, 300);
+        };
+    </script>
+</body>
+</html>`;
+}
+
+/* ─── Resume Editor component ────────────────────────────────────────────── */
+function ResumeEditor({ formData, setFormData }) {
+    if (!formData) return null;
+
+    const handleUpdateField = (field, val) => {
+        setFormData(prev => ({
+            ...prev,
+            [field]: val
+        }));
+    };
+
+    const handleUpdateTechnicalSkill = (field, val) => {
+        setFormData(prev => ({
+            ...prev,
+            technical_skills: {
+                ...(prev.technical_skills || {}),
+                [field]: val
+            }
+        }));
+    };
+
+    // Education helpers
+    const handleAddEducation = () => {
+        setFormData(prev => ({
+            ...prev,
+            education: [...(prev.education || []), { degree: '', field: '', school: '', years: '' }]
+        }));
+    };
+
+    const handleRemoveEducation = (index) => {
+        setFormData(prev => ({
+            ...prev,
+            education: (prev.education || []).filter((_, i) => i !== index)
+        }));
+    };
+
+    const handleUpdateEducation = (index, field, val) => {
+        setFormData(prev => {
+            const arr = [...(prev.education || [])];
+            arr[index] = { ...arr[index], [field]: val };
+            return { ...prev, education: arr };
+        });
+    };
+
+    // Work Experience helpers
+    const handleAddWorkExp = () => {
+        setFormData(prev => ({
+            ...prev,
+            work_experience: [...(prev.work_experience || []), { company: '', dates: '', role: '', bullets: [''] }]
+        }));
+    };
+
+    const handleRemoveWorkExp = (index) => {
+        setFormData(prev => ({
+            ...prev,
+            work_experience: (prev.work_experience || []).filter((_, i) => i !== index)
+        }));
+    };
+
+    const handleUpdateWorkExp = (index, field, val) => {
+        setFormData(prev => {
+            const arr = [...(prev.work_experience || [])];
+            arr[index] = { ...arr[index], [field]: val };
+            return { ...prev, work_experience: arr };
+        });
+    };
+
+    const handleUpdateWorkExpBullets = (expIndex, text) => {
+        setFormData(prev => {
+            const arr = [...(prev.work_experience || [])];
+            arr[expIndex] = {
+                ...arr[expIndex],
+                bullets: text.split('\n').map(s => s.trim()).filter(Boolean)
+            };
+            return { ...prev, work_experience: arr };
+        });
+    };
+
+    // Recognitions helpers
+    const handleAddRecognition = () => {
+        setFormData(prev => ({
+            ...prev,
+            recognitions: [...(prev.recognitions || []), { date: '', description: '' }]
+        }));
+    };
+
+    const handleRemoveRecognition = (index) => {
+        setFormData(prev => ({
+            ...prev,
+            recognitions: (prev.recognitions || []).filter((_, i) => i !== index)
+        }));
+    };
+
+    const handleUpdateRecognition = (index, field, val) => {
+        setFormData(prev => {
+            const arr = [...(prev.recognitions || [])];
+            arr[index] = { ...arr[index], [field]: val };
+            return { ...prev, recognitions: arr };
+        });
+    };
+
+    const inputStyle = {
+        width: '100%',
+        padding: '10px 12px',
+        borderRadius: 8,
+        border: '1px solid var(--border)',
+        background: 'var(--input-bg)',
+        color: 'var(--text)',
+        outline: 'none',
+        fontSize: '0.85rem',
+        marginTop: '6px',
+        transition: 'border-color 0.2s'
+    };
+
+    const textareaStyle = {
+        ...inputStyle,
+        minHeight: '80px',
+        resize: 'vertical'
+    };
+
+    const sectionHeaderStyle = {
+        fontFamily: 'var(--fh)',
+        fontWeight: 800,
+        fontSize: '0.9rem',
+        color: 'var(--gold)',
+        textTransform: 'uppercase',
+        letterSpacing: '0.05em',
+        borderBottom: '1px solid var(--border)',
+        paddingBottom: '6px',
+        marginBottom: '14px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px'
+    };
+
+    const groupContainerStyle = {
+        background: 'rgba(var(--navy-rgb), 0.15)',
+        border: '1px solid var(--border)',
+        borderRadius: 10,
+        padding: '16px',
+        marginBottom: '16px',
+        position: 'relative'
+    };
+
+    const removeBtnStyle = {
+        position: 'absolute',
+        top: '12px',
+        right: '12px',
+        background: 'rgba(239, 68, 68, 0.15)',
+        color: '#ef4444',
+        border: '1px solid rgba(239, 68, 68, 0.3)',
+        borderRadius: '6px',
+        padding: '4px 8px',
+        fontSize: '0.72rem',
+        cursor: 'pointer',
+        fontWeight: 600,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '4px'
+    };
+
+    const addBtnStyle = {
+        background: 'rgba(var(--sky-rgb), 0.12)',
+        color: 'var(--sky-dim)',
+        border: '1px solid rgba(var(--sky-rgb), 0.25)',
+        borderRadius: '8px',
+        padding: '8px 16px',
+        fontSize: '0.8rem',
+        cursor: 'pointer',
+        fontWeight: 700,
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '6px',
+        marginTop: '8px'
+    };
+
+    return (
+        <div style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: '24px',
+            background: 'var(--navy-dark)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '24px'
+        }}>
+            {/* Personal Details */}
+            <div>
+                <h4 style={sectionHeaderStyle}>👤 Personal Details</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div>
+                        <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontWeight: 600 }}>Full Name</label>
+                        <input
+                            type="text"
+                            value={formData.full_name || ''}
+                            onChange={(e) => handleUpdateField('full_name', e.target.value)}
+                            style={inputStyle}
+                            placeholder="Candidate full name"
+                        />
+                    </div>
+                    <div>
+                        <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontWeight: 600 }}>Job Designation</label>
+                        <input
+                            type="text"
+                            value={formData.job_title || ''}
+                            onChange={(e) => handleUpdateField('job_title', e.target.value)}
+                            style={inputStyle}
+                            placeholder="Determined job title (e.g. PEGA CSSA)"
+                        />
+                    </div>
+                </div>
+            </div>
+
+            {/* Profile Summary */}
+            <div>
+                <h4 style={sectionHeaderStyle}>📝 Profile Summary</h4>
+                <div>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontWeight: 600 }}>Professional Summary</label>
+                    <textarea
+                        value={formData.profile_summary || ''}
+                        onChange={(e) => handleUpdateField('profile_summary', e.target.value)}
+                        style={{ ...textareaStyle, minHeight: '100px' }}
+                        placeholder="Candidate professional summary..."
+                    />
+                </div>
+            </div>
+
+            {/* Skills */}
+            <div>
+                <h4 style={sectionHeaderStyle}>🛠️ Technical & Domain Skills</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div>
+                        <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontWeight: 600 }}>Domain Skills (Comma-separated)</label>
+                        <textarea
+                            value={Array.isArray(formData.domain_skills) ? formData.domain_skills.join(', ') : ''}
+                            onChange={(e) => handleUpdateField('domain_skills', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                            style={textareaStyle}
+                            placeholder="Pega PRPC, Decisioning, Integration, Data Modeling..."
+                        />
+                    </div>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                        <div>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontWeight: 600 }}>Primary Tool/Platform</label>
+                            <input
+                                type="text"
+                                value={formData.technical_skills?.primary || ''}
+                                onChange={(e) => handleUpdateTechnicalSkill('primary', e.target.value)}
+                                style={inputStyle}
+                                placeholder="e.g. Pega PRPC: v8.x"
+                            />
+                        </div>
+                        <div>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontWeight: 600 }}>Languages</label>
+                            <input
+                                type="text"
+                                value={formData.technical_skills?.languages || ''}
+                                onChange={(e) => handleUpdateTechnicalSkill('languages', e.target.value)}
+                                style={inputStyle}
+                                placeholder="e.g. Java, SQL, HTML"
+                            />
+                        </div>
+                        <div>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontWeight: 600 }}>Frontend</label>
+                            <input
+                                type="text"
+                                value={formData.technical_skills?.frontend || ''}
+                                onChange={(e) => handleUpdateTechnicalSkill('frontend', e.target.value)}
+                                style={inputStyle}
+                                placeholder="e.g. HTML5, CSS3, JavaScript, React"
+                            />
+                        </div>
+                        <div>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontWeight: 600 }}>Others</label>
+                            <input
+                                type="text"
+                                value={formData.technical_skills?.others || ''}
+                                onChange={(e) => handleUpdateTechnicalSkill('others', e.target.value)}
+                                style={inputStyle}
+                                placeholder="e.g. Git, Jira, Maven"
+                            />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Certifications */}
+            <div>
+                <h4 style={sectionHeaderStyle}>🎖️ Certifications</h4>
+                <div>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontWeight: 600 }}>Certifications (Comma-separated)</label>
+                    <textarea
+                        value={Array.isArray(formData.certifications) ? formData.certifications.join(', ') : ''}
+                        onChange={(e) => handleUpdateField('certifications', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                        style={textareaStyle}
+                        placeholder="Pega Certified Senior System Architect (CSSA), Certified System Architect (CSA)..."
+                    />
+                </div>
+            </div>
+
+            {/* Education */}
+            <div>
+                <h4 style={sectionHeaderStyle}>🎓 Education</h4>
+                <div>
+                    {(formData.education || []).map((edu, idx) => (
+                        <div key={idx} style={groupContainerStyle}>
+                            <button
+                                type="button"
+                                onClick={() => handleRemoveEducation(idx)}
+                                style={removeBtnStyle}
+                            >
+                                <Trash2 size={12} /> Remove
+                            </button>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '10px' }}>
+                                <div>
+                                    <label style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Degree</label>
+                                    <input
+                                        type="text"
+                                        value={edu.degree || ''}
+                                        onChange={(e) => handleUpdateEducation(idx, 'degree', e.target.value)}
+                                        style={inputStyle}
+                                        placeholder="e.g. B.Tech / B.E."
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Field of Study</label>
+                                    <input
+                                        type="text"
+                                        value={edu.field || ''}
+                                        onChange={(e) => handleUpdateEducation(idx, 'field', e.target.value)}
+                                        style={inputStyle}
+                                        placeholder="e.g. Computer Science"
+                                    />
+                                </div>
+                                <div style={{ gridColumn: 'span 2' }}>
+                                    <label style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>School/University</label>
+                                    <input
+                                        type="text"
+                                        value={edu.school || ''}
+                                        onChange={(e) => handleUpdateEducation(idx, 'school', e.target.value)}
+                                        style={inputStyle}
+                                        placeholder="e.g. Anna University"
+                                    />
+                                </div>
+                                <div style={{ gridColumn: 'span 2' }}>
+                                    <label style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Years</label>
+                                    <input
+                                        type="text"
+                                        value={edu.years || ''}
+                                        onChange={(e) => handleUpdateEducation(idx, 'years', e.target.value)}
+                                        style={inputStyle}
+                                        placeholder="e.g. 2016 - 2020"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                    <button
+                        type="button"
+                        onClick={handleAddEducation}
+                        style={addBtnStyle}
+                    >
+                        <Plus size={14} /> Add Education
+                    </button>
+                </div>
+            </div>
+
+            {/* Work Experience */}
+            <div>
+                <h4 style={sectionHeaderStyle}>💼 Work Experience</h4>
+                <div>
+                    {(formData.work_experience || []).map((exp, idx) => (
+                        <div key={idx} style={groupContainerStyle}>
+                            <button
+                                type="button"
+                                onClick={() => handleRemoveWorkExp(idx)}
+                                style={removeBtnStyle}
+                            >
+                                <Trash2 size={12} /> Remove
+                            </button>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '10px' }}>
+                                <div>
+                                    <label style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Company Name</label>
+                                    <input
+                                        type="text"
+                                        value={exp.company || ''}
+                                        onChange={(e) => handleUpdateWorkExp(idx, 'company', e.target.value)}
+                                        style={inputStyle}
+                                        placeholder="Company name"
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Employment Dates</label>
+                                    <input
+                                        type="text"
+                                        value={exp.dates || ''}
+                                        onChange={(e) => handleUpdateWorkExp(idx, 'dates', e.target.value)}
+                                        style={inputStyle}
+                                        placeholder="e.g. Jul 2020 - Present"
+                                    />
+                                </div>
+                                <div style={{ gridColumn: 'span 2' }}>
+                                    <label style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Role/Designation</label>
+                                    <input
+                                        type="text"
+                                        value={exp.role || ''}
+                                        onChange={(e) => handleUpdateWorkExp(idx, 'role', e.target.value)}
+                                        style={inputStyle}
+                                        placeholder="Role/Designation"
+                                    />
+                                </div>
+                                <div style={{ gridColumn: 'span 2' }}>
+                                    <label style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Key Accomplishments (One per line)</label>
+                                    <textarea
+                                        value={Array.isArray(exp.bullets) ? exp.bullets.join('\n') : ''}
+                                        onChange={(e) => handleUpdateWorkExpBullets(idx, e.target.value)}
+                                        style={{ ...textareaStyle, minHeight: '100px' }}
+                                        placeholder="Developed key microservices...&#10;Led a team of 4 engineers..."
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                    <button
+                        type="button"
+                        onClick={handleAddWorkExp}
+                        style={addBtnStyle}
+                    >
+                        <Plus size={14} /> Add Experience
+                    </button>
+                </div>
+            </div>
+
+            {/* Recognitions */}
+            <div>
+                <h4 style={sectionHeaderStyle}>🏆 Recognitions</h4>
+                <div>
+                    {(formData.recognitions || []).map((rec, idx) => (
+                        <div key={idx} style={groupContainerStyle}>
+                            <button
+                                type="button"
+                                onClick={() => handleRemoveRecognition(idx)}
+                                style={removeBtnStyle}
+                            >
+                                <Trash2 size={12} /> Remove
+                            </button>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '10px' }}>
+                                <div>
+                                    <label style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Date</label>
+                                    <input
+                                        type="text"
+                                        value={rec.date || ''}
+                                        onChange={(e) => handleUpdateRecognition(idx, 'date', e.target.value)}
+                                        style={inputStyle}
+                                        placeholder="e.g. Dec 2022"
+                                    />
+                                </div>
+                                <div style={{ gridColumn: 'span 2' }}>
+                                    <label style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Description</label>
+                                    <input
+                                        type="text"
+                                        value={rec.description || ''}
+                                        onChange={(e) => handleUpdateRecognition(idx, 'description', e.target.value)}
+                                        style={inputStyle}
+                                        placeholder="Recognition or Award description"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                    <button
+                        type="button"
+                        onClick={handleAddRecognition}
+                        style={addBtnStyle}
+                    >
+                        <Plus size={14} /> Add Recognition
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 /* ─── Candidate Details Modal ────────────────────────────────────────────── */
 function CandidateDetailsModal({ candidate, onClose, onViewPdf, onToggleStatus }) {
     const [activeTab, setActiveTab] = React.useState('profile');
     const [jobs, setJobs] = React.useState([]);
     const [loadingJobs, setLoadingJobs] = React.useState(false);
     const [jobStatus, setJobStatus] = React.useState(candidate?.job_status || '');
+    const [formattedData, setFormattedData] = React.useState(null);
+    const [loadingFormatted, setLoadingFormatted] = React.useState(false);
+    const [isEditingFormatted, setIsEditingFormatted] = React.useState(false);
+    const [editedFormState, setEditedFormState] = React.useState(null);
+    const [savingEdited, setSavingEdited] = React.useState(false);
+
+    React.useEffect(() => {
+        setIsEditingFormatted(false);
+        setEditedFormState(null);
+    }, [candidate, jobStatus]);
+
+    const handleStartEditing = () => {
+        setEditedFormState(JSON.parse(JSON.stringify(formattedData || {})));
+        setIsEditingFormatted(true);
+    };
+
+    const handleSaveEditedResume = async () => {
+        if (!editedFormState) return;
+        setSavingEdited(true);
+        try {
+            const res = await axios.put(`${import.meta.env.VITE_API_URL || ''}/api/candidates/${candidate.id}/formatted-resume`, editedFormState);
+            if (res.data.status === 'updated') {
+                setFormattedData(editedFormState);
+                setIsEditingFormatted(false);
+            }
+        } catch (err) {
+            console.error("Failed to save formatted resume", err);
+            alert("Failed to save edited resume: " + (err.response?.data?.detail || err.message));
+        } finally {
+            setSavingEdited(false);
+        }
+    };
 
     React.useEffect(() => {
         if (candidate?.id) {
@@ -130,297 +1306,572 @@ function CandidateDetailsModal({ candidate, onClose, onViewPdf, onToggleStatus }
         }
     }, [candidate]);
 
+    React.useEffect(() => {
+        if (candidate?.id && jobStatus === 'selected') {
+            setFormattedData(null);
+            setLoadingFormatted(true);
+            axios.get(`${import.meta.env.VITE_API_URL || ''}/api/candidates/${candidate.id}/formatted-resume`)
+                .then(res => setFormattedData(res.data))
+                .catch(err => console.error("Failed to load formatted resume", err))
+                .finally(() => setLoadingFormatted(false));
+        }
+    }, [candidate, jobStatus]);
+
+    const handlePrintResume = () => {
+        if (!formattedData) return;
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+            printWindow.document.write(getResumeHtml(formattedData, alamaticzLogo));
+            printWindow.document.close();
+        } else {
+            alert('Please allow popups to print/export PDF.');
+        }
+    };
+
     const isImmediate = (val) => {
         if (val === 0 || val === '0') return true;
         return String(val || '').toLowerCase().includes('immediate');
     };
 
+    const isPdf = candidate.filename && candidate.filename.toLowerCase().endsWith('.pdf');
+
+    const hasViewableResume = candidate.filename && 
+        !candidate.filename.toLowerCase().endsWith('.xlsx') && 
+        !candidate.filename.toLowerCase().endsWith('.xls') && 
+        !candidate.filename.toLowerCase().endsWith('.csv');
+
     return (
         <div className="modal-overlay" style={{ zIndex: 99998 }} onClick={onClose}>
             <div className="card" onClick={e => e.stopPropagation()} style={{
-                width: '95%', maxWidth: '800px', maxHeight: '90vh',
-                display: 'flex', flexDirection: 'column', padding: 0,
+                width: '95%', 
+                maxWidth: hasViewableResume ? '1400px' : '800px', 
+                height: hasViewableResume ? '90vh' : 'auto',
+                maxHeight: '90vh',
+                display: 'flex', 
+                flexDirection: 'row', 
+                padding: 0,
                 overflow: 'hidden'
             }}>
-                {/* Header */}
+                {/* Left Panel: Candidate details */}
                 <div style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '20px 24px', background: 'rgba(var(--navy-dark-rgb), 0.4)',
-                    borderBottom: '1px solid var(--border)'
+                    flex: hasViewableResume ? '1 1 50%' : '1 1 100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    height: '100%',
+                    overflow: 'hidden',
+                    borderRight: hasViewableResume ? '1px solid var(--border)' : 'none'
                 }}>
-                    <div>
-                        <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.25rem', fontWeight: 800 }}>
-                            {candidate.full_name || 'Candidate Details'}
-                        </h3>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)', marginTop: '4px', display: 'flex', gap: '15px' }}>
-                            <span>Source: <strong style={{ color: 'var(--gold)' }}>{candidate.source || 'Resume Upload'}</strong></span>
-                            {candidate.timestamp && <span>Analyzed: {new Date(candidate.timestamp).toLocaleDateString()}</span>}
+                    {/* Header */}
+                    <div style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '20px 24px', background: 'rgba(var(--navy-dark-rgb), 0.4)',
+                        borderBottom: '1px solid var(--border)'
+                    }}>
+                        <div>
+                            <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.25rem', fontWeight: 800 }}>
+                                {candidate.full_name || 'Candidate Details'}
+                            </h3>
+                            <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)', marginTop: '4px', display: 'flex', gap: '15px' }}>
+                                <span>Source: <strong style={{ color: 'var(--gold)' }}>{candidate.source || 'Resume Upload'}</strong></span>
+                                {candidate.timestamp && <span>Analyzed: {new Date(candidate.timestamp).toLocaleDateString()}</span>}
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                            {onToggleStatus && jobStatus && (
+                                <button 
+                                    onClick={async () => {
+                                        const nextStatus = jobStatus === 'selected' ? 'matched' : 'selected';
+                                        try {
+                                            await onToggleStatus(candidate.id, nextStatus);
+                                            setJobStatus(nextStatus);
+                                            // Also update local copy in object
+                                            candidate.job_status = nextStatus;
+                                        } catch (err) {
+                                            console.error("Failed to toggle status", err);
+                                        }
+                                    }}
+                                    style={{
+                                        background: jobStatus === 'selected' ? 'rgba(45, 212, 191, 0.15)' : 'rgba(var(--gold-rgb), 0.15)',
+                                        border: jobStatus === 'selected' ? '1px solid rgba(45, 212, 191, 0.35)' : '1px solid rgba(var(--gold-rgb), 0.35)',
+                                        color: jobStatus === 'selected' ? '#2dd4bf' : 'var(--gold)',
+                                        cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
+                                        fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 700,
+                                        display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s',
+                                        outline: 'none'
+                                    }}
+                                >
+                                    {jobStatus === 'selected' ? '✓ Selected for Job' : '➕ Select Candidate'}
+                                </button>
+                            )}
+                            {candidate.filename && !candidate.filename.toLowerCase().endsWith('.xlsx') && !candidate.filename.toLowerCase().endsWith('.xls') && !candidate.filename.toLowerCase().endsWith('.csv') && (
+                                isPdf ? (
+                                    <button 
+                                        onClick={() => onViewPdf(candidate.filename, candidate.full_name)}
+                                        style={{
+                                            background: 'rgba(var(--sky-rgb), 0.15)', border: '1px solid rgba(var(--sky-rgb), 0.3)',
+                                            color: 'var(--sky-dim)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
+                                            fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 700,
+                                            display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s'
+                                        }}
+                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.25)'}
+                                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.15)'}
+                                    >
+                                        <FileText size={14} /> Open in New Tab
+                                    </button>
+                                ) : (
+                                    <a 
+                                        href={`${import.meta.env.VITE_API_URL || ''}/static/${candidate.filename}`}
+                                        download={candidate.filename}
+                                        style={{
+                                            background: 'rgba(var(--sky-rgb), 0.15)', border: '1px solid rgba(var(--sky-rgb), 0.3)',
+                                            color: 'var(--sky-dim)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
+                                            fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 700,
+                                            display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s',
+                                            textDecoration: 'none'
+                                        }}
+                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.25)'}
+                                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.15)'}
+                                    >
+                                        <Download size={14} /> Download Resume
+                                    </a>
+                                )
+                            )}
+                            <button onClick={onClose} style={{
+                                background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
+                                color: 'var(--gold)', cursor: 'pointer', padding: '6px', borderRadius: '8px',
+                                display: 'flex', transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.2)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.1)'}
+                            >
+                                <X size={18} />
+                            </button>
                         </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                        {onToggleStatus && jobStatus && (
-                            <button 
-                                onClick={async () => {
-                                    const nextStatus = jobStatus === 'selected' ? 'matched' : 'selected';
-                                    try {
-                                        await onToggleStatus(candidate.id, nextStatus);
-                                        setJobStatus(nextStatus);
-                                        // Also update local copy in object
-                                        candidate.job_status = nextStatus;
-                                    } catch (err) {
-                                        console.error("Failed to toggle status", err);
-                                    }
-                                }}
-                                style={{
-                                    background: jobStatus === 'selected' ? 'rgba(45, 212, 191, 0.15)' : 'rgba(var(--gold-rgb), 0.15)',
-                                    border: jobStatus === 'selected' ? '1px solid rgba(45, 212, 191, 0.35)' : '1px solid rgba(var(--gold-rgb), 0.35)',
-                                    color: jobStatus === 'selected' ? '#2dd4bf' : 'var(--gold)',
-                                    cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
-                                    fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 700,
-                                    display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s',
-                                    outline: 'none'
-                                }}
-                            >
-                                {jobStatus === 'selected' ? '✓ Selected for Job' : '➕ Select Candidate'}
-                            </button>
-                        )}
-                        {candidate.filename && !candidate.filename.toLowerCase().endsWith('.xlsx') && !candidate.filename.toLowerCase().endsWith('.xls') && !candidate.filename.toLowerCase().endsWith('.csv') && (
-                            <button 
-                                onClick={() => onViewPdf(candidate.filename, candidate.full_name)}
-                                style={{
-                                    background: 'rgba(var(--sky-rgb), 0.15)', border: '1px solid rgba(var(--sky-rgb), 0.3)',
-                                    color: 'var(--sky-dim)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
-                                    fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 700,
-                                    display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s'
-                                }}
-                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.25)'}
-                                onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.15)'}
-                            >
-                                <FileText size={14} /> View Resume
-                            </button>
-                        )}
-                        <button onClick={onClose} style={{
-                            background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
-                            color: 'var(--gold)', cursor: 'pointer', padding: '6px', borderRadius: '8px',
-                            display: 'flex', transition: 'all 0.2s'
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.2)'}
-                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.1)'}
+
+                    {/* Tabs Selector */}
+                    <div style={{ display: 'flex', background: 'rgba(var(--navy-rgb), 0.3)', padding: '0 24px', borderBottom: '1px solid var(--border)' }}>
+                        <button 
+                            onClick={() => setActiveTab('profile')}
+                            style={{
+                                padding: '12px 20px', background: 'transparent', border: 'none',
+                                borderBottom: `3px solid ${activeTab === 'profile' ? 'var(--gold)' : 'transparent'}`,
+                                color: activeTab === 'profile' ? 'var(--gold)' : 'var(--text-dim)',
+                                fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
+                                transition: 'all 0.2s', outline: 'none'
+                            }}
                         >
-                            <X size={18} />
+                            👤 Profile Details
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('jobs')}
+                            style={{
+                                padding: '12px 20px', background: 'transparent', border: 'none',
+                                borderBottom: `3px solid ${activeTab === 'jobs' ? 'var(--gold)' : 'transparent'}`,
+                                color: activeTab === 'jobs' ? 'var(--gold)' : 'var(--text-dim)',
+                                fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
+                                transition: 'all 0.2s', outline: 'none'
+                            }}
+                        >
+                            💼 Matched & Selected Jobs ({jobs.length})
                         </button>
                     </div>
-                </div>
 
-                {/* Tabs Selector */}
-                <div style={{ display: 'flex', background: 'rgba(var(--navy-rgb), 0.3)', padding: '0 24px', borderBottom: '1px solid var(--border)' }}>
-                    <button 
-                        onClick={() => setActiveTab('profile')}
-                        style={{
-                            padding: '12px 20px', background: 'transparent', border: 'none',
-                            borderBottom: `3px solid ${activeTab === 'profile' ? 'var(--gold)' : 'transparent'}`,
-                            color: activeTab === 'profile' ? 'var(--gold)' : 'var(--text-dim)',
-                            fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
-                            transition: 'all 0.2s', outline: 'none'
-                        }}
-                    >
-                        👤 Profile Details
-                    </button>
-                    <button 
-                        onClick={() => setActiveTab('jobs')}
-                        style={{
-                            padding: '12px 20px', background: 'transparent', border: 'none',
-                            borderBottom: `3px solid ${activeTab === 'jobs' ? 'var(--gold)' : 'transparent'}`,
-                            color: activeTab === 'jobs' ? 'var(--gold)' : 'var(--text-dim)',
-                            fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
-                            transition: 'all 0.2s', outline: 'none'
-                        }}
-                    >
-                        💼 Matched & Selected Jobs ({jobs.length})
-                    </button>
-                </div>
-
-                {/* Content */}
-                <div style={{ flex: 1, overflowY: 'auto', padding: '24px', color: 'var(--text)' }}>
-                    {activeTab === 'profile' ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                            {/* Grid fields */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Name</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.full_name || '—'}</span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Source</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--gold)', background: 'rgba(var(--gold-rgb), 0.1)', padding: '2px 8px', borderRadius: '6px', display: 'inline-block' }}>
-                                        {candidate.source || 'Resume Upload'}
-                                    </span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Total Experience</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.total_experience ? `${candidate.total_experience} yrs` : '—'}</span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Pega Experience</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.pega_experience ? `${candidate.pega_experience} yrs` : '—'}</span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>CDH Experience</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.cdh_exp ? `${candidate.cdh_exp} yrs` : '—'}</span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Current CTC / salary</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.ctc || '—'}</span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Expected CTC</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.expected_ctc || '—'}</span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Percentage Hike</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.percentage_hike || '—'}</span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Notice Period</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>
-                                        <span className={`badge ${isImmediate(candidate.notice_period) ? 'badge-green' : 'badge-sky'}`}>
-                                            {candidate.notice_period === 0 || candidate.notice_period === '0' ? 'Immediate' : (candidate.notice_period ? `${candidate.notice_period} days` : '—')}
+                    {/* Content */}
+                    <div style={{ flex: 1, overflowY: 'auto', padding: '24px', color: 'var(--text)' }}>
+                        {activeTab === 'profile' ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                {/* Grid fields */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Name</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.full_name || '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Source</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--gold)', background: 'rgba(var(--gold-rgb), 0.1)', padding: '2px 8px', borderRadius: '6px', display: 'inline-block' }}>
+                                            {candidate.source || 'Resume Upload'}
                                         </span>
-                                    </span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Current Location</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.current_location || '—'}</span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Preferred Location</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.pref_locations || '—'}</span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Current Employment</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.current_organization || '—'}</span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Phone Number</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.phone || '—'}</span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Email Address</span>
-                                    {candidate.email ? (
-                                        <a 
-                                            href={`https://mail.google.com/mail/?view=cm&fs=1&to=${candidate.email}`} 
-                                            target="_blank" 
-                                            rel="noreferrer" 
-                                            style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--sky-dim)', textDecoration: 'underline', wordBreak: 'break-all' }}
-                                            title="Click to compose in Gmail"
-                                        >
-                                            ✉️ {candidate.email}
-                                        </a>
-                                    ) : '—'}
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>LinkedIn Profile</span>
-                                    {candidate.linkedin ? (
-                                        <a href={candidate.linkedin.startsWith('http') ? candidate.linkedin : `https://${candidate.linkedin}`} target="_blank" rel="noreferrer" style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--gold)', textDecoration: 'underline' }}>
-                                            View LinkedIn
-                                        </a>
-                                    ) : '—'}
-                                </div>
-                            </div>
-
-                            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '10px 0' }} />
-
-                            {/* Long Text Areas */}
-                            <div>
-                                <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Skills</span>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                    {candidate.skills ? String(candidate.skills).split(',').map((s, idx) => (
-                                        <span key={idx} style={{
-                                            background: 'rgba(var(--sky-rgb), 0.12)', border: '1px solid rgba(var(--sky-rgb), 0.25)',
-                                            borderRadius: 5, padding: '3px 8px', fontSize: '0.75rem', color: 'var(--sky-dim)'
-                                        }}>{s.trim()}</span>
-                                    )) : <span style={{ opacity: 0.35 }}>—</span>}
-                                </div>
-                            </div>
-
-                            <div>
-                                <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Certifications</span>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                    {candidate.certifications ? String(candidate.certifications).split(',').map((c, idx) => (
-                                        <span key={idx} style={{
-                                            background: 'rgba(var(--gold-rgb), 0.12)', border: '1px solid rgba(var(--gold-rgb), 0.25)',
-                                            borderRadius: 5, padding: '3px 8px', fontSize: '0.75rem', color: 'var(--gold)'
-                                        }}>{c.trim()}</span>
-                                    )) : <span style={{ opacity: 0.35 }}>—</span>}
-                                </div>
-                            </div>
-
-                            {candidate.notescomments && (
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Notes / Recruiter Comments</span>
-                                    <div style={{ padding: '12px', background: 'rgba(var(--navy-dark-rgb), 0.3)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.88rem', whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>
-                                        {candidate.notescomments}
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Total Experience</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.total_experience ? `${candidate.total_experience} yrs` : '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Pega Experience</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.pega_experience ? `${candidate.pega_experience} yrs` : '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>CDH Experience</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.cdh_exp ? `${candidate.cdh_exp} yrs` : '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Current CTC / salary</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.ctc || '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Expected CTC</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.expected_ctc || '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Percentage Hike</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.percentage_hike || '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Notice Period</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>
+                                            <span className={`badge ${isImmediate(candidate.notice_period) ? 'badge-green' : 'badge-sky'}`}>
+                                                {candidate.notice_period === 0 || candidate.notice_period === '0' ? 'Immediate' : (candidate.notice_period ? `${candidate.notice_period} days` : '—')}
+                                            </span>
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Current Location</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.current_location || '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Preferred Location</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.pref_locations || '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Current Employment</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.current_organization || '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Phone Number</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.phone || '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Email Address</span>
+                                        {candidate.email ? (
+                                            <a 
+                                                href={`https://mail.google.com/mail/?view=cm&fs=1&to=${candidate.email}`} 
+                                                target="_blank" 
+                                                rel="noreferrer" 
+                                                style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--sky-dim)', textDecoration: 'underline', wordBreak: 'break-all' }}
+                                                title="Click to compose in Gmail"
+                                            >
+                                                ✉️ {candidate.email}
+                                            </a>
+                                        ) : '—'}
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>LinkedIn Profile</span>
+                                        {candidate.linkedin ? (
+                                            <a href={candidate.linkedin.startsWith('http') ? candidate.linkedin : `https://${candidate.linkedin}`} target="_blank" rel="noreferrer" style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--gold)', textDecoration: 'underline' }}>
+                                                View LinkedIn
+                                            </a>
+                                        ) : '—'}
                                     </div>
                                 </div>
-                            )}
-                        </div>
-                    ) : (
-                        <div>
-                            {loadingJobs ? (
-                                <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
-                                    <Loader className="spin" size={24} style={{ color: 'var(--gold)' }} />
+
+                                <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '10px 0' }} />
+
+                                {/* Long Text Areas */}
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Skills</span>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                        {candidate.skills ? String(candidate.skills).split(',').map((s, idx) => (
+                                            <span key={idx} style={{
+                                                background: 'rgba(var(--sky-rgb), 0.12)', border: '1px solid rgba(var(--sky-rgb), 0.25)',
+                                                borderRadius: 5, padding: '3px 8px', fontSize: '0.75rem', color: 'var(--sky-dim)'
+                                            }}>{s.trim()}</span>
+                                        )) : <span style={{ opacity: 0.35 }}>—</span>}
+                                    </div>
                                 </div>
-                            ) : jobs.length === 0 ? (
-                                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-dim)', border: '1px dashed var(--border)', borderRadius: '12px' }}>
-                                    No associated job mappings found for this candidate.
+
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Certifications</span>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                        {candidate.certifications ? String(candidate.certifications).split(',').map((c, idx) => (
+                                            <span key={idx} style={{
+                                                background: 'rgba(var(--gold-rgb), 0.12)', border: '1px solid rgba(var(--gold-rgb), 0.25)',
+                                                borderRadius: 5, padding: '3px 8px', fontSize: '0.75rem', color: 'var(--gold)'
+                                            }}>{c.trim()}</span>
+                                        )) : <span style={{ opacity: 0.35 }}>—</span>}
+                                    </div>
                                 </div>
-                            ) : (
-                                <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem', textAlign: 'left' }}>
-                                        <thead>
-                                            <tr style={{ background: 'rgba(var(--navy-rgb), 0.85)', borderBottom: '2px solid var(--border)' }}>
-                                                <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800 }}>Job Title</th>
-                                                <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800 }}>Client</th>
-                                                <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800 }}>Status</th>
-                                                <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800, width: '45%' }}>AI Match Reason</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {jobs.map((job, idx) => {
-                                                const s = String(job.match_status || 'matched').trim();
-                                                const isSelected = s === 'selected';
-                                                
-                                                return (
-                                                    <tr key={idx} style={{ 
-                                                        borderBottom: '1px solid rgba(var(--sky-rgb), 0.08)',
-                                                        background: idx % 2 === 0 ? 'rgba(var(--navy-rgb), 0.15)' : 'transparent'
-                                                    }}>
-                                                        <td style={{ padding: '10px 12px', fontWeight: 'bold' }}>{job.title}</td>
-                                                        <td style={{ padding: '10px 12px' }}>{job.client_name || '—'}</td>
-                                                        <td style={{ padding: '10px 12px' }}>
-                                                            <span style={{
-                                                                background: isSelected ? 'rgba(45, 212, 191, 0.12)' : 'rgba(56, 189, 248, 0.12)',
-                                                                color: isSelected ? '#2dd4bf' : '#38bdf8',
-                                                                border: isSelected ? '1px solid rgba(45, 212, 191, 0.25)' : '1px solid rgba(56, 189, 248, 0.25)',
-                                                                borderRadius: 5, padding: '2px 8px', fontSize: '0.72rem', fontWeight: 700,
-                                                                textTransform: 'uppercase', display: 'inline-block'
-                                                            }}>
-                                                                {s}
-                                                            </span>
-                                                        </td>
-                                                        <td style={{ padding: '10px 12px', color: 'var(--text-dim)', fontSize: '0.8rem', lineHeight: '1.45' }}>
-                                                            {job.ai_reason || '—'}
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-                        </div>
-                    )}
+
+                                {candidate.notescomments && (
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Notes / Recruiter Comments</span>
+                                        <div style={{ padding: '12px', background: 'rgba(var(--navy-dark-rgb), 0.3)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.88rem', whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>
+                                            {candidate.notescomments}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {candidate.email_message && (
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>✉️ Imported Email Message</span>
+                                        <div style={{ 
+                                            padding: '12px', 
+                                            background: 'rgba(var(--navy-dark-rgb), 0.5)', 
+                                            border: '1px solid var(--border)', 
+                                            borderRadius: '8px', 
+                                            fontSize: '0.84rem', 
+                                            whiteSpace: 'pre-wrap', 
+                                            lineHeight: '1.45',
+                                            maxHeight: '200px',
+                                            overflowY: 'auto',
+                                            color: 'var(--text)',
+                                            fontFamily: 'monospace'
+                                        }}>
+                                            {candidate.email_message}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div>
+                                {loadingJobs ? (
+                                    <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
+                                        <Loader className="spin" size={24} style={{ color: 'var(--gold)' }} />
+                                    </div>
+                                ) : jobs.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-dim)', border: '1px dashed var(--border)', borderRadius: '12px' }}>
+                                        No associated job mappings found for this candidate.
+                                    </div>
+                                ) : (
+                                    <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem', textAlign: 'left' }}>
+                                            <thead>
+                                                <tr style={{ background: 'rgba(var(--navy-rgb), 0.85)', borderBottom: '2px solid var(--border)' }}>
+                                                    <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800 }}>Job Title</th>
+                                                    <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800 }}>Client</th>
+                                                    <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800 }}>Status</th>
+                                                    <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800, width: '45%' }}>AI Match Reason</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {jobs.map((job, idx) => {
+                                                    const s = String(job.match_status || 'matched').trim();
+                                                    const isSelected = s === 'selected';
+                                                    
+                                                    return (
+                                                        <tr key={idx} style={{ 
+                                                            borderBottom: '1px solid rgba(var(--sky-rgb), 0.08)',
+                                                            background: idx % 2 === 0 ? 'rgba(var(--navy-rgb), 0.15)' : 'transparent'
+                                                        }}>
+                                                            <td style={{ padding: '10px 12px', fontWeight: 'bold' }}>{job.title}</td>
+                                                            <td style={{ padding: '10px 12px' }}>{job.client_name || '—'}</td>
+                                                            <td style={{ padding: '10px 12px' }}>
+                                                                <span style={{
+                                                                    background: isSelected ? 'rgba(45, 212, 191, 0.12)' : 'rgba(56, 189, 248, 0.12)',
+                                                                    color: isSelected ? '#2dd4bf' : '#38bdf8',
+                                                                    border: isSelected ? '1px solid rgba(45, 212, 191, 0.25)' : '1px solid rgba(56, 189, 248, 0.25)',
+                                                                    borderRadius: 5, padding: '2px 8px', fontSize: '0.72rem', fontWeight: 700,
+                                                                    textTransform: 'uppercase', display: 'inline-block'
+                                                                }}>
+                                                                    {s}
+                                                                </span>
+                                                            </td>
+                                                            <td style={{ padding: '10px 12px', color: 'var(--text-dim)', fontSize: '0.8rem', lineHeight: '1.45' }}>
+                                                                {job.ai_reason || '—'}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
+
+                {/* Right Panel: Resume PDF embedded directly or Download Placeholder or Formatted Resume */}
+                {hasViewableResume && (
+                    <div style={{
+                        flex: '1 1 50%',
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        background: jobStatus === 'selected' ? '#525659' : (isPdf ? '#525659' : 'rgba(var(--navy-dark-rgb), 0.95)'),
+                        justifyContent: (jobStatus === 'selected' || isPdf) ? 'stretch' : 'center',
+                        alignItems: (jobStatus === 'selected' || isPdf) ? 'stretch' : 'center',
+                        padding: (jobStatus === 'selected' || isPdf) ? 0 : '40px',
+                        borderLeft: '1px solid var(--border)',
+                        overflow: 'hidden'
+                    }}>
+                        {jobStatus === 'selected' ? (
+                            <>
+                                {/* Action Bar */}
+                                <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '10px 16px',
+                                    background: 'var(--navy-dark)',
+                                    borderBottom: '1px solid var(--border)',
+                                    flexShrink: 0
+                                }}>
+                                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text)' }}>
+                                        {isEditingFormatted ? '✏️ Edit Alamaticz Resume' : '📄 Company Formatted Resume'}
+                                    </span>
+                                    {isEditingFormatted ? (
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <button 
+                                                onClick={handleSaveEditedResume}
+                                                disabled={savingEdited}
+                                                style={{
+                                                    background: '#2dd4bf',
+                                                    color: '#000',
+                                                    border: 'none',
+                                                    borderRadius: '6px',
+                                                    padding: '6px 14px',
+                                                    fontSize: '0.8rem',
+                                                    fontWeight: 700,
+                                                    cursor: savingEdited ? 'not-allowed' : 'pointer',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                    opacity: savingEdited ? 0.6 : 1
+                                                }}
+                                            >
+                                                {savingEdited ? <Loader className="spin" size={14} /> : <Check size={14} />} Save
+                                            </button>
+                                            <button 
+                                                onClick={() => setIsEditingFormatted(false)}
+                                                disabled={savingEdited}
+                                                style={{
+                                                    background: 'rgba(239, 68, 68, 0.15)',
+                                                    color: '#ef4444',
+                                                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                                                    borderRadius: '6px',
+                                                    padding: '6px 14px',
+                                                    fontSize: '0.8rem',
+                                                    fontWeight: 700,
+                                                    cursor: savingEdited ? 'not-allowed' : 'pointer',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px'
+                                                }}
+                                            >
+                                                <X size={14} /> Cancel
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <button 
+                                                onClick={handleStartEditing}
+                                                disabled={loadingFormatted || !formattedData}
+                                                style={{
+                                                    background: 'rgba(var(--gold-rgb), 0.15)',
+                                                    color: 'var(--gold)',
+                                                    border: '1px solid rgba(var(--gold-rgb), 0.35)',
+                                                    borderRadius: '6px',
+                                                    padding: '6px 14px',
+                                                    fontSize: '0.8rem',
+                                                    fontWeight: 700,
+                                                    cursor: (loadingFormatted || !formattedData) ? 'not-allowed' : 'pointer',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                    opacity: (loadingFormatted || !formattedData) ? 0.6 : 1
+                                                }}
+                                            >
+                                                <Edit size={14} /> Edit
+                                            </button>
+                                            <button 
+                                                onClick={handlePrintResume}
+                                                disabled={loadingFormatted || !formattedData}
+                                                style={{
+                                                    background: 'var(--gradient-gold)',
+                                                    color: '#000',
+                                                    border: 'none',
+                                                    borderRadius: '6px',
+                                                    padding: '6px 14px',
+                                                    fontSize: '0.8rem',
+                                                    fontWeight: 700,
+                                                    cursor: (loadingFormatted || !formattedData) ? 'not-allowed' : 'pointer',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                    opacity: (loadingFormatted || !formattedData) ? 0.6 : 1
+                                                }}
+                                            >
+                                                <Download size={14} /> Export PDF
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                                {loadingFormatted ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, color: 'var(--text-dim)', gap: '12px' }}>
+                                        <Loader className="spin" size={28} style={{ color: 'var(--gold)' }} />
+                                        <span style={{ fontSize: '0.85rem' }}>Generating formatted resume...</span>
+                                    </div>
+                                ) : isEditingFormatted ? (
+                                    <ResumeEditor formData={editedFormState} setFormData={setEditedFormState} />
+                                ) : (
+                                    <ResumePreview data={formattedData} logoUrl={alamaticzLogo} />
+                                )}
+                            </>
+                        ) : (
+                            isPdf ? (
+                                <iframe 
+                                    src={`${import.meta.env.VITE_API_URL || ''}/static/${candidate.filename}#view=FitH`} 
+                                    style={{ width: '100%', height: '100%', border: 'none', background: '#525659' }} 
+                                    title="Candidate Resume"
+                                />
+                            ) : (
+                                <div style={{
+                                    textAlign: 'center',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    gap: '20px',
+                                    color: 'var(--text)',
+                                    maxWidth: '400px',
+                                    margin: '0 auto'
+                                }}>
+                                    <div style={{
+                                        width: '80px',
+                                        height: '80px',
+                                        borderRadius: '50%',
+                                        background: 'rgba(var(--gold-rgb), 0.1)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        border: '1px solid rgba(var(--gold-rgb), 0.25)',
+                                        marginBottom: '10px'
+                                    }}>
+                                        <FileText size={40} color="var(--gold)" />
+                                    </div>
+                                    <h4 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.2rem', fontWeight: 700 }}>
+                                        Word Document (.docx/.doc)
+                                    </h4>
+                                    <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-dim)', lineHeight: 1.5 }}>
+                                        Preview is not supported directly in the browser. Please download the file to view the candidate's resume.
+                                    </p>
+                                    <a 
+                                        href={`${import.meta.env.VITE_API_URL || ''}/static/${candidate.filename}`}
+                                        download={candidate.filename}
+                                        style={{
+                                            background: 'var(--gradient-gold)',
+                                            color: '#000',
+                                            textDecoration: 'none',
+                                            fontSize: '0.85rem',
+                                            fontFamily: 'var(--fh)',
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                            padding: '10px 24px',
+                                            borderRadius: '8px',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            transition: 'all 0.2s',
+                                            boxShadow: '0 4px 12px rgba(var(--gold-rgb), 0.2)'
+                                        }}
+                                    >
+                                        <Download size={16} /> Download Resume
+                                    </a>
+                                </div>
+                            )
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -524,7 +1975,7 @@ const TD_BASE = {
 export default function JobsPage() {
     const { user } = useOutletContext();
     const isExternal = user?.is_external === 1;
-    const isAdmin = user?.role === 'admin' || user?.is_admin === 1;
+    const isAdmin = user?.role === 'admin' || user?.is_admin === 1 || user?.is_hr === 1;
 
     const [jobs, setJobs] = useState([]);
     const [selectedJob, setSelectedJob] = useState(null);
@@ -1028,7 +2479,7 @@ export default function JobsPage() {
     // Inline edit cell handlers
     const startEdit = (ri, col, val) => {
         if (isExternal) return;
-        const isAdmin = user?.role === 'admin' || user?.is_admin === 1;
+        const isAdmin = user?.role === 'admin' || user?.is_admin === 1 || user?.is_hr === 1;
         if (col === 'certifications' && !isAdmin) {
             showToast("Only Admins can view or edit certifications.", "error");
             return;

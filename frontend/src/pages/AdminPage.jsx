@@ -116,17 +116,20 @@ export default function AdminPage() {
             isHrValue = currentValue === 1 ? 0 : 1
             if (isHrValue === 1) {
                 isExternalValue = 0
+                isApprovedValue = 1
             }
         } else if (field === 'is_admin') {
             isAdminValue = currentValue === 1 ? 0 : 1
             if (isAdminValue === 1) {
                 isExternalValue = 0
+                isApprovedValue = 1
             }
         } else if (field === 'is_external') {
             isExternalValue = currentValue === 1 ? 0 : 1
             if (isExternalValue === 1) {
                 isHrValue = 0
                 isAdminValue = 0
+                isApprovedValue = 1
             }
         }
 

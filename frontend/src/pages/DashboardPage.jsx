@@ -28,6 +28,13 @@ function CandidateDetailsModal({ candidate, onClose, onViewPdf }) {
         return String(val || '').toLowerCase().includes('immediate');
     };
 
+    const isPdf = candidate.filename && candidate.filename.toLowerCase().endsWith('.pdf');
+
+    const hasViewableResume = candidate.filename && 
+        !candidate.filename.toLowerCase().endsWith('.xlsx') && 
+        !candidate.filename.toLowerCase().endsWith('.xls') && 
+        !candidate.filename.toLowerCase().endsWith('.csv');
+
     return (
         <div style={{
             position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -36,265 +43,396 @@ function CandidateDetailsModal({ candidate, onClose, onViewPdf }) {
             backdropFilter: 'blur(4px)'
         }} onClick={onClose}>
             <div className="card" onClick={e => e.stopPropagation()} style={{
-                width: '95%', maxWidth: '800px', maxHeight: '90vh',
-                display: 'flex', flexDirection: 'column', padding: 0,
-                overflow: 'hidden', border: '1px solid var(--border)',
+                width: '95%', 
+                maxWidth: hasViewableResume ? '1400px' : '800px', 
+                height: hasViewableResume ? '90vh' : 'auto',
+                maxHeight: '90vh',
+                display: 'flex', 
+                flexDirection: 'row', 
+                padding: 0,
+                overflow: 'hidden', 
+                border: '1px solid var(--border)',
                 boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
                 background: 'var(--navy-dark)'
             }}>
-                {/* Header */}
+                {/* Left Panel: Candidate details */}
                 <div style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '16px 24px', background: 'rgba(var(--navy-rgb), 0.95)',
-                    borderBottom: '1px solid var(--border)'
+                    flex: hasViewableResume ? '1 1 50%' : '1 1 100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    height: '100%',
+                    overflow: 'hidden',
+                    borderRight: hasViewableResume ? '1px solid var(--border)' : 'none'
                 }}>
-                    <div>
-                        <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.25rem', fontWeight: 800 }}>
-                            {candidate.full_name || 'Candidate Details'}
-                        </h3>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)', marginTop: '4px', display: 'flex', gap: '15px' }}>
-                            <span>Source: <strong style={{ color: 'var(--gold)' }}>{candidate.source || 'Resume Upload'}</strong></span>
-                            {candidate.timestamp && <span>Analyzed: {new Date(candidate.timestamp).toLocaleDateString()}</span>}
+                    {/* Header */}
+                    <div style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '16px 24px', background: 'rgba(var(--navy-rgb), 0.95)',
+                        borderBottom: '1px solid var(--border)'
+                    }}>
+                        <div>
+                            <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.25rem', fontWeight: 800 }}>
+                                {candidate.full_name || 'Candidate Details'}
+                            </h3>
+                            <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)', marginTop: '4px', display: 'flex', gap: '15px' }}>
+                                <span>Source: <strong style={{ color: 'var(--gold)' }}>{candidate.source || 'Resume Upload'}</strong></span>
+                                {candidate.timestamp && <span>Analyzed: {new Date(candidate.timestamp).toLocaleDateString()}</span>}
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                            {candidate.filename && !candidate.filename.toLowerCase().endsWith('.xlsx') && !candidate.filename.toLowerCase().endsWith('.xls') && !candidate.filename.toLowerCase().endsWith('.csv') && (
+                                isPdf ? (
+                                    <button 
+                                        onClick={() => onViewPdf(candidate.filename, candidate.full_name)}
+                                        style={{
+                                            background: 'rgba(var(--sky-rgb), 0.15)', border: '1px solid rgba(var(--sky-rgb), 0.3)',
+                                            color: 'var(--sky-dim)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
+                                            fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 700,
+                                            display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s'
+                                        }}
+                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.25)'}
+                                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.15)'}
+                                    >
+                                        <FileText size={14} /> Open in New Tab
+                                    </button>
+                                ) : (
+                                    <a 
+                                        href={`${import.meta.env.VITE_API_URL || ''}/static/${candidate.filename}`}
+                                        download={candidate.filename}
+                                        style={{
+                                            background: 'rgba(var(--sky-rgb), 0.15)', border: '1px solid rgba(var(--sky-rgb), 0.3)',
+                                            color: 'var(--sky-dim)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
+                                            fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 700,
+                                            display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s',
+                                            textDecoration: 'none'
+                                        }}
+                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.25)'}
+                                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.15)'}
+                                    >
+                                        <Download size={14} /> Download Resume
+                                    </a>
+                                )
+                            )}
+                            <button onClick={onClose} style={{
+                                background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
+                                color: 'var(--gold)', cursor: 'pointer', padding: '6px', borderRadius: '8px',
+                                display: 'flex', transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.2)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.1)'}
+                            >
+                                <X size={18} />
+                            </button>
                         </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                        {candidate.filename && !candidate.filename.toLowerCase().endsWith('.xlsx') && !candidate.filename.toLowerCase().endsWith('.xls') && !candidate.filename.toLowerCase().endsWith('.csv') && (
-                            <button 
-                                onClick={() => onViewPdf(candidate.filename, candidate.full_name)}
-                                style={{
-                                    background: 'rgba(var(--sky-rgb), 0.15)', border: '1px solid rgba(var(--sky-rgb), 0.3)',
-                                    color: 'var(--sky-dim)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
-                                    fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 700,
-                                    display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s'
-                                }}
-                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.25)'}
-                                onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.15)'}
-                            >
-                                <FileText size={14} /> View Resume
-                            </button>
-                        )}
-                        <button onClick={onClose} style={{
-                            background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
-                            color: 'var(--gold)', cursor: 'pointer', padding: '6px', borderRadius: '8px',
-                            display: 'flex', transition: 'all 0.2s'
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.2)'}
-                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.1)'}
+
+                    {/* Tabs Selector */}
+                    <div style={{ display: 'flex', background: 'rgba(var(--navy-rgb), 0.3)', padding: '0 24px', borderBottom: '1px solid var(--border)' }}>
+                        <button 
+                            onClick={() => setActiveTab('profile')}
+                            style={{
+                                padding: '12px 20px', background: 'transparent', border: 'none',
+                                borderBottom: `3px solid ${activeTab === 'profile' ? 'var(--gold)' : 'transparent'}`,
+                                color: activeTab === 'profile' ? 'var(--gold)' : 'var(--text-dim)',
+                                fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
+                                transition: 'all 0.2s', outline: 'none'
+                            }}
                         >
-                            <X size={18} />
+                            👤 Profile Details
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('jobs')}
+                            style={{
+                                padding: '12px 20px', background: 'transparent', border: 'none',
+                                borderBottom: `3px solid ${activeTab === 'jobs' ? 'var(--gold)' : 'transparent'}`,
+                                color: activeTab === 'jobs' ? 'var(--gold)' : 'var(--text-dim)',
+                                fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
+                                transition: 'all 0.2s', outline: 'none'
+                            }}
+                        >
+                            💼 Matched & Selected Jobs ({jobs.length})
                         </button>
                     </div>
-                </div>
 
-                {/* Tabs Selector */}
-                <div style={{ display: 'flex', background: 'rgba(var(--navy-rgb), 0.3)', padding: '0 24px', borderBottom: '1px solid var(--border)' }}>
-                    <button 
-                        onClick={() => setActiveTab('profile')}
-                        style={{
-                            padding: '12px 20px', background: 'transparent', border: 'none',
-                            borderBottom: `3px solid ${activeTab === 'profile' ? 'var(--gold)' : 'transparent'}`,
-                            color: activeTab === 'profile' ? 'var(--gold)' : 'var(--text-dim)',
-                            fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
-                            transition: 'all 0.2s', outline: 'none'
-                        }}
-                    >
-                        👤 Profile Details
-                    </button>
-                    <button 
-                        onClick={() => setActiveTab('jobs')}
-                        style={{
-                            padding: '12px 20px', background: 'transparent', border: 'none',
-                            borderBottom: `3px solid ${activeTab === 'jobs' ? 'var(--gold)' : 'transparent'}`,
-                            color: activeTab === 'jobs' ? 'var(--gold)' : 'var(--text-dim)',
-                            fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
-                            transition: 'all 0.2s', outline: 'none'
-                        }}
-                    >
-                        💼 Matched & Selected Jobs ({jobs.length})
-                    </button>
-                </div>
-
-                {/* Content */}
-                <div style={{ flex: 1, overflowY: 'auto', padding: '24px', color: 'var(--text)' }}>
-                    {activeTab === 'profile' ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                            {/* Grid fields */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Name</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.full_name || '—'}</span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Source</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--gold)', background: 'rgba(var(--gold-rgb), 0.1)', padding: '2px 8px', borderRadius: '6px', display: 'inline-block' }}>
-                                        {candidate.source || 'Resume Upload'}
-                                    </span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Total Experience</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.total_experience ? `${candidate.total_experience} yrs` : '—'}</span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Pega Experience</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.pega_experience ? `${candidate.pega_experience} yrs` : '—'}</span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>CDH Experience</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.cdh_exp ? `${candidate.cdh_exp} yrs` : '—'}</span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Current CTC / salary</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.ctc || '—'}</span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Expected CTC</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.expected_ctc || '—'}</span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Percentage Hike</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.percentage_hike || '—'}</span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Notice Period</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>
-                                        <span className={`badge ${isImmediate(candidate.notice_period) ? 'badge-green' : 'badge-sky'}`}>
-                                            {candidate.notice_period === 0 || candidate.notice_period === '0' ? 'Immediate' : (candidate.notice_period ? `${candidate.notice_period} days` : '—')}
+                    {/* Content */}
+                    <div style={{ flex: 1, overflowY: 'auto', padding: '24px', color: 'var(--text)' }}>
+                        {activeTab === 'profile' ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                {/* Grid fields */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Name</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.full_name || '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Source</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--gold)', background: 'rgba(var(--gold-rgb), 0.1)', padding: '2px 8px', borderRadius: '6px', display: 'inline-block' }}>
+                                            {candidate.source || 'Resume Upload'}
                                         </span>
-                                    </span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Current Location</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.current_location || '—'}</span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Preferred Location</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.pref_locations || '—'}</span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Current Employment</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.current_organization || '—'}</span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Phone Number</span>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.phone || '—'}</span>
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Email Address</span>
-                                    {candidate.email ? (
-                                        <a 
-                                            href={`https://mail.google.com/mail/?view=cm&fs=1&to=${candidate.email}`} 
-                                            target="_blank" 
-                                            rel="noreferrer" 
-                                            style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--sky-dim)', textDecoration: 'underline', wordBreak: 'break-all' }}
-                                            title="Click to compose in Gmail"
-                                        >
-                                            ✉️ {candidate.email}
-                                        </a>
-                                    ) : '—'}
-                                </div>
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>LinkedIn Profile</span>
-                                    {candidate.linkedin ? (
-                                        <a href={candidate.linkedin.startsWith('http') ? candidate.linkedin : `https://${candidate.linkedin}`} target="_blank" rel="noreferrer" style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--gold)', textDecoration: 'underline' }}>
-                                            View LinkedIn
-                                        </a>
-                                    ) : '—'}
-                                </div>
-                            </div>
-
-                            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '10px 0' }} />
-
-                            {/* Long Text Areas */}
-                            <div>
-                                <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Skills</span>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                    {candidate.skills ? String(candidate.skills).split(',').map((s, idx) => (
-                                        <span key={idx} style={{
-                                            background: 'rgba(var(--sky-rgb), 0.12)', border: '1px solid rgba(var(--sky-rgb), 0.25)',
-                                            borderRadius: 5, padding: '3px 8px', fontSize: '0.75rem', color: 'var(--sky-dim)'
-                                        }}>{s.trim()}</span>
-                                    )) : <span style={{ opacity: 0.35 }}>—</span>}
-                                </div>
-                            </div>
-
-                            <div>
-                                <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Certifications</span>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                    {candidate.certifications ? String(candidate.certifications).split(',').map((c, idx) => (
-                                        <span key={idx} style={{
-                                            background: 'rgba(var(--gold-rgb), 0.12)', border: '1px solid rgba(var(--gold-rgb), 0.25)',
-                                            borderRadius: 5, padding: '3px 8px', fontSize: '0.75rem', color: 'var(--gold)'
-                                        }}>{c.trim()}</span>
-                                    )) : <span style={{ opacity: 0.35 }}>—</span>}
-                                </div>
-                            </div>
-
-                            {candidate.notescomments && (
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Notes / Recruiter Comments</span>
-                                    <div style={{ padding: '12px', background: 'rgba(var(--navy-dark-rgb), 0.3)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.88rem', whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>
-                                        {candidate.notescomments}
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Total Experience</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.total_experience ? `${candidate.total_experience} yrs` : '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Pega Experience</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.pega_experience ? `${candidate.pega_experience} yrs` : '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>CDH Experience</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.cdh_exp ? `${candidate.cdh_exp} yrs` : '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Current CTC / salary</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.ctc || '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Expected CTC</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.expected_ctc || '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Percentage Hike</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.percentage_hike || '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Notice Period</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>
+                                            <span className={`badge ${isImmediate(candidate.notice_period) ? 'badge-green' : 'badge-sky'}`}>
+                                                {candidate.notice_period === 0 || candidate.notice_period === '0' ? 'Immediate' : (candidate.notice_period ? `${candidate.notice_period} days` : '—')}
+                                            </span>
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Current Location</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.current_location || '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Preferred Location</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.pref_locations || '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Current Employment</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.current_organization || '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Phone Number</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.phone || '—'}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Email Address</span>
+                                        {candidate.email ? (
+                                            <a 
+                                                href={`https://mail.google.com/mail/?view=cm&fs=1&to=${candidate.email}`} 
+                                                target="_blank" 
+                                                rel="noreferrer" 
+                                                style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--sky-dim)', textDecoration: 'underline', wordBreak: 'break-all' }}
+                                                title="Click to compose in Gmail"
+                                            >
+                                                ✉️ {candidate.email}
+                                            </a>
+                                        ) : '—'}
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>LinkedIn Profile</span>
+                                        {candidate.linkedin ? (
+                                            <a href={candidate.linkedin.startsWith('http') ? candidate.linkedin : `https://${candidate.linkedin}`} target="_blank" rel="noreferrer" style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--gold)', textDecoration: 'underline' }}>
+                                                View LinkedIn
+                                            </a>
+                                        ) : '—'}
                                     </div>
                                 </div>
-                            )}
-                        </div>
-                    ) : (
-                        <div>
-                            {loadingJobs ? (
-                                <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
-                                    <Loader className="spin" size={24} style={{ color: 'var(--gold)' }} />
+
+                                <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '10px 0' }} />
+
+                                {/* Long Text Areas */}
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Skills</span>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                        {candidate.skills ? String(candidate.skills).split(',').map((s, idx) => (
+                                            <span key={idx} style={{
+                                                background: 'rgba(var(--sky-rgb), 0.12)', border: '1px solid rgba(var(--sky-rgb), 0.25)',
+                                                borderRadius: 5, padding: '3px 8px', fontSize: '0.75rem', color: 'var(--sky-dim)'
+                                            }}>{s.trim()}</span>
+                                        )) : <span style={{ opacity: 0.35 }}>—</span>}
+                                    </div>
                                 </div>
-                            ) : jobs.length === 0 ? (
-                                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-dim)', border: '1px dashed var(--border)', borderRadius: '12px' }}>
-                                    No associated job mappings found for this candidate.
+
+                                <div>
+                                    <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Certifications</span>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                        {candidate.certifications ? String(candidate.certifications).split(',').map((c, idx) => (
+                                            <span key={idx} style={{
+                                                background: 'rgba(var(--gold-rgb), 0.12)', border: '1px solid rgba(var(--gold-rgb), 0.25)',
+                                                borderRadius: 5, padding: '3px 8px', fontSize: '0.75rem', color: 'var(--gold)'
+                                            }}>{c.trim()}</span>
+                                        )) : <span style={{ opacity: 0.35 }}>—</span>}
+                                    </div>
                                 </div>
-                            ) : (
-                                <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem', textAlign: 'left' }}>
-                                        <thead>
-                                            <tr style={{ background: 'rgba(var(--navy-rgb), 0.85)', borderBottom: '2px solid var(--border)' }}>
-                                                <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800 }}>Job Title</th>
-                                                <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800 }}>Client</th>
-                                                <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800 }}>Status</th>
-                                                <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800, width: '45%' }}>AI Match Reason</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {jobs.map((job, idx) => {
-                                                const s = String(job.match_status || 'matched').trim();
-                                                const isSelected = s === 'selected';
-                                                
-                                                return (
-                                                    <tr key={idx} style={{ 
-                                                        borderBottom: '1px solid rgba(var(--sky-rgb), 0.08)',
-                                                        background: idx % 2 === 0 ? 'rgba(var(--navy-rgb), 0.15)' : 'transparent'
-                                                    }}>
-                                                        <td style={{ padding: '10px 12px', fontWeight: 'bold' }}>{job.title}</td>
-                                                        <td style={{ padding: '10px 12px' }}>{job.client_name || '—'}</td>
-                                                        <td style={{ padding: '10px 12px' }}>
-                                                            <span style={{
-                                                                background: isSelected ? 'rgba(45, 212, 191, 0.12)' : 'rgba(56, 189, 248, 0.12)',
-                                                                color: isSelected ? '#2dd4bf' : '#38bdf8',
-                                                                border: isSelected ? '1px solid rgba(45, 212, 191, 0.25)' : '1px solid rgba(56, 189, 248, 0.25)',
-                                                                borderRadius: 5, padding: '2px 8px', fontSize: '0.72rem', fontWeight: 700,
-                                                                textTransform: 'uppercase', display: 'inline-block'
-                                                            }}>
-                                                                {s}
-                                                            </span>
-                                                        </td>
-                                                        <td style={{ padding: '10px 12px', color: 'var(--text-dim)', fontSize: '0.8rem', lineHeight: '1.45' }}>
-                                                            {job.ai_reason || '—'}
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-                        </div>
-                    )}
+
+                                {candidate.notescomments && (
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Notes / Recruiter Comments</span>
+                                        <div style={{ padding: '12px', background: 'rgba(var(--navy-dark-rgb), 0.3)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.88rem', whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>
+                                            {candidate.notescomments}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {candidate.email_message && (
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>✉️ Imported Email Message</span>
+                                        <div style={{ 
+                                            padding: '12px', 
+                                            background: 'rgba(var(--navy-dark-rgb), 0.5)', 
+                                            border: '1px solid var(--border)', 
+                                            borderRadius: '8px', 
+                                            fontSize: '0.84rem', 
+                                            whiteSpace: 'pre-wrap', 
+                                            lineHeight: '1.45',
+                                            maxHeight: '200px',
+                                            overflowY: 'auto',
+                                            color: 'var(--text)',
+                                            fontFamily: 'monospace'
+                                        }}>
+                                            {candidate.email_message}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div>
+                                {loadingJobs ? (
+                                    <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
+                                        <Loader className="spin" size={24} style={{ color: 'var(--gold)' }} />
+                                    </div>
+                                ) : jobs.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-dim)', border: '1px dashed var(--border)', borderRadius: '12px' }}>
+                                        No associated job mappings found for this candidate.
+                                    </div>
+                                ) : (
+                                    <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem', textAlign: 'left' }}>
+                                            <thead>
+                                                <tr style={{ background: 'rgba(var(--navy-rgb), 0.85)', borderBottom: '2px solid var(--border)' }}>
+                                                    <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800 }}>Job Title</th>
+                                                    <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800 }}>Client</th>
+                                                    <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800 }}>Status</th>
+                                                    <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800, width: '45%' }}>AI Match Reason</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {jobs.map((job, idx) => {
+                                                    const s = String(job.match_status || 'matched').trim();
+                                                    const isSelected = s === 'selected';
+                                                    
+                                                    return (
+                                                        <tr key={idx} style={{ 
+                                                            borderBottom: '1px solid rgba(var(--sky-rgb), 0.08)',
+                                                            background: idx % 2 === 0 ? 'rgba(var(--navy-rgb), 0.15)' : 'transparent'
+                                                        }}>
+                                                            <td style={{ padding: '10px 12px', fontWeight: 'bold' }}>{job.title}</td>
+                                                            <td style={{ padding: '10px 12px' }}>{job.client_name || '—'}</td>
+                                                            <td style={{ padding: '10px 12px' }}>
+                                                                <span style={{
+                                                                    background: isSelected ? 'rgba(45, 212, 191, 0.12)' : 'rgba(56, 189, 248, 0.12)',
+                                                                    color: isSelected ? '#2dd4bf' : '#38bdf8',
+                                                                    border: isSelected ? '1px solid rgba(45, 212, 191, 0.25)' : '1px solid rgba(56, 189, 248, 0.25)',
+                                                                    borderRadius: 5, padding: '2px 8px', fontSize: '0.72rem', fontWeight: 700,
+                                                                    textTransform: 'uppercase', display: 'inline-block'
+                                                                }}>
+                                                                    {s}
+                                                                </span>
+                                                            </td>
+                                                            <td style={{ padding: '10px 12px', color: 'var(--text-dim)', fontSize: '0.8rem', lineHeight: '1.45' }}>
+                                                                {job.ai_reason || '—'}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
+
+                {/* Right Panel: Resume PDF embedded directly or Download Placeholder */}
+                {hasViewableResume && (
+                    <div style={{
+                        flex: '1 1 50%',
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        background: isPdf ? '#525659' : 'rgba(var(--navy-dark-rgb), 0.95)',
+                        justifyContent: isPdf ? 'stretch' : 'center',
+                        alignItems: isPdf ? 'stretch' : 'center',
+                        padding: isPdf ? 0 : '40px',
+                        borderLeft: '1px solid var(--border)'
+                    }}>
+                        {isPdf ? (
+                            <iframe 
+                                src={`${import.meta.env.VITE_API_URL || ''}/static/${candidate.filename}#view=FitH`} 
+                                style={{ width: '100%', height: '100%', border: 'none', background: '#525659' }} 
+                                title="Candidate Resume"
+                            />
+                        ) : (
+                            <div style={{
+                                textAlign: 'center',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                gap: '20px',
+                                color: 'var(--text)',
+                                maxWidth: '400px',
+                                margin: '0 auto'
+                            }}>
+                                <div style={{
+                                    width: '80px',
+                                    height: '80px',
+                                    borderRadius: '50%',
+                                    background: 'rgba(var(--gold-rgb), 0.1)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    border: '1px solid rgba(var(--gold-rgb), 0.25)',
+                                    marginBottom: '10px'
+                                }}>
+                                    <FileText size={40} color="var(--gold)" />
+                                </div>
+                                <h4 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.2rem', fontWeight: 700 }}>
+                                    Word Document (.docx/.doc)
+                                </h4>
+                                <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-dim)', lineHeight: 1.5 }}>
+                                    Preview is not supported directly in the browser. Please download the file to view the candidate's resume.
+                                </p>
+                                <a 
+                                    href={`${import.meta.env.VITE_API_URL || ''}/static/${candidate.filename}`}
+                                    download={candidate.filename}
+                                    style={{
+                                        background: 'var(--gradient-gold)',
+                                        color: '#000',
+                                        textDecoration: 'none',
+                                        fontSize: '0.85rem',
+                                        fontFamily: 'var(--fh)',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        padding: '10px 24px',
+                                        borderRadius: '8px',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        transition: 'all 0.2s',
+                                        boxShadow: '0 4px 12px rgba(var(--gold-rgb), 0.2)'
+                                    }}
+                                >
+                                    <Download size={16} /> Download Resume
+                                </a>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );

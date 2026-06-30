@@ -59,7 +59,7 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
         { to: '/', label: 'Dashboard', Icon: LayoutDashboard },
         ...((user?.is_hr === 1 || user?.is_external === 1) ? [{ to: '/jobs', label: 'Job Description', Icon: Briefcase }] : []),
         { to: '/upload', label: 'Candidate Profiles', Icon: Users },
-        { to: '/chat', label: 'Chat with Hire', Icon: MessageSquare },
+        { to: '/chat', label: 'Chat with Hire-Ai', Icon: MessageSquare },
     ]
 
     if (user?.role === 'admin' || user?.is_admin === 1) {
