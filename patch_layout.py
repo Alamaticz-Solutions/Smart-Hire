@@ -1,0 +1,186 @@
+with open('frontend/src/components/Layout.jsx', 'r', encoding='utf-8') as f:
+    content = f.read()
+
+import1 = "import { LayoutDashboard, Upload, MessageSquare, LogOut, Sun, Moon, Briefcase, Shield, Users, Download, Activity, X } from 'lucide-react'"
+content = content.replace("import { LayoutDashboard, Upload, MessageSquare, LogOut, Sun, Moon, Briefcase, Shield, Users, Download, Activity } from 'lucide-react'", import1)
+
+target2 = "export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUser }) {"
+replace2 = '''export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUser }) {
+    const [showProfileMenu, setShowProfileMenu] = useState(false);
+    const [showActivitySidebar, setShowActivitySidebar] = useState(false);
+    const [activities, setActivities] = useState([]);
+    const [loadingActivities, setLoadingActivities] = useState(false);
+
+    useEffect(() => {
+        if (showActivitySidebar) {
+            fetchActivities();
+            const interval = setInterval(fetchActivities, 30000);
+            return () => clearInterval(interval);
+        }
+    }, [showActivitySidebar]);
+
+    const fetchActivities = async () => {
+        setLoadingActivities(true);
+        try {
+            const res = await axios.get('/api/activity');
+            setActivities(res.data || []);
+        } catch (err) {
+            console.error('Failed to fetch activities');
+        } finally {
+            setLoadingActivities(false);
+        }
+    };
+'''
+
+content = content.replace(target2, replace2)
+
+target3 = '''<div className="profile-chip" title={user?.active_persona ? `Logged in as Admin, acting as ${user.active_persona}` : `Logged in as ${user.full_name}`}>'''
+replace3 = '''<div style={{ position: 'relative' }}>
+                            <div 
+                                className="profile-chip" 
+                                title={user?.active_persona ? `Logged in as Admin, acting as ${user.active_persona}` : `Logged in as ${user.full_name}`}
+                                onClick={() => setShowProfileMenu(!showProfileMenu)}
+                                style={{ cursor: 'pointer' }}
+                            >'''
+
+content = content.replace(target3, replace3)
+
+target4 = '''</span>
+                        </div>
+                    </div>
+                </header>'''
+
+replace4 = '''</span>
+                            </div>
+                            
+                            {/* Profile Dropdown */}
+                            {showProfileMenu && (
+                                <>
+                                    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 998 }} onClick={() => setShowProfileMenu(false)}></div>
+                                    <div style={{
+                                        position: 'absolute', top: '100%', right: 0, marginTop: '8px', width: '200px',
+                                        background: 'var(--navy-dark)', border: '1px solid var(--border)', borderRadius: '8px',
+                                        boxShadow: '0 10px 25px rgba(0,0,0,0.5)', zIndex: 999, overflow: 'hidden'
+                                    }}>
+                                        {(user?.role === 'admin' || user?.is_admin === 1) && (
+                                            <button 
+                                                onClick={() => { setShowProfileMenu(false); setShowActivitySidebar(true); }}
+                                                style={{
+                                                    width: '100%', padding: '12px 16px', background: 'none', border: 'none',
+                                                    color: 'var(--text)', textAlign: 'left', cursor: 'pointer', fontSize: '0.9rem',
+                                                    display: 'flex', alignItems: 'center', gap: '8px', transition: 'background 0.2s'
+                                                }}
+                                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.1)'}
+                                                onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                                            >
+                                                <Activity size={16} color="var(--gold)" />
+                                                Activity Feed
+                                            </button>
+                                        )}
+                                        <button 
+                                            onClick={onLogout}
+                                            style={{
+                                                width: '100%', padding: '12px 16px', background: 'none', border: 'none', borderTop: '1px solid var(--border)',
+                                                color: '#fca5a5', textAlign: 'left', cursor: 'pointer', fontSize: '0.9rem',
+                                                display: 'flex', alignItems: 'center', gap: '8px', transition: 'background 0.2s'
+                                            }}
+                                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'}
+                                            onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                                        >
+                                            <LogOut size={16} />
+                                            Logout
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </header>'''
+
+content = content.replace(target4, replace4)
+
+target5 = '''<div className="page-body" style={{ padding: 0, flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflowY: 'auto' }}>
+                    <Outlet context={{ user, onUpdateUser }} />
+                </div>
+            </div>
+            
+        </div>
+    )'''
+
+replace5 = '''<div className="page-body" style={{ padding: 0, flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflowY: 'auto' }}>
+                    <Outlet context={{ user, onUpdateUser }} />
+                </div>
+                
+                {/* Activity Feed Overlay Sidebar */}
+                {showActivitySidebar && (
+                    <>
+                        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, backdropFilter: 'blur(2px)' }} onClick={() => setShowActivitySidebar(false)}></div>
+                        <div style={{
+                            position: 'fixed', top: 0, right: 0, bottom: 0, width: '350px', maxWidth: '100vw',
+                            background: 'var(--navy)', borderLeft: '1px solid var(--border)', zIndex: 1001,
+                            display: 'flex', flexDirection: 'column', boxShadow: '-5px 0 25px rgba(0,0,0,0.5)',
+                            animation: 'slideInRight 0.3s ease forwards'
+                        }}>
+                            <div style={{ padding: '20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--navy-dark)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <Activity size={20} color="var(--gold)" />
+                                    <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)' }}>Activity Feed</h3>
+                                </div>
+                                <button onClick={() => setShowActivitySidebar(false)} style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer' }}>
+                                    <X size={20} />
+                                </button>
+                            </div>
+                            <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                                {loadingActivities && activities.length === 0 ? (
+                                    <div style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '2rem 0' }}>Loading...</div>
+                                ) : activities.length === 0 ? (
+                                    <div style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '2rem 0', fontSize: '0.9rem' }}>No activity logged yet.</div>
+                                ) : (
+                                    activities.map(act => {
+                                        const initials = act.username ? act.username.substring(0, 2).toUpperCase() : 'U';
+                                        const date = new Date(act.timestamp);
+                                        const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                        const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+                                        return (
+                                            <div key={act.id} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                                                <div style={{
+                                                    width: '32px', height: '32px', borderRadius: '50%',
+                                                    background: 'linear-gradient(135deg, #FB8500, #FFB703)',
+                                                    color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    fontWeight: 'bold', fontSize: '0.8rem', flexShrink: 0
+                                                }}>
+                                                    {initials}
+                                                </div>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1 }}>
+                                                    <div style={{ fontSize: '0.9rem', color: 'var(--text)' }}>
+                                                        <strong style={{ color: 'var(--gold)' }}>{act.username}</strong>{' '}
+                                                        <span style={{ color: 'var(--text-dim)' }}>{act.action}</span>
+                                                    </div>
+                                                    <span style={{ fontSize: '0.7rem', color: 'var(--sky-dim)' }}>
+                                                        {dateStr} at {timeStr}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
+                        <style>{`
+                            @keyframes slideInRight {
+                                from { transform: translateX(100%); }
+                                to { transform: translateX(0); }
+                            }
+                        `}</style>
+                    </>
+                )}
+            </div>
+            
+        </div>
+    )'''
+
+content = content.replace(target5, replace5)
+
+with open('frontend/src/components/Layout.jsx', 'w', encoding='utf-8') as f:
+    f.write(content)
+print('Done modifying Layout.jsx')
