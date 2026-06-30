@@ -819,7 +819,6 @@ def get_columns():
         {"col_key": "notice_period", "col_label": "Notice Period"},
         {"col_key": "phone", "col_label": "Phone No"},
         {"col_key": "email", "col_label": "Email"},
-        {"col_key": "sender_email", "col_label": "Mail From"},
         {"col_key": "linkedin", "col_label": "LinkedIn"},
         {"col_key": "current_location", "col_label": "Current Location"},
         {"col_key": "pref_locations", "col_label": "Pref Locations"},
