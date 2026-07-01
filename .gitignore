@@ -24,8 +24,6 @@ stats.db
 # ChromaDB vector store (large, regenerated from resumes)
 chroma_db/
 
-# Uploaded resumes / static files
-static/
 
 # Streamlit cache
 .streamlit/secrets.toml
