@@ -315,6 +315,9 @@ def init_db():
         for kw in ["CSSA", "LSA"]:
             cur.execute("INSERT OR IGNORE INTO masked_keywords (keyword) VALUES (?)", (kw,))
 
+    # Delete stale candidate processing placeholders from DB on startup
+    cur.execute("DELETE FROM candidate_metadata WHERE full_name LIKE '%Processing%'")
+
     # Migration: add missing columns to candidate_metadata
     cur.execute("PRAGMA table_info(candidate_metadata)")
     existing = [c[1] for c in cur.fetchall()]
@@ -950,6 +953,44 @@ def delete_candidate(candidate_id: int, request: Request):
     log_activity_db(username or "unknown", f"deleted candidate '{cname}'")
     return {"status": "deleted"}
 
+class BulkDeleteRequest(BaseModel):
+    ids: list[int]
+
+@app.post("/api/candidates/bulk-delete")
+def bulk_delete_candidates(req: BulkDeleteRequest, request: Request):
+    username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
+    
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    
+    deleted_names = []
+    
+    for cid in req.ids:
+        cur.execute("SELECT full_name, created_by FROM candidate_metadata WHERE id = ?", (cid,))
+        row = cur.fetchone()
+        if not row:
+            continue
+        cname, created_by = row
+        
+        # Check permissions
+        if not is_admin_or_hr(username):
+            if created_by and created_by.lower() != username.lower():
+                continue # Skip unauthorized deletions
+                
+        cur.execute("DELETE FROM job_candidates WHERE candidate_id=?", (cid,))
+        cur.execute("DELETE FROM candidate_metadata WHERE id=?", (cid,))
+        deleted_names.append(cname)
+        
+    conn.commit()
+    conn.close()
+    
+    if deleted_names:
+        log_activity_db(username or "unknown", f"bulk deleted {len(deleted_names)} candidates: {', '.join(deleted_names[:5])}")
+    
+    return {"status": "deleted", "count": len(deleted_names)}
+
 @app.get("/api/candidates/{candidate_id}/jobs")
 def get_candidate_jobs(candidate_id: int, request: Request):
     username = request.headers.get("x-user-username")
@@ -1008,13 +1049,31 @@ def get_formatted_resume_data(candidate_id: int, request: Request):
             raise HTTPException(status_code=403, detail="Forbidden")
 
     # Check cache first
+    cached_data = None
     if candidate.get("formatted_json"):
         try:
-            return json.loads(candidate.get("formatted_json"))
+            cached_data = json.loads(candidate.get("formatted_json"))
         except Exception:
             pass
 
     filename = candidate.get("filename", "")
+    
+    # Calculate original page count if PDF
+    original_page_count = 1
+    if filename:
+        path = os.path.join(UPLOAD_DIR, filename)
+        if os.path.exists(path) and filename.lower().endswith(".pdf"):
+            try:
+                import fitz
+                doc = fitz.open(path)
+                original_page_count = len(doc)
+                doc.close()
+            except Exception:
+                pass
+
+    if cached_data:
+        cached_data["original_page_count"] = original_page_count
+        return cached_data
     
     # Try to load original text
     text = ""
@@ -1097,6 +1156,7 @@ Rules:
 1. Return ONLY the valid JSON block. No explanation, no markdown backticks, no markdown blocks. Just raw valid JSON.
 2. If certifications are empty, extract them from the text (do not use "[HIDDEN]").
 3. All fields must be clean strings, numbers, arrays, or objects as defined in the template.
+4. Formatting & Corrections: You MUST find and correct any spelling, grammatical, typographical, or indentation/alignment mistakes in the summary and experience bullets. Format the text block into professional, cohesive paragraphs and bullet lists.
 
 Resume Text:
 {text[:8000]}
@@ -1114,6 +1174,9 @@ JSON:"""
         if start != -1 and end != -1:
             raw = raw[start:end+1]
         data = json.loads(raw)
+
+        # Inject page count
+        data["original_page_count"] = original_page_count
 
         # Cache the result in DB
         try:
@@ -1278,9 +1341,9 @@ def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, userna
                 resp = llm.invoke([HumanMessage(content=prompt_str)])
                 break
             except Exception as api_err:
-                if "429" in str(api_err) and attempt < max_retries - 1:
+                if ("429" in str(api_err) or "rate" in str(api_err).lower()) and attempt < max_retries - 1:
                     import time
-                    time.sleep(3) # Wait 3 seconds before retrying
+                    time.sleep(15) # Wait 15 seconds before retrying
                     continue
                 raise api_err
                 
@@ -1298,6 +1361,22 @@ def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, userna
             raw = raw[start:end+1]
 
         data = json.loads(raw)
+
+        # Safeguard against LLM placeholder hallucinations (e.g. John Doe)
+        placeholder_names = {"john doe", "john doe's", "jane doe", "candidate name", "name of the candidate", "placeholder"}
+        extracted_name = str(data.get('full_name', '')).strip()
+        if not extracted_name or extracted_name.lower() in placeholder_names:
+            base_name = os.path.splitext(safe_name)[0]
+            clean_name = base_name.replace('_', ' ').replace('-', ' ').strip()
+            clean_name = re.sub(r'^mail_[a-f0-9]{8}_', '', clean_name)
+            data['full_name'] = clean_name.title() if clean_name else "Unknown Candidate"
+            
+        if extracted_name.lower() in placeholder_names:
+            for field in ['email', 'phone', 'linkedin', 'current_location', 'pref_locations']:
+                val = str(data.get(field, '')).lower()
+                if 'example.com' in val or 'johndoe' in val or '123456' in val or 'new york' in val:
+                    data[field] = ""
+
         if username == "email_worker":
             data['source'] = 'Import from Mail'
         if email_message:
@@ -1306,7 +1385,6 @@ def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, userna
             data['sender_email'] = sender_email
 
         # -- Start Data Validation & Normalization --
-        import re
         
         # Phone: Keep only digits and +
         if 'phone' in data and data['phone']:
@@ -1915,6 +1993,132 @@ async def upload_resume(request: Request, background_tasks: BackgroundTasks, fil
         background_tasks.add_task(process_resume, safe_name, path, is_approved, username or "unknown")
 
         return {"status": "processing", "message": "Resume uploaded and is processing in the background."}
+
+@app.post("/api/jobs/parse-document")
+async def parse_jd_document(request: Request, file: UploadFile = File(...)):
+    username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
+    
+    # Save file temporarily in a temp folder under UPLOAD_DIR
+    safe_name = file.filename
+    temp_dir = os.path.join(UPLOAD_DIR, "temp_jds")
+    os.makedirs(temp_dir, exist_ok=True)
+    path = os.path.join(temp_dir, safe_name)
+    
+    try:
+        with open(path, "wb") as f:
+            content = await file.read()
+            f.write(content)
+            
+        ext = os.path.splitext(safe_name.lower())[1]
+        text = ""
+        
+        if ext == ".pdf":
+            try:
+                loader = SafePyMuPDFLoader(path)
+                docs = loader.load()
+                text = "\n".join([d.page_content for d in docs])
+            except Exception as pdf_err:
+                raise HTTPException(status_code=400, detail=f"Failed to parse PDF document: {str(pdf_err)}")
+        elif ext in [".docx", ".doc"]:
+            try:
+                loader = Docx2txtLoader(path)
+                docs = loader.load()
+                text = "\n".join([d.page_content for d in docs])
+            except Exception as docx_err:
+                raise HTTPException(status_code=400, detail=f"Failed to parse Word document: {str(docx_err)}")
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file format. Please upload a PDF or Word (.docx) document.")
+            
+        if not text.strip():
+            raise HTTPException(status_code=400, detail="The uploaded document appears to be empty or unreadable.")
+            
+        # Extract fields using LLM
+        _, llm = get_models()
+        
+        prompt = f"""You are an expert recruitment assistant. Extract details from the following Job Description document and structure them into the exact JSON template provided.
+Make sure to fill all fields based on the actual document. If a field is not present or mentioned in the document, use an empty string "" (or default appropriately).
+
+Template Structure:
+{{
+  "title": "<The job title, e.g., 'Pega CSSA', 'Pega Business Analyst'>",
+  "description": "<The complete or summarized job description text>",
+  "client_name": "<Client name if mentioned, else empty string>",
+  "client_phone": "<Client phone number if mentioned, else empty string>",
+  "contact_name": "<Client contact name if mentioned, else empty string>",
+  "account_manager": "<Account manager if mentioned, else empty string>",
+  "assigned_recruiter": "<Assigned recruiter if mentioned, else empty string>",
+  "target_date": "<Target date formatted as YYYY-MM-DD if mentioned, else empty string>",
+  "job_type": "<Must be one of: 'Full time', 'Part time', 'Contract', 'Temporary'. Map appropriately. Default to 'Full time' if not specified>",
+  "job_status": "<Always set to 'In-progress'>",
+  "work_experience": "<Must be exactly one of: 'None', 'Fresher', '1-3 years', '3-5 years', '5+ years'. Estimate/map from the requirements>",
+  "industry": "<Must be exactly one of: 'None', 'IT', 'Finance', 'Healthcare', 'Telecom', 'Other'. Map appropriately>",
+  "salary": "<Salary package or CTC budget if mentioned, e.g., '10 LPA', '15 - 20 LPA', else empty string>",
+  "required_skills": "<Comma-separated list of required technical skills, e.g., 'Pega, CSSA, Java'>"
+}}
+
+Rules:
+1. Return ONLY the valid JSON block. No explanation, no markdown backticks, no markdown blocks. Just raw valid JSON.
+2. For multiple-choice fields (job_type, work_experience, industry), you MUST choose one of the allowed options. If you cannot determine, use the default.
+3. Be as accurate and thorough as possible based on the text.
+
+Job Description Text:
+{text[:8000]}
+
+JSON:"""
+
+        max_retries = 3
+        resp = None
+        for attempt in range(max_retries):
+            try:
+                resp = llm.invoke([HumanMessage(content=prompt)])
+                break
+            except Exception as api_err:
+                if "429" in str(api_err) and attempt < max_retries - 1:
+                    import time
+                    time.sleep(3)
+                    continue
+                raise api_err
+                
+        if resp is None:
+            raise Exception("Failed to get response from AI model")
+            
+        raw = resp.content.strip()
+        if "```json" in raw:
+            raw = raw.split("```json")[1].split("```")[0].strip()
+        elif "```" in raw:
+            raw = raw.split("```")[1].split("```")[0].strip()
+            
+        start, end = raw.find('{'), raw.rfind('}')
+        if start != -1 and end != -1:
+            raw = raw[start:end+1]
+            
+        data = json.loads(raw)
+        
+        # Clean up temporary file
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            pass
+            
+        return data
+        
+    except HTTPException:
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            pass
+        raise
+    except Exception as e:
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=f"Failed to parse and extract JD: {str(e)}")
 
 # ── Chat ──────────────────────────────────────────────────────────────────────
 class ChatRequest(BaseModel):
@@ -2881,22 +3085,29 @@ def match_candidates_for_job(job_id: int):
         conn.close()
         return {"message": "No candidates found in DB"}
 
-    candidate_lines = []
-    for r in db_rows:
-        candidate_lines.append(
-            f"Name: {r.get('full_name')} | "
-            f"Total Experience: {r.get('total_experience')} yrs | "
-            f"Pega Experience: {r.get('pega_experience')} yrs | "
-            f"CDH Experience: {r.get('cdh_exp')} yrs | "
-            f"Skills: {r.get('skills')} | "
-            f"Certifications: {r.get('certifications')} | "
-            f"Current Location: {r.get('current_location')} | "
-            f"Preferred Locations: {r.get('pref_locations')}"
-        )
-    
     emb, llm = get_models()
     
-    prompt = f"""You are an expert technical recruiter. Evaluate these candidates against the Job Description "pin to pin".
+    # Batch candidates to fit within Groq TPM limit (6000 tokens)
+    batch_size = 25
+    reason_map = {}
+    
+    for i in range(0, len(db_rows), batch_size):
+        batch_rows = db_rows[i:i+batch_size]
+        candidate_lines = []
+        for r in batch_rows:
+            candidate_lines.append(
+                f"ID: {r.get('id')} | "
+                f"Name: {r.get('full_name')} | "
+                f"Total Experience: {r.get('total_experience')} yrs | "
+                f"Pega Experience: {r.get('pega_experience')} yrs | "
+                f"CDH Experience: {r.get('cdh_exp')} yrs | "
+                f"Skills: {r.get('skills')} | "
+                f"Certifications: {r.get('certifications')} | "
+                f"Current Location: {r.get('current_location')} | "
+                f"Preferred Locations: {r.get('pref_locations')}"
+            )
+            
+        prompt = f"""You are an expert technical recruiter. Evaluate these candidates against the Job Description "pin to pin".
 
 Job Description:
 {jd[:2000]}
@@ -2917,35 +3128,52 @@ Rules for evaluation:
 Format your response exactly as a JSON list of objects for matching candidates only:
 [
   {{
-    "name": "Candidate Name",
+    "id": <Candidate ID (integer)>,
     "reason": "1-sentence explanation of why they fit based on their specific experience, skills, and location"
   }}
 ]
 Return ONLY the raw JSON block, no markdown, no other text."""
 
-    try:
-        resp = llm.invoke([HumanMessage(content=prompt)])
-        raw = resp.content.strip()
-        if "```json" in raw: raw = raw.split("```json")[1].split("```")[0].strip()
-        elif "```" in raw: raw = raw.split("```")[1].split("```")[0].strip()
-        start, end = raw.find('['), raw.rfind(']')
-        if start != -1 and end != -1: raw = raw[start:end+1]
-        ai_reasons = json.loads(raw)
-        reason_map = {str(item.get("name", "")).strip().lower(): item.get("reason", "") for item in ai_reasons}
-    except Exception:
-        reason_map = {}
+        max_retries = 3
+        resp = None
+        for attempt in range(max_retries):
+            try:
+                resp = llm.invoke([HumanMessage(content=prompt)])
+                break
+            except Exception as api_err:
+                if ("429" in str(api_err) or "413" in str(api_err)) and attempt < max_retries - 1:
+                    import time
+                    time.sleep(2)
+                    continue
+                print(f"Error evaluating batch in match_candidates_for_job: {api_err}")
+                break
+                
+        if resp is not None:
+            try:
+                raw = resp.content.strip()
+                if "```json" in raw: raw = raw.split("```json")[1].split("```")[0].strip()
+                elif "```" in raw: raw = raw.split("```")[1].split("```")[0].strip()
+                start, end = raw.find('['), raw.rfind(']')
+                if start != -1 and end != -1: raw = raw[start:end+1]
+                ai_reasons = json.loads(raw)
+                for item in ai_reasons:
+                    cid = item.get("id")
+                    if cid is not None:
+                        reason_map[int(cid)] = item.get("reason", "")
+            except Exception as parse_err:
+                print(f"Error parsing batch match response: {parse_err}")
+                
+        # Small delay between batches to prevent rate limit issues
+        import time
+        time.sleep(0.5)
 
     # Clear old automatic matches for this job that haven't been selected
     cur.execute("DELETE FROM job_candidates WHERE job_id = ? AND status = 'matched'", (job_id,))
 
     matches_added = 0
     for r in db_rows:
-        name = str(r.get('full_name', '')).strip().lower()
-        reason = None
-        for k, v in reason_map.items():
-            if k in name or name in k:
-                reason = v
-                break
+        cid = r['id']
+        reason = reason_map.get(cid)
         
         if reason:
             # Upsert into job_candidates
@@ -2953,10 +3181,10 @@ Return ONLY the raw JSON block, no markdown, no other text."""
                 INSERT INTO job_candidates (job_id, candidate_id, ai_reason, status) 
                 VALUES (?, ?, ?, 'matched')
                 ON CONFLICT(job_id, candidate_id) DO UPDATE SET ai_reason = excluded.ai_reason
-            """, (job_id, r['id'], reason))
+            """, (job_id, cid, reason))
             
             # Also mark candidate as qualified
-            cur.execute("UPDATE candidate_metadata SET is_qualified = 1 WHERE id = ?", (r['id'],))
+            cur.execute("UPDATE candidate_metadata SET is_qualified = 1 WHERE id = ?", (cid,))
             matches_added += 1
 
     conn.commit()
