@@ -14,3 +14,4 @@ uvicorn
 python-multipart
 sentence-transformers
 openpyxl
+psycopg2-binary

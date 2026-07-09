@@ -1,4 +1,6 @@
 import os
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import json
 import sqlite3
 import shutil
@@ -125,6 +127,14 @@ from langchain_core.prompts import PromptTemplate
 
 # ── Config ────────────────────────────────────────────────────────────────────
 load_dotenv()
+
+# Check and patch PostgreSQL if configured
+from postgres_adapter import patch_if_configured
+PG_ACTIVE = patch_if_configured()
+
+if not PG_ACTIVE:
+    print("💡 Database: Running locally using SQLite file (stats.db).")
+
 BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
 
@@ -1378,7 +1388,7 @@ def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, userna
                     data[field] = ""
 
         if username == "email_worker":
-            data['source'] = 'Import from Mail'
+            data['source'] = 'uploaded from mail'
         if email_message:
             data['email_message'] = email_message
         if sender_email:
@@ -1492,7 +1502,7 @@ def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, userna
             # Always update or attach the filename to the matched candidate
             updates['filename'] = safe_name
             if username == "email_worker":
-                updates['source'] = 'Import from Mail'
+                updates['source'] = 'uploaded from mail'
                 if email_message:
                     updates['email_message'] = email_message
                 if sender_email:
@@ -1513,7 +1523,7 @@ def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, userna
             data['is_approved'] = is_approved
             data['created_by'] = username
             if username == "email_worker":
-                data['source'] = 'Import from Mail'
+                data['source'] = 'uploaded from mail'
                 if email_message:
                     data['email_message'] = email_message
                 if sender_email:
@@ -3446,15 +3456,46 @@ def send_otp_email(to_email: str, otp: str, raise_on_error: bool = False) -> boo
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
     
-    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_sender = os.getenv("SMTP_SENDER", "")
-    smtp_password = os.getenv("SMTP_PASSWORD", "")
+    # Check if we have integrations settings in DB
+    smtp_host = None
+    smtp_port = None
+    smtp_sender = None
+    smtp_password = None
     
+    try:
+        conn = sqlite3.connect(STATS_DB, timeout=30.0)
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT smtp_host, smtp_port, email_user, email_pass, email_enabled 
+            FROM integrations_settings LIMIT 1
+        """)
+        row = cur.fetchone()
+        conn.close()
+        if row and row[4]:  # If integrations table has a row and email is enabled
+            smtp_host = row[0]
+            smtp_port = row[1]
+            smtp_sender = row[2]
+            smtp_password = row[3]
+    except Exception as db_err:
+        print(f"[SMTP] Error fetching integration settings from DB: {db_err}")
+        
+    # Fallback to env variables if not set in DB
+    if not smtp_host:
+        smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    if not smtp_port:
+        try:
+            smtp_port = int(os.getenv("SMTP_PORT", "587"))
+        except Exception:
+            smtp_port = 587
+    if not smtp_sender:
+        smtp_sender = os.getenv("SMTP_SENDER", "")
+    if not smtp_password:
+        smtp_password = os.getenv("SMTP_PASSWORD", "")
+        
     if not smtp_sender or not smtp_password:
         print(f"[SMTP] Credentials not set. Skipped sending real email.")
         if raise_on_error:
-            raise ValueError("SMTP email credentials are not configured in your .env file. Please set SMTP_SENDER and SMTP_PASSWORD.")
+            raise ValueError("SMTP email credentials are not configured. Please set them in the Connect tab or .env file.")
         return False
         
     subject = "Hire AI - Password Reset OTP"
@@ -3535,12 +3576,24 @@ def request_otp(req: ForgotPasswordRequest):
     try:
         sent = send_otp_email(email, otp, raise_on_error=require_real)
     except Exception as e:
-        print(f"[SMTP] Error during send_otp_email: {str(e)}")
-        # If we require real email and it fails, but SMTP credentials are NOT configured,
-        # we treat it as a warning and fall back to returning simulated OTP rather than raising a 500 error.
-        smtp_sender = os.getenv("SMTP_SENDER", "")
-        smtp_password = os.getenv("SMTP_PASSWORD", "")
-        if require_real and smtp_sender and smtp_password:
+        # If we require real email and it fails, check if credentials are set (DB or Env)
+        # to decide if we throw a 500 error or fail back to simulated OTP.
+        has_creds = False
+        try:
+            conn = sqlite3.connect(STATS_DB, timeout=30.0)
+            cur = conn.cursor()
+            cur.execute("SELECT email_user, email_pass, email_enabled FROM integrations_settings LIMIT 1")
+            row = cur.fetchone()
+            conn.close()
+            if row and row[2] and row[0] and row[1]:
+                has_creds = True
+        except Exception:
+            pass
+            
+        if not has_creds:
+            has_creds = bool(os.getenv("SMTP_SENDER") and os.getenv("SMTP_PASSWORD"))
+            
+        if require_real and has_creds:
             # Only raise 500 if the credentials are set but the actual mail delivery fails
             if email in OTP_STORE:
                 del OTP_STORE[email]
@@ -4186,7 +4239,7 @@ def save_integrations_settings(settings: IntegrationSettingsRequest, request: Re
               
     if settings.email_enabled == 0:
         try:
-            cur.execute("SELECT id, filename FROM candidate_metadata WHERE source = 'Import from Mail'")
+            cur.execute("SELECT id, filename FROM candidate_metadata WHERE source = 'uploaded from mail'")
             email_candidates = cur.fetchall()
             for cand_id, filename in email_candidates:
                 if filename:
@@ -4564,6 +4617,7 @@ def poll_emails_and_process():
                                 updates['filename'] = new_filename
                             if sender_email:
                                 updates['sender_email'] = sender_email
+                            updates['source'] = 'uploaded from mail'
 
                             # Merge email message body
                             old_msg = existing_candidate.get('email_message') or ""

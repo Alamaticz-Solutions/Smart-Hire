@@ -26,7 +26,9 @@ graph TD
 ## 2. Database Design & Storage
 
 Hire AI uses a hybrid database setup to manage data:
-*   **Relational Storage (SQLite)**: Handles structured metadata, user access controls, audit logs, custom fields, recruiter matrix, and email tracking.
+*   **Relational Storage**: Handles structured metadata, user access controls, audit logs, custom fields, recruiter matrix, and email tracking.
+    *   **Local Development**: Powered by an embedded **SQLite** database (`stats.db`).
+    *   **Cloud Hosting**: Integrates with a hosted **PostgreSQL** server. The application dynamically routes SQL queries to the remote database if credentials are configured in the environment.
 *   **Vector Storage (ChromaDB)**: Stores chunked textual content of resumes to enable semantic, context-aware queries (RAG).
 
 ### 2.1 SQLite Schema & Table Details
@@ -200,7 +202,7 @@ sequenceDiagram
                         else New Candidate
                             Worker->>Disk: Save attachment
                             Worker->>LLM: Extract complete profile via EXTRACT_PROMPT
-                            Worker->>SQLite: Create candidate_metadata record as source "Import from Mail"
+                            Worker->>SQLite: Create candidate_metadata record as source "uploaded from mail"
                             Worker->>Worker: Compute missing required profile fields
                             Worker->>Gmail: Send SMTP Reply stating missing details or ACK
                         end
@@ -248,6 +250,7 @@ Protected client-side routing is handled via `react-router-dom`:
 *   **Data Masking**: Non-admin and non-HR users have sensitive fields (like CTC or Certifications) masked. Custom strings are substituted with `[HIDDEN]` or mapped against the `masked_keywords` SQLite table (which masks terms like `CSSA` or `LSA` to `****`).
 *   **Excel Exporter (`excelUtils.js`)**: Exports candidates lists to custom-styled `.xlsx` spreadsheets using `exceljs`. It embeds cell validation dropdowns (`New`, `In-Review`, `Available`, etc.) in the spreadsheet cells so recruiters can update statuses directly.
 *   **Job Description Auto-Fill Upload Box**: An interactive dashed drop/upload container inside the Create JD form that allows recruiters to parse PDF/Word job descriptions to populate form fields instantly.
+*   **A4 Resume Preview & PDF Exporter**: Provides a high-fidelity two-column A4 sheet layout (Left Panel: Education, Certifications, Technical Skills, Recognitions; Right Panel: Profile Summary, Domain Skills, Work Experience). It utilizes a strict millimeter-based height evaluation and text-chunking engine to flow content correctly across pages, solving blank page inserts and ensuring experiences like the `FORD` job bullets are not cut off.
 
 ---
 
@@ -290,6 +293,7 @@ The `/api/jobs/parse-document` endpoint processes uploaded PDF and Word (.docx/.
 
 ### 6.1 Backend Dependencies (`backend/requirements.txt`)
 *   `fastapi` & `uvicorn`: Web framework and ASGI web server.
+*   `psycopg2-binary`: Driver for connecting to the remote PostgreSQL database.
 *   `langchain` & `langchain-community`: Core framework orchestrating LLM prompt routing and data loader connections.
 *   `langchain-groq`: Connector for Groq Cloud API (`llama-3.1-8b-instant`).
 *   `langchain-chroma`: Wrapper managing vectors in Chroma DB.

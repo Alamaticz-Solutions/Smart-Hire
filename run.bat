@@ -42,7 +42,7 @@ echo.
 
 :: Open browser automatically
 ping -n 4 127.0.0.1 >nul
-start http://127.0.0.1:8000
+start http://localhost:8000
 
 :: Start FastAPI backend in the current window
 python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000

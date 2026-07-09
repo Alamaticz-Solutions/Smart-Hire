@@ -1,17 +1,31 @@
 import os
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import sqlite3
+from dotenv import load_dotenv
+
+# Load env variables
+load_dotenv()
 
 # Define paths relative to the script location
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATS_DB = os.path.join(BASE_DIR, "stats.db")
 UPLOAD_DIR = os.path.join(BASE_DIR, "static")
 
+# Check and patch PostgreSQL if configured
+from postgres_adapter import patch_if_configured
+PG_ACTIVE = patch_if_configured()
+
 def cleanup():
-    if not os.path.exists(STATS_DB):
+    # If using Postgres, we don't require the local STATS_DB path to exist
+    if not PG_ACTIVE and not os.path.exists(STATS_DB):
         print(f"Database not found at {STATS_DB}")
         return
         
-    print(f"Connecting to database: {STATS_DB}")
+    if PG_ACTIVE:
+        print("Connecting to remote PostgreSQL database...")
+    else:
+        print(f"Connecting to local database: {STATS_DB}")
     conn = sqlite3.connect(STATS_DB)
     cur = conn.cursor()
     

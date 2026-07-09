@@ -6,36 +6,43 @@ $frontendReady = $false
 $timeout = 120 # 2 minutes max
 $elapsed = 0
 
+function Test-Port {
+    param (
+        [string]$HostName,
+        [int]$Port
+    )
+    $tcp = New-Object System.Net.Sockets.TcpClient
+    try {
+        $connect = $tcp.BeginConnect($HostName, $Port, $null, $null)
+        $success = $connect.AsyncWaitHandle.WaitOne(1000)
+        if ($success) {
+            $tcp.EndConnect($connect)
+            return $true
+        }
+    } catch {
+        # Ignore
+    } finally {
+        $tcp.Dispose()
+    }
+    return $false
+}
+
 Write-Host "================================================" -ForegroundColor Cyan
 Write-Host " Waiting for backend (8000) & frontend (5173)..." -ForegroundColor Cyan
 Write-Host "================================================" -ForegroundColor Cyan
 
 while (-not ($backendReady -and $frontendReady) -and ($elapsed -lt $timeout)) {
     if (-not $backendReady) {
-        try {
-            $response = Invoke-WebRequest -Uri "http://127.0.0.1:8000/api/health" -UseBasicParsing -TimeoutSec 1 -ErrorAction SilentlyContinue
-            if ($response.StatusCode -eq 200) {
-                $backendReady = $true
-                Write-Host "[OK] Backend is ready and listening on port 8000." -ForegroundColor Green
-            }
-        } catch {
-            # Not ready yet
+        if ((Test-Port "127.0.0.1" 8000) -or (Test-Port "localhost" 8000)) {
+            $backendReady = $true
+            Write-Host "[OK] Backend is ready and listening on port 8000." -ForegroundColor Green
         }
     }
     
     if (-not $frontendReady) {
-        try {
-            $tcp = New-Object System.Net.Sockets.TcpClient
-            $connect = $tcp.BeginConnect("127.0.0.1", 5173, $null, $null)
-            $success = $connect.AsyncWaitHandle.WaitOne(500)
-            if ($success) {
-                $tcp.EndConnect($connect)
-                $frontendReady = $true
-                Write-Host "[OK] Frontend is ready and listening on port 5173." -ForegroundColor Green
-            }
-            $tcp.Dispose()
-        } catch {
-            # Not ready yet
+        if ((Test-Port "127.0.0.1" 5173) -or (Test-Port "localhost" 5173)) {
+            $frontendReady = $true
+            Write-Host "[OK] Frontend is ready and listening on port 5173." -ForegroundColor Green
         }
     }
     

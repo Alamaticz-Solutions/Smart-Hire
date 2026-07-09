@@ -43,7 +43,7 @@ Start "Hire AI - Frontend" /D "%~dp0frontend" cmd /k "npm run dev"
 call powershell -ExecutionPolicy Bypass -File "%~dp0wait_servers.ps1"
 
 if %ERRORLEVEL% EQU 0 (
-    start http://127.0.0.1:5173
+    start http://localhost:5173
 ) else (
     echo ================================================
     echo  ERROR: Failed to start backend or frontend.

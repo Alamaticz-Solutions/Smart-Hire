@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
-import { Briefcase, Plus, Trash2, Search, UserCheck, Loader, ChevronRight, Edit, Calendar, User, Building, DollarSign, Award, Target, X, Phone, Eye, Filter, Check, FileText, Download, MoreVertical, Share2 } from 'lucide-react';
+import { Briefcase, Plus, Trash2, Search, UserCheck, Loader, ChevronRight, Edit, Calendar, User, Building, DollarSign, Award, Target, X, Phone, Eye, Filter, Check, FileText, Download, MoreVertical, Share2, UploadCloud } from 'lucide-react';
 import { useOutletContext } from 'react-router-dom';
 import alamaticzLogo from '../assets/alamaticz-logo.jpg';
 import ReactMarkdown from 'react-markdown';
 import { exportToExcel, formatCandidatesForExcel } from '../utils/excelUtils';
+import { useDropzone } from 'react-dropzone';
 const API_URL = import.meta.env.VITE_API_URL || '';
 const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
@@ -114,6 +115,213 @@ function ExpandableCell({ value, onEdit }) {
     )
 }
 
+/* ─── Chunking Helpers for Original A4 Layout ─────────────────────────────── */
+const getLeftPanelChunks = (education, certifications, technical_skills, recognitions, isPrint = false) => {
+    const pageHeight = isPrint ? 262 : 997;
+    const topSpacer = isPrint ? 35 : 133;
+    const pageHeaderBranding = isPrint ? 25 : 95;
+    
+    const page1Available = pageHeight - topSpacer;
+    const pageNAvailable = pageHeight - pageHeaderBranding;
+
+    const sections = [];
+    
+    if (education && education.length > 0) {
+        let h = isPrint ? (10 + education.length * 10) : (38 + education.length * 38);
+        sections.push({ type: 'education', height: h });
+    }
+    
+    if (certifications && certifications.length > 0) {
+        let h = isPrint ? (10 + certifications.length * 5) : (38 + certifications.length * 19);
+        sections.push({ type: 'certifications', height: h });
+    }
+    
+    if (technical_skills && Object.keys(technical_skills).length > 0) {
+        let activeCategories = 0;
+        if (technical_skills.primary) activeCategories++;
+        if (technical_skills.languages) activeCategories++;
+        if (technical_skills.frontend) activeCategories++;
+        if (technical_skills.others) activeCategories++;
+        let h = isPrint ? (10 + activeCategories * 6) : (38 + activeCategories * 23);
+        sections.push({ type: 'technical_skills', height: h });
+    }
+    
+    if (recognitions && recognitions.length > 0) {
+        let itemsHeight = 0;
+        recognitions.forEach(rec => {
+            const textLen = (rec.date ? rec.date.length : 0) + (rec.description ? rec.description.length : 0);
+            if (isPrint) {
+                itemsHeight += Math.ceil(textLen / 25) * 4.5 + 2.5;
+            } else {
+                itemsHeight += Math.ceil(textLen / 25) * 17 + 9.5;
+            }
+        });
+        let h = isPrint ? (10 + itemsHeight) : (38 + itemsHeight);
+        sections.push({ type: 'recognitions', height: h });
+    }
+    
+    const chunks = [];
+    let currentPageSections = [];
+    let currentAvailableHeight = page1Available;
+    
+    sections.forEach(sec => {
+        const totalSecHeight = sec.height + (isPrint ? 8 : 30);
+        
+        if (currentAvailableHeight >= totalSecHeight || currentPageSections.length === 0) {
+            currentPageSections.push(sec.type);
+            currentAvailableHeight -= totalSecHeight;
+        } else {
+            chunks.push(currentPageSections);
+            currentPageSections = [sec.type];
+            currentAvailableHeight = pageNAvailable - totalSecHeight;
+        }
+    });
+    
+    if (currentPageSections.length > 0) {
+        chunks.push(currentPageSections);
+    }
+    
+    return chunks;
+};
+
+const getDynamicWorkExpChunks = (jobs, profile_summary, domain_skills, isPrint = false) => {
+    const pageHeight = isPrint ? 262 : 997;
+    const topSpacer = isPrint ? 35 : 133;
+    const pageHeaderBranding = isPrint ? 20 : 76;
+    
+    const page1Available = pageHeight - topSpacer;
+    const pageNAvailable = pageHeight - pageHeaderBranding;
+
+    const profileSummaryHeight = profile_summary 
+        ? 10 + Math.ceil(profile_summary.length / 65) * (isPrint ? 4.5 : 17) + (isPrint ? 8 : 30)
+        : 0;
+        
+    const domainSkillsHeight = domain_skills && domain_skills.length > 0
+        ? 10 + Math.ceil(domain_skills.length / 2) * (isPrint ? 5 : 19) + (isPrint ? 8 : 30)
+        : 0;
+
+    const workExpHeaderHeight = 10 + (isPrint ? 8 : 30);
+
+    const page1AvailableForJobs = page1Available - profileSummaryHeight - domainSkillsHeight - workExpHeaderHeight;
+    const pageNAvailableForJobs = pageNAvailable - workExpHeaderHeight;
+
+    const chunks = [];
+    let currentPageJobs = [];
+    let currentAvailableHeight = page1AvailableForJobs;
+
+    const getJobHeaderHeightVal = (isCont) => {
+        if (isCont) {
+            return isPrint ? 8 : 30;
+        } else {
+            return isPrint ? 12 : 45;
+        }
+    };
+
+    const getBulletHeightVal = (bullet) => {
+        const text = bullet || '';
+        const lines = Math.ceil(text.length / 65) || 1;
+        return lines * (isPrint ? 4.5 : 17) + (isPrint ? 1.0 : 4);
+    };
+
+    for (let i = 0; i < jobs.length; i++) {
+        const job = jobs[i];
+        const headerHeight = getJobHeaderHeightVal(false);
+        
+        const firstBulletHeight = job.bullets && job.bullets.length > 0 ? getBulletHeightVal(job.bullets[0]) : 0;
+        const requiredMinHeight = headerHeight + firstBulletHeight + (isPrint ? 5 : 19);
+
+        if (currentAvailableHeight < requiredMinHeight) {
+            chunks.push(currentPageJobs);
+            currentPageJobs = [];
+            currentAvailableHeight = pageNAvailableForJobs;
+        }
+
+        let jobBulletsOnThisPage = [];
+        let jobBulletsOnNextPage = [...(job.bullets || [])];
+        let currentJobHeight = headerHeight;
+
+        while (jobBulletsOnNextPage.length > 0) {
+            const nextBullet = jobBulletsOnNextPage[0];
+            const nextBulletHeight = getBulletHeightVal(nextBullet);
+            
+            if (currentAvailableHeight >= currentJobHeight + nextBulletHeight) {
+                jobBulletsOnThisPage.push(jobBulletsOnNextPage.shift());
+                currentJobHeight += nextBulletHeight;
+            } else {
+                break;
+            }
+        }
+
+        if (jobBulletsOnThisPage.length > 0 || (job.bullets || []).length === 0) {
+            currentPageJobs.push({
+                ...job,
+                bullets: jobBulletsOnThisPage,
+                isContinuation: false
+            });
+            currentAvailableHeight -= currentJobHeight + (isPrint ? 4 : 15);
+        } else {
+            if (currentPageJobs.length > 0) {
+                chunks.push(currentPageJobs);
+                currentPageJobs = [];
+                currentAvailableHeight = pageNAvailableForJobs;
+            }
+            
+            currentJobHeight = headerHeight;
+            while (jobBulletsOnNextPage.length > 0) {
+                const nextBullet = jobBulletsOnNextPage[0];
+                const nextBulletHeight = getBulletHeightVal(nextBullet);
+                if (currentAvailableHeight >= currentJobHeight + nextBulletHeight || jobBulletsOnThisPage.length === 0) {
+                    jobBulletsOnThisPage.push(jobBulletsOnNextPage.shift());
+                    currentJobHeight += nextBulletHeight;
+                } else {
+                    break;
+                }
+            }
+            
+            currentPageJobs.push({
+                ...job,
+                bullets: jobBulletsOnThisPage,
+                isContinuation: false
+            });
+            currentAvailableHeight -= currentJobHeight + (isPrint ? 4 : 15);
+        }
+
+        while (jobBulletsOnNextPage.length > 0) {
+            chunks.push(currentPageJobs);
+            currentPageJobs = [];
+            currentAvailableHeight = pageNAvailableForJobs;
+
+            let contJobBullets = [];
+            let contJobHeight = getJobHeaderHeightVal(true);
+
+            while (jobBulletsOnNextPage.length > 0) {
+                const nextBullet = jobBulletsOnNextPage[0];
+                const nextBulletHeight = getBulletHeightVal(nextBullet);
+                if (currentAvailableHeight >= contJobHeight + nextBulletHeight || contJobBullets.length === 0) {
+                    contJobBullets.push(jobBulletsOnNextPage.shift());
+                    contJobHeight += nextBulletHeight;
+                } else {
+                    break;
+                }
+            }
+
+            currentPageJobs.push({
+                ...job,
+                role: `${job.role} (Contd.)`,
+                bullets: contJobBullets,
+                isContinuation: true
+            });
+            currentAvailableHeight -= contJobHeight + (isPrint ? 4 : 15);
+        }
+    }
+
+    if (currentPageJobs.length > 0) {
+        chunks.push(currentPageJobs);
+    }
+
+    return chunks;
+};
+
 /* ─── Resume Preview component (Alamaticz Solutions Template) ────────────── */
 function ResumePreview({ data, logoUrl }) {
     React.useEffect(() => {
@@ -147,21 +355,9 @@ function ResumePreview({ data, logoUrl }) {
         recognitions = []
     } = data;
 
-    // Helper to split work experience into pages
-    const getWorkExpChunks = (jobs) => {
-        if (!jobs || jobs.length === 0) return [[]];
-        const chunks = [];
-        chunks.push(jobs.slice(0, 2)); // Page 1 gets up to 2 jobs
-        let index = 2;
-        while (index < jobs.length) {
-            chunks.push(jobs.slice(index, index + 3)); // Page 2+ gets up to 3 jobs
-            index += 3;
-        }
-        return chunks;
-    };
-
-    const expChunks = getWorkExpChunks(work_experience);
-    const totalPages = expChunks.length;
+    const expChunks = getDynamicWorkExpChunks(work_experience, profile_summary, domain_skills, false);
+    const leftChunks = getLeftPanelChunks(education, certifications, technical_skills, recognitions, false);
+    const totalPages = Math.max(expChunks.length, leftChunks.length);
 
     return (
         <div className="resume-preview-container" style={{
@@ -174,14 +370,18 @@ function ResumePreview({ data, logoUrl }) {
             alignItems: 'center',
             gap: '24px'
         }}>
-            {expChunks.map((chunk, pageIdx) => {
+            {Array.from({ length: totalPages }).map((_, pageIdx) => {
                 const isFirstPage = pageIdx === 0;
+                const chunk = expChunks[pageIdx] || [];
+                const leftSections = leftChunks[pageIdx] || [];
                 
                 return (
                     <div key={pageIdx} className="resume-a4-sheet" style={{
                         width: '100%',
                         maxWidth: '800px',
-                        minHeight: '1130px',
+                        height: '1130px',
+                        flexShrink: 0,
+                        overflow: 'hidden',
                         background: '#ffffff',
                         boxShadow: '0 4px 20px rgba(0,0,0,0.35)',
                         display: 'flex',
@@ -195,278 +395,275 @@ function ResumePreview({ data, logoUrl }) {
                         <div style={{
                             width: '32%',
                             background: '#e6f0fa',
-                            padding: '24px 18px',
+                            padding: '76px 18px 57px 18px',
                             display: 'flex',
                             flexDirection: 'column',
-                            gap: '24px',
                             boxSizing: 'border-box',
-                            borderRight: '1px solid rgba(0,0,0,0.05)'
+                            borderRight: '1px solid rgba(0,0,0,0.05)',
+                            height: '100%',
+                            overflow: 'hidden'
                         }}>
                             {isFirstPage ? (
-                                <>
-                                    {/* Education Section */}
-                                    {education && education.length > 0 && (
-                                        <div>
-                                            <h4 style={{
-                                                margin: '0 0 6px 0',
-                                                color: '#004b87',
-                                                fontSize: '0.85rem',
-                                                fontWeight: 700,
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '0.05em',
-                                                borderBottom: '2px solid #004b87',
-                                                paddingBottom: '4px'
-                                            }}>Education</h4>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '8px' }}>
-                                                {education.map((edu, idx) => (
-                                                    <div key={idx}>
-                                                        <div style={{ fontWeight: 700, color: '#333', fontSize: '0.8rem' }}>
-                                                            {edu.degree}{edu.field ? ` - ${edu.field}` : ''}
-                                                        </div>
-                                                        <div style={{ color: '#555', fontSize: '0.75rem', marginTop: '2px' }}>{edu.school}</div>
-                                                        {edu.years && <div style={{ color: '#777', fontSize: '0.72rem' }}>{edu.years}</div>}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Certifications Section */}
-                                    {certifications && certifications.length > 0 && (
-                                        <div>
-                                            <h4 style={{
-                                                margin: '0 0 6px 0',
-                                                color: '#004b87',
-                                                fontSize: '0.85rem',
-                                                fontWeight: 700,
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '0.05em',
-                                                borderBottom: '2px solid #004b87',
-                                                paddingBottom: '4px'
-                                            }}>Certifications</h4>
-                                            <ul style={{ margin: '8px 0 0 0', paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                                {certifications.map((cert, idx) => (
-                                                    <li key={idx} style={{ color: '#333', fontSize: '0.78rem' }}>{cert}</li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    )}
-
-                                    {/* Technical Skills Section */}
-                                    {technical_skills && Object.keys(technical_skills).length > 0 && (
-                                        <div>
-                                            <h4 style={{
-                                                margin: '0 0 6px 0',
-                                                color: '#004b87',
-                                                fontSize: '0.85rem',
-                                                fontWeight: 700,
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '0.05em',
-                                                borderBottom: '2px solid #004b87',
-                                                paddingBottom: '4px'
-                                            }}>Technical Skills</h4>
-                                            <ul style={{ margin: '8px 0 0 0', paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.75rem', color: '#333' }}>
-                                                {technical_skills.primary && (
-                                                    <li><strong>Primary:</strong> {technical_skills.primary}</li>
-                                                )}
-                                                {technical_skills.languages && (
-                                                    <li><strong>Languages:</strong> {technical_skills.languages}</li>
-                                                )}
-                                                {technical_skills.frontend && (
-                                                    <li><strong>Frontend:</strong> {technical_skills.frontend}</li>
-                                                )}
-                                                {technical_skills.others && (
-                                                    <li><strong>Others:</strong> {technical_skills.others}</li>
-                                                )}
-                                            </ul>
-                                        </div>
-                                    )}
-
-                                    {/* Recognitions (only on Page 1 if total pages is 1) */}
-                                    {totalPages === 1 && recognitions && recognitions.length > 0 && (
-                                        <div>
-                                            <h4 style={{
-                                                margin: '0 0 6px 0',
-                                                color: '#004b87',
-                                                fontSize: '0.85rem',
-                                                fontWeight: 700,
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '0.05em',
-                                                borderBottom: '2px solid #004b87',
-                                                paddingBottom: '4px'
-                                            }}>Recognitions</h4>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px', fontSize: '0.75rem' }}>
-                                                {recognitions.map((rec, idx) => (
-                                                    <div key={idx} style={{ marginBottom: '6px' }}>
-                                                        <span style={{ fontWeight: 700, color: '#333' }}>{rec.date ? `[${rec.date}] ` : ''}</span>
-                                                        <span style={{ color: '#555' }}>{rec.description}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </>
+                                <div style={{ height: '133px', visibility: 'hidden', pointerEvents: 'none' }} />
                             ) : (
-                                <>
-                                    {/* Recognitions Section on Page 2 */}
-                                    {pageIdx === 1 && recognitions && recognitions.length > 0 && (
-                                        <div>
-                                            <h4 style={{
-                                                margin: '0 0 6px 0',
-                                                color: '#004b87',
-                                                fontSize: '0.85rem',
-                                                fontWeight: 700,
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '0.05em',
-                                                borderBottom: '2px solid #004b87',
-                                                paddingBottom: '4px'
-                                            }}>Recognitions</h4>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px', fontSize: '0.75rem' }}>
-                                                {recognitions.map((rec, idx) => (
-                                                    <div key={idx} style={{ marginBottom: '6px' }}>
-                                                        <span style={{ fontWeight: 700, color: '#333' }}>{rec.date ? `[${rec.date}] ` : ''}</span>
-                                                        <span style={{ color: '#555' }}>{rec.description}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
+                                <div style={{ height: '95px', display: 'flex', flexDirection: 'column', gap: '6px', borderBottom: '1px solid #004b87', marginBottom: '30px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#004b87', textTransform: 'uppercase' }}>
+                                            {full_name}
+                                        </span>
+                                        {logoUrl && (
+                                            <img src={logoUrl} alt="Logo" style={{ height: '24px', objectFit: 'contain' }} />
+                                        )}
+                                    </div>
+                                </div>
+                            )}
 
-                                    {/* General Branding for Left Panel on Page 2+ if no recognitions */}
-                                    {!(pageIdx === 1 && recognitions && recognitions.length > 0) && (
-                                        <div style={{ marginTop: '20px', textAlign: 'center', opacity: 0.5 }}>
-                                            <div style={{ fontWeight: 700, color: '#004b87', fontSize: '0.8rem', textTransform: 'uppercase' }}>Alamaticz</div>
-                                            <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '4px' }}>Candidate Profile</div>
-                                        </div>
-                                    )}
-                                </>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
+                                {leftSections.map(secType => {
+                                    if (secType === 'education' && education && education.length > 0) {
+                                        return (
+                                            <div key="education">
+                                                <h4 style={{
+                                                    margin: '0 0 15px 0',
+                                                    color: '#004b87',
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: 700,
+                                                    textTransform: 'uppercase',
+                                                    letterSpacing: '0.05em',
+                                                    borderBottom: '2px solid #004b87',
+                                                    paddingBottom: '8px'
+                                                }}>Education</h4>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
+                                                    {education.map((edu, idx) => (
+                                                        <div key={idx}>
+                                                            <div style={{ fontWeight: 700, color: '#333', fontSize: '0.78rem' }}>
+                                                                {edu.degree}{edu.field ? ` - ${edu.field}` : ''}
+                                                            </div>
+                                                            <div style={{ color: '#555', fontSize: '0.74rem', marginTop: '2px' }}>
+                                                                {edu.school}
+                                                            </div>
+                                                            {edu.years && (
+                                                                <div style={{ color: '#777', fontSize: '0.72rem', marginTop: '1px' }}>
+                                                                    {edu.years}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+                                    if (secType === 'certifications' && certifications && certifications.length > 0) {
+                                        return (
+                                            <div key="certifications">
+                                                <h4 style={{
+                                                    margin: '0 0 15px 0',
+                                                    color: '#004b87',
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: 700,
+                                                    textTransform: 'uppercase',
+                                                    letterSpacing: '0.05em',
+                                                    borderBottom: '2px solid #004b87',
+                                                    paddingBottom: '8px'
+                                                }}>Certifications</h4>
+                                                <ul style={{ margin: '8px 0 0 0', paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.75rem', color: '#444' }}>
+                                                    {certifications.map((cert, idx) => (
+                                                        <li key={idx}>{cert}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        );
+                                    }
+                                    if (secType === 'technical_skills' && technical_skills && Object.keys(technical_skills).length > 0) {
+                                        return (
+                                            <div key="technical_skills">
+                                                <h4 style={{
+                                                    margin: '0 0 15px 0',
+                                                    color: '#004b87',
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: 700,
+                                                    textTransform: 'uppercase',
+                                                    letterSpacing: '0.05em',
+                                                    borderBottom: '2px solid #004b87',
+                                                    paddingBottom: '8px'
+                                                }}>Technical Skills</h4>
+                                                <ul style={{ margin: '8px 0 0 0', paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.74rem', color: '#333' }}>
+                                                    {technical_skills.primary && (
+                                                        <li><strong>Primary:</strong> {technical_skills.primary}</li>
+                                                    )}
+                                                    {technical_skills.languages && (
+                                                        <li><strong>Languages:</strong> {technical_skills.languages}</li>
+                                                    )}
+                                                    {technical_skills.frontend && (
+                                                        <li><strong>Frontend:</strong> {technical_skills.frontend}</li>
+                                                    )}
+                                                    {technical_skills.others && (
+                                                        <li><strong>Others:</strong> {technical_skills.others}</li>
+                                                    )}
+                                                </ul>
+                                            </div>
+                                        );
+                                    }
+                                    if (secType === 'recognitions' && recognitions && recognitions.length > 0) {
+                                        return (
+                                            <div key="recognitions">
+                                                <h4 style={{
+                                                    margin: '0 0 15px 0',
+                                                    color: '#004b87',
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: 700,
+                                                    textTransform: 'uppercase',
+                                                    letterSpacing: '0.05em',
+                                                    borderBottom: '2px solid #004b87',
+                                                    paddingBottom: '8px'
+                                                }}>Recognitions</h4>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px', fontSize: '0.74rem' }}>
+                                                    {recognitions.map((rec, idx) => (
+                                                        <div key={idx} style={{ marginBottom: '4px' }}>
+                                                            <span style={{ fontWeight: 700, color: '#333' }}>{rec.date ? `[${rec.date}] ` : ''}</span>
+                                                            <span style={{ color: '#555' }}>{rec.description}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+                                    return null;
+                                })}
+                            </div>
+
+                            {leftSections.length === 0 && (
+                                <div style={{ marginTop: '20px', textAlign: 'center', opacity: 0.5 }}>
+                                    <div style={{ fontWeight: 700, color: '#004b87', fontSize: '0.8rem', textTransform: 'uppercase' }}>Alamaticz</div>
+                                    <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '4px' }}>Candidate Profile</div>
+                                </div>
                             )}
                         </div>
 
                         {/* Right Panel */}
                         <div style={{
                             width: '68%',
-                            padding: '24px 28px',
+                            padding: '76px 28px 57px 28px',
                             display: 'flex',
                             flexDirection: 'column',
-                            gap: '20px',
-                            boxSizing: 'border-box'
+                            boxSizing: 'border-box',
+                            height: '100%',
+                            overflow: 'hidden'
                         }}>
                             {isFirstPage ? (
-                                <>
-                                    {/* Header: Logo & Candidate Name */}
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px' }}>
-                                            {logoUrl && (
-                                                <img src={logoUrl} alt="Logo ribbon" style={{ height: '36px', objectFit: 'contain' }} />
-                                            )}
-                                            <div style={{ display: 'flex', flexDirection: 'column', fontFamily: "'Outfit', sans-serif", lineHeight: 1.1, textAlign: 'left' }}>
-                                                <span style={{ fontWeight: 800, fontSize: '1.2rem', color: '#0f172a', letterSpacing: '0.05em' }}>ALAMATICZ</span>
-                                                <span style={{ fontWeight: 400, fontSize: '0.68rem', color: '#64748b', letterSpacing: '0.18em' }}>SOLUTIONS</span>
-                                            </div>
+                                <div style={{ height: '133px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px' }}>
+                                        {logoUrl && (
+                                            <img src={logoUrl} alt="Logo ribbon" style={{ height: '36px', objectFit: 'contain' }} />
+                                        )}
+                                        <div style={{ display: 'flex', flexDirection: 'column', fontFamily: "'Outfit', sans-serif", lineHeight: 1.1, textAlign: 'left' }}>
+                                            <span style={{ fontWeight: 800, fontSize: '1.2rem', color: '#0f172a', letterSpacing: '0.05em' }}>ALAMATICZ</span>
+                                            <span style={{ fontWeight: 400, fontSize: '0.68rem', color: '#64748b', letterSpacing: '0.18em' }}>SOLUTIONS</span>
                                         </div>
-                                        <div style={{ borderBottom: '1px solid #ddd', paddingBottom: '4px' }} />
-                                        <div style={{ marginTop: '8px' }}>
-                                            <h1 style={{ margin: 0, fontSize: '2.5rem', fontWeight: 800, color: '#004b87', textTransform: 'uppercase', letterSpacing: '0.02em', fontFamily: "'Outfit', sans-serif", lineHeight: '1.1' }}>
-                                                {full_name}
-                                            </h1>
-                                            <div style={{ fontSize: '0.85rem', color: '#4b779a', fontWeight: 600, marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                                {job_title}
-                                            </div>
-                                        </div>
-                                        <div style={{ borderBottom: '1px solid #004b87', marginTop: '2px' }} />
                                     </div>
-
-                                    {/* Profile Summary */}
-                                    {profile_summary && (
-                                        <div>
-                                            <h4 style={{
-                                                margin: '0 0 8px 0',
-                                                color: '#004b87',
-                                                fontSize: '0.85rem',
-                                                fontWeight: 700,
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '0.05em',
-                                                borderBottom: '1px solid #ddd',
-                                                paddingBottom: '4px'
-                                            }}>Profile Summary</h4>
-                                            <p style={{ margin: '8px 0 0 0', fontSize: '0.82rem', color: '#444', textAlign: 'justify', lineHeight: '1.6' }}>
-                                                {profile_summary}
-                                            </p>
+                                    <div style={{ borderBottom: '1px solid #ddd', paddingBottom: '4px' }} />
+                                    <div style={{ marginTop: '8px' }}>
+                                        <h1 style={{ margin: 0, fontSize: '2.5rem', fontWeight: 800, color: '#004b87', textTransform: 'uppercase', letterSpacing: '0.02em', fontFamily: "'Outfit', sans-serif", lineHeight: '1.1' }}>
+                                            {full_name}
+                                        </h1>
+                                        <div style={{ fontSize: '0.85rem', color: '#4b779a', fontWeight: 600, marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                            {job_title}
                                         </div>
-                                    )}
-
-                                    {/* Domain Skills */}
-                                    {domain_skills && domain_skills.length > 0 && (
-                                        <div>
-                                            <h4 style={{
-                                                margin: '0 0 8px 0',
-                                                color: '#004b87',
-                                                fontSize: '0.85rem',
-                                                fontWeight: 700,
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '0.05em',
-                                                borderBottom: '1px solid #ddd',
-                                                paddingBottom: '4px'
-                                            }}>Domain Skills</h4>
-                                            <ul style={{ margin: '8px 0 0 0', paddingLeft: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '0.8rem' }}>
-                                                {domain_skills.map((skill, idx) => (
-                                                    <li key={idx} style={{ color: '#444' }}>{skill}</li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    )}
-                                </>
+                                    </div>
+                                    <div style={{ borderBottom: '1px solid #004b87', marginTop: '2px' }} />
+                                </div>
                             ) : (
-                                <>
-                                    {/* Page 2+ Header Branding */}
+                                <div style={{ height: '76px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#004b87', textTransform: 'uppercase' }}>
-                                            {full_name} - Page {pageIdx + 1}
+                                            {full_name}
                                         </span>
                                         {logoUrl && (
                                             <img src={logoUrl} alt="Logo" style={{ height: '24px', objectFit: 'contain' }} />
                                         )}
                                     </div>
                                     <div style={{ borderBottom: '1px solid #004b87', marginTop: '2px', marginBottom: '10px' }} />
-                                </>
-                            )}
-
-                            {/* Work Experience chunk for this page */}
-                            {chunk && chunk.length > 0 && (
-                                <div>
-                                    <h4 style={{
-                                        margin: '0 0 8px 0',
-                                        color: '#004b87',
-                                        fontSize: '0.85rem',
-                                        fontWeight: 700,
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '0.05em',
-                                        borderBottom: '1px solid #ddd',
-                                        paddingBottom: '4px'
-                                    }}>
-                                        {isFirstPage ? 'Work Experience' : 'Work Experience (Contd.)'}
-                                    </h4>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '10px' }}>
-                                        {chunk.map((exp, idx) => (
-                                            <div key={idx}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                                                    <span style={{ fontWeight: 700, color: '#333', fontSize: '0.85rem' }}>{exp.company}</span>
-                                                    <span style={{ fontSize: '0.75rem', color: '#666', fontStyle: 'italic' }}>{exp.dates}</span>
-                                                </div>
-                                                <div style={{ fontStyle: 'italic', color: '#555', fontSize: '0.78rem', marginTop: '2px', fontWeight: 600 }}>{exp.role}</div>
-                                                {exp.bullets && exp.bullets.length > 0 && (
-                                                    <ul style={{ margin: '6px 0 0 0', paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.78rem' }}>
-                                                        {exp.bullets.map((bullet, bIdx) => (
-                                                            <li key={bIdx} style={{ color: '#555', textAlign: 'justify' }}>{bullet}</li>
-                                                        ))}
-                                                    </ul>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
                                 </div>
                             )}
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
+                                {isFirstPage && profile_summary && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        <h4 style={{
+                                            margin: 0,
+                                            color: '#004b87',
+                                            fontSize: '0.85rem',
+                                            fontWeight: 700,
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.05em',
+                                            borderBottom: '1px solid #ddd',
+                                            paddingBottom: '4px'
+                                        }}>Profile Summary</h4>
+                                        <p style={{ margin: 0, fontSize: '0.82rem', color: '#444', textAlign: 'justify', lineHeight: 1.6 }}>
+                                            {profile_summary}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {isFirstPage && domain_skills && domain_skills.length > 0 && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        <h4 style={{
+                                            margin: 0,
+                                            color: '#004b87',
+                                            fontSize: '0.85rem',
+                                            fontWeight: 700,
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.05em',
+                                            borderBottom: '1px solid #ddd',
+                                            paddingBottom: '4px'
+                                        }}>Domain Skills</h4>
+                                        <ul style={{ margin: 0, paddingLeft: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '0.8rem' }}>
+                                            {domain_skills.map((skill, idx) => (
+                                                <li key={idx} style={{ color: '#444' }}>{skill}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+
+                                {chunk && chunk.length > 0 && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        <h4 style={{
+                                            margin: 0,
+                                            color: '#004b87',
+                                            fontSize: '0.85rem',
+                                            fontWeight: 700,
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.05em',
+                                            borderBottom: '1px solid #ddd',
+                                            paddingBottom: '4px'
+                                        }}>
+                                            {isFirstPage ? 'Work Experience' : 'Work Experience (Contd.)'}
+                                        </h4>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                                            {chunk.map((exp, idx) => (
+                                                <div key={idx}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                                                        <span style={{ fontWeight: 700, color: '#333', fontSize: '0.85rem' }}>
+                                                            {exp.isContinuation ? `${exp.company} (Contd.)` : exp.company}
+                                                        </span>
+                                                        {!exp.isContinuation && (
+                                                            <span style={{ fontSize: '0.75rem', color: '#666', fontStyle: 'italic' }}>{exp.dates}</span>
+                                                        )}
+                                                    </div>
+                                                    <div style={{ fontStyle: 'italic', color: '#555', fontSize: '0.78rem', marginTop: '2px', fontWeight: 600 }}>{exp.role}</div>
+                                                    {exp.bullets && exp.bullets.length > 0 && (
+                                                        <ul style={{ margin: '6px 0 0 0', paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.78rem' }}>
+                                                            {exp.bullets.map((bullet, bIdx) => (
+                                                                <li key={bIdx} style={{ color: '#555', textAlign: 'justify' }}>{bullet}</li>
+                                                            ))}
+                                                        </ul>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 );
@@ -475,7 +672,7 @@ function ResumePreview({ data, logoUrl }) {
     );
 }
 
-function getResumeHtml(data, logoUrl) {
+function getResumeHtml(data, candidate, logoUrl) {
     const {
         full_name = '',
         job_title = '',
@@ -490,25 +687,14 @@ function getResumeHtml(data, logoUrl) {
 
     const fullLogoUrl = logoUrl && (logoUrl.startsWith('data:') || logoUrl.startsWith('http') ? logoUrl : window.location.origin + logoUrl);
 
-    // Chunking function
-    const getWorkExpChunks = (jobs) => {
-        if (!jobs || jobs.length === 0) return [[]];
-        const chunks = [];
-        chunks.push(jobs.slice(0, 2)); // Page 1 gets up to 2 jobs
-        let index = 2;
-        while (index < jobs.length) {
-            chunks.push(jobs.slice(index, index + 3)); // Page 2+ gets up to 3 jobs
-            index += 3;
-        }
-        return chunks;
-    };
+    const expChunks = getDynamicWorkExpChunks(work_experience, profile_summary, domain_skills, true);
+    const leftChunks = getLeftPanelChunks(education, certifications, technical_skills, recognitions, true);
+    const totalPages = Math.max(expChunks.length, leftChunks.length);
 
-    const expChunks = getWorkExpChunks(work_experience);
-    const totalPages = expChunks.length;
-
-    // We build the layout dynamically for each page chunk
-    const pagesHtml = expChunks.map((chunk, pageIdx) => {
+    const pagesHtml = Array.from({ length: totalPages }).map((_, pageIdx) => {
         const isFirstPage = pageIdx === 0;
+        const chunk = expChunks[pageIdx] || [];
+        const leftSections = leftChunks[pageIdx] || [];
         
         return `
         ${pageIdx > 0 ? '<div class="page-break"></div>' : ''}
@@ -516,160 +702,149 @@ function getResumeHtml(data, logoUrl) {
             <!-- Left Panel -->
             <div class="left-panel">
                 ${isFirstPage ? `
-                    <!-- Education -->
-                    ${education && education.length > 0 ? `
-                    <div class="section">
-                        <h4>Education</h4>
-                        <div style="margin-top: 8px;">
-                            ${education.map(edu => `
-                            <div class="edu-item">
-                                <div class="edu-degree">${edu.degree}${edu.field ? ` - ${edu.field}` : ''}</div>
-                                <div class="edu-school">${edu.school}</div>
-                                ${edu.years ? `<div class="edu-years">${edu.years}</div>` : ''}
-                            </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                    ` : ''}
-                    
-                    <!-- Certifications -->
-                    ${certifications && certifications.length > 0 ? `
-                    <div class="section">
-                        <h4>Certifications</h4>
-                        <ul>
-                            ${certifications.map(cert => `
-                            <li>${cert}</li>
-                            `).join('')}
-                        </ul>
-                    </div>
-                    ` : ''}
-                    
-                    <!-- Technical Skills -->
-                    ${technical_skills && Object.keys(technical_skills).length > 0 ? `
-                    <div class="section">
-                        <h4>Technical Skills</h4>
-                        <ul style="font-size: 10px;">
-                            ${technical_skills.primary ? `<li><strong>Primary:</strong> ${technical_skills.primary}</li>` : ''}
-                            ${technical_skills.languages ? `<li><strong>Languages:</strong> ${technical_skills.languages}</li>` : ''}
-                            ${technical_skills.frontend ? `<li><strong>Frontend:</strong> ${technical_skills.frontend}</li>` : ''}
-                            ${technical_skills.others ? `<li><strong>Others:</strong> ${technical_skills.others}</li>` : ''}
-                        </ul>
-                    </div>
-                    ` : ''}
-                    
-                    <!-- Recognitions (only Page 1 if 1 page total) -->
-                    ${totalPages === 1 && recognitions && recognitions.length > 0 ? `
-                    <div class="section">
-                        <h4>Recognitions</h4>
-                        <div style="margin-top: 8px;">
-                            ${recognitions.map(rec => `
-                            <div class="rec-item">
-                                <span class="edu-degree">${rec.date ? `[${rec.date}] ` : ''}</span>
-                                <span class="edu-school">${rec.description}</span>
-                            </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                    ` : ''}
+                    <div style="height: 35mm; visibility: hidden; pointer-events: none;"></div>
                 ` : `
-                    <!-- Page 2 Left Panel: Recognitions -->
-                    ${pageIdx === 1 && recognitions && recognitions.length > 0 ? `
-                    <div class="section">
-                        <h4>Recognitions</h4>
-                        <div style="margin-top: 8px;">
-                            ${recognitions.map(rec => `
-                            <div class="rec-item">
-                                <span class="edu-degree">${rec.date ? `[${rec.date}] ` : ''}</span>
-                                <span class="edu-school">${rec.description}</span>
-                            </div>
-                            `).join('')}
+                    <div style="height: 25mm; display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid #004b87; margin-bottom: 8mm;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                            <span style="font-size: 11px; font-weight: 700; color: #004b87; text-transform: uppercase; letter-spacing: 0.05em;">
+                                ${full_name}
+                            </span>
+                            ${fullLogoUrl ? `<img src="${fullLogoUrl}" alt="Logo" style="height: 24px;" />` : ''}
                         </div>
                     </div>
-                    ` : `
-                        <div style="margin-top: 20px; text-align: center; opacity: 0.5;">
-                            <div style="font-weight: 700; color: #004b87; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;">Alamaticz</div>
-                            <div style="font-size: 9px; color: #666; margin-top: 4px;">Candidate Profile</div>
-                        </div>
-                    `}
                 `}
+
+                <div style="display: flex; flex-direction: column; gap: 8mm;">
+                    ${leftSections.map(secType => {
+                        if (secType === 'education' && education && education.length > 0) {
+                            return `
+                            <div class="section">
+                                <h4>Education</h4>
+                                <div style="display: flex; flex-direction: column; gap: 8px;">
+                                    ${education.map(edu => `
+                                    <div style="margin-bottom: 4px;">
+                                        <div style="font-size: 11px; font-weight: 700; color: #333;">${edu.degree}${edu.field ? ` - ${edu.field}` : ''}</div>
+                                        <div style="font-size: 10.5px; color: #555; margin-top: 2px;">${edu.school}</div>
+                                        ${edu.years ? `<div style="font-size: 9.5px; color: #777; margin-top: 1px;">${edu.years}</div>` : ''}
+                                    </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                            `;
+                        }
+                        if (secType === 'certifications' && certifications && certifications.length > 0) {
+                            return `
+                            <div class="section">
+                                <h4>Certifications</h4>
+                                <ul style="padding-left: 15px; margin: 4px 0 0 0;">
+                                    ${certifications.map(cert => `
+                                    <li style="font-size: 10.5px; color: #333; margin-bottom: 4px;">${cert}</li>
+                                    `).join('')}
+                                </ul>
+                            </div>
+                            `;
+                        }
+                        if (secType === 'technical_skills' && technical_skills && Object.keys(technical_skills).length > 0) {
+                            return `
+                            <div class="section">
+                                <h4>Technical Skills</h4>
+                                <ul style="padding-left: 15px; margin: 4px 0 0 0; font-size: 10.5px; color: #333; display: flex; flex-direction: column; gap: 6px;">
+                                    ${technical_skills.primary ? `<li><strong>Primary:</strong> ${technical_skills.primary}</li>` : ''}
+                                    ${technical_skills.languages ? `<li><strong>Languages:</strong> ${technical_skills.languages}</li>` : ''}
+                                    ${technical_skills.frontend ? `<li><strong>Frontend:</strong> ${technical_skills.frontend}</li>` : ''}
+                                    ${technical_skills.others ? `<li><strong>Others:</strong> ${technical_skills.others}</li>` : ''}
+                                </ul>
+                            </div>
+                            `;
+                        }
+                        if (secType === 'recognitions' && recognitions && recognitions.length > 0) {
+                            return `
+                            <div class="section">
+                                <h4>Recognitions</h4>
+                                <div style="display: flex; flex-direction: column; gap: 6px;">
+                                    ${recognitions.map(rec => `
+                                    <div style="margin-bottom: 4px;">
+                                        <span style="font-weight: 700; color: #333; font-size: 10.5px;">${rec.date ? `[${rec.date}] ` : ''}</span>
+                                        <span style="color: #555; font-size: 10.5px;">${rec.description}</span>
+                                    </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                            `;
+                        }
+                        return '';
+                    }).join('')}
+                </div>
             </div>
-            
+
             <!-- Right Panel -->
             <div class="right-panel">
                 ${isFirstPage ? `
-                    <!-- Header -->
-                    <div class="header-section">
-                        <div class="logo-container">
-                            ${fullLogoUrl ? `<img class="logo-img" src="${fullLogoUrl}" alt="Logo" />` : ''}
+                    <div style="height: 35mm; display: flex; flex-direction: column; gap: 8px;">
+                        <div style="display: flex; justify-content: flex-end; align-items: center; gap: 8px;">
+                            ${fullLogoUrl ? `<img src="${fullLogoUrl}" alt="Logo ribbon" style="height: 36px; object-fit: contain;" />` : ''}
                             <div style="display: flex; flex-direction: column; font-family: 'Outfit', sans-serif; line-height: 1.1; text-align: left;">
                                 <span style="font-weight: 800; font-size: 20px; color: #0f172a; letter-spacing: 0.05em; text-transform: uppercase;">ALAMATICZ</span>
                                 <span style="font-weight: 400; font-size: 11px; color: #64748b; letter-spacing: 0.18em; text-transform: uppercase;">SOLUTIONS</span>
                             </div>
                         </div>
-                        <div class="divider-light"></div>
-                        <div class="name-designation">
+                        <div style="border-bottom: 1px solid #ddd; padding-bottom: 4px;"></div>
+                        <div style="margin-top: 4px;">
                             <h1 class="candidate-name">${full_name}</h1>
                             <div class="candidate-title">${job_title}</div>
                         </div>
-                        <div class="divider-blue"></div>
                     </div>
-                    
-                    <!-- Profile Summary -->
-                    ${profile_summary ? `
+                ` : `
+                    <div style="height: 20mm; display: flex; flex-direction: column; gap: 6px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                            <span style="font-size: 11px; font-weight: 700; color: #004b87; text-transform: uppercase; letter-spacing: 0.05em;">
+                                ${full_name}
+                            </span>
+                            ${fullLogoUrl ? `<img src="${fullLogoUrl}" alt="Logo" style="height: 24px;" />` : ''}
+                        </div>
+                        <div style="border-bottom: 1px solid #004b87; margin-top: 2px;"></div>
+                    </div>
+                `}
+
+                <div style="display: flex; flex-direction: column; gap: 8mm;">
+                    ${isFirstPage && profile_summary ? `
                     <div class="section">
                         <h4>Profile Summary</h4>
                         <p class="summary-text">${profile_summary}</p>
                     </div>
                     ` : ''}
-                    
-                    <!-- Domain Skills -->
-                    ${domain_skills && domain_skills.length > 0 ? `
+
+                    ${isFirstPage && domain_skills && domain_skills.length > 0 ? `
                     <div class="section">
                         <h4>Domain Skills</h4>
                         <ul class="domain-grid">
-                            ${domain_skills.map(skill => `
-                            <li>${skill}</li>
-                            `).join('')}
+                            ${domain_skills.map(skill => `<li>${skill}</li>`).join('')}
                         </ul>
                     </div>
                     ` : ''}
-                ` : `
-                    <!-- Page 2+ Header Branding -->
-                    <div class="header-section" style="gap: 6px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                            <span style="font-size: 11px; font-weight: 700; color: #004b87; text-transform: uppercase; letter-spacing: 0.05em;">
-                                ${full_name} - Page ${pageIdx + 1}
-                            </span>
-                            ${fullLogoUrl ? `<img class="logo-img" src="${fullLogoUrl}" alt="Logo" style="height: 24px;" />` : ''}
-                        </div>
-                        <div class="divider-blue" style="margin-top: 4px;"></div>
-                    </div>
-                `}
-                
-                <!-- Work Experience Chunk -->
-                ${chunk && chunk.length > 0 ? `
-                <div class="section" style="margin-top: 10px;">
-                    <h4>${isFirstPage ? 'Work Experience' : 'Work Experience (Contd.)'}</h4>
-                    <div style="margin-top: 10px;">
-                        ${chunk.map(exp => `
-                        <div class="exp-item">
-                            <div class="exp-header">
-                                <span class="exp-company">${exp.company}</span>
-                                <span class="exp-dates">${exp.dates}</span>
+
+                    ${chunk && chunk.length > 0 ? `
+                    <div class="section">
+                        <h4>${isFirstPage ? 'Work Experience' : 'Work Experience (Contd.)'}</h4>
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                            ${chunk.map(exp => `
+                            <div class="exp-item">
+                                <div class="exp-header">
+                                    <span class="exp-company">${exp.isContinuation ? `${exp.company} (Contd.)` : exp.company}</span>
+                                    ${!exp.isContinuation ? `<span class="exp-dates">${exp.dates || ''}</span>` : ''}
+                                </div>
+                                <div class="exp-role">${exp.role || ''}</div>
+                                ${exp.bullets && exp.bullets.length > 0 ? `
+                                <ul class="exp-bullets">
+                                    ${exp.bullets.map(bullet => `<li>${bullet}</li>`).join('')}
+                                </ul>
+                                ` : ''}
                             </div>
-                            <div class="exp-role">${exp.role}</div>
-                            ${exp.bullets && exp.bullets.length > 0 ? `
-                            <ul class="exp-bullets">
-                                ${exp.bullets.map(bullet => `
-                                <li>${bullet}</li>
-                                `).join('')}
-                            </ul>
-                            ` : ''}
+                            `).join('')}
                         </div>
-                        `).join('')}
                     </div>
+                    ` : ''}
                 </div>
-                ` : ''}
             </div>
         </div>
         `;
@@ -682,132 +857,93 @@ function getResumeHtml(data, logoUrl) {
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
         
+        @page {
+            size: A4;
+            margin: 0;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
         body {
             margin: 0;
             padding: 0;
             font-family: 'Outfit', 'Segoe UI', sans-serif;
             background: #ffffff;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
             color: #333333;
-            font-size: 13px;
-            line-height: 1.5;
+            -webkit-print-color-adjust: exact !important;
+            color-adjust: exact !important;
+            print-color-adjust: exact !important;
         }
-        
+
         .resume-container {
             display: flex;
             width: 210mm;
-            min-height: 297mm;
-            box-sizing: border-box;
+            height: 297mm;
+            overflow: hidden;
             background: #ffffff;
+            page-break-after: always;
+            page-break-inside: avoid;
+            break-after: page;
+            break-inside: avoid;
         }
-        
+
         .left-panel {
             width: 32%;
+            height: 100%;
             background-color: #e6f0fa !important;
-            padding: 24px 18px;
-            box-sizing: border-box;
+            -webkit-print-color-adjust: exact !important;
+            color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            padding: 20mm 15mm 15mm 15mm;
             border-right: 1px solid rgba(0,0,0,0.05);
-        }
-        
-        .right-panel {
-            width: 68%;
-            padding: 24px 28px;
-            box-sizing: border-box;
             display: flex;
             flex-direction: column;
-            gap: 20px;
         }
-        
+
+        .right-panel {
+            width: 68%;
+            height: 100%;
+            padding: 20mm 20mm 15mm 20mm;
+            display: flex;
+            flex-direction: column;
+        }
+
         .section {
-            margin-bottom: 20px;
+            margin-bottom: 8mm;
         }
-        
+
         h4 {
-            margin: 0 0 6px 0;
+            margin: 0 0 4mm 0;
             color: #004b87;
-            font-size: 11px;
+            font-size: 11.5px;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            border-bottom: 2px solid #004b87;
-            padding-bottom: 4px;
+            border-bottom: 1.5px solid #004b87;
+            padding-bottom: 2mm;
         }
-        
+
         .right-panel h4 {
             border-bottom: 1px solid #ddd;
-            font-size: 11px;
         }
-        
-        .edu-item, .rec-item {
-            margin-bottom: 12px;
-        }
-        
-        .edu-degree, .rec-date {
-            font-weight: 700;
-            color: #333;
-        }
-        
-        .edu-school, .rec-desc {
-            color: #555;
-            font-size: 11px;
-            margin-top: 2px;
-        }
-        
-        .edu-years {
-            color: #777;
-            font-size: 10px;
-        }
-        
+
         ul {
-            margin: 6px 0 0 0;
-            padding-left: 16px;
+            margin: 0;
+            padding-left: 15px;
         }
-        
+
         li {
-            margin-bottom: 4px;
             font-size: 11px;
             color: #333;
+            margin-bottom: 4px;
         }
-        
+
         .right-panel li {
             color: #444;
         }
-        
-        .header-section {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-        
-        .logo-container {
-            display: flex;
-            justify-content: flex-end;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .logo-img {
-            height: 36px;
-            object-fit: contain;
-        }
-        
-        .company-fallback {
-            font-size: 13px;
-            font-weight: 800;
-            color: #004b87;
-            letter-spacing: 0.05em;
-        }
-        
-        .divider-light {
-            border-bottom: 1px solid #ddd;
-            padding-bottom: 4px;
-        }
-        
-        .name-designation {
-            margin-top: 8px;
-        }
-        
+
         .candidate-name {
             margin: 0;
             font-size: 30px;
@@ -815,8 +951,9 @@ function getResumeHtml(data, logoUrl) {
             color: #004b87;
             text-transform: uppercase;
             letter-spacing: 0.02em;
+            line-height: 1.1;
         }
-        
+
         .candidate-title {
             font-size: 12px;
             color: #4b779a;
@@ -825,67 +962,62 @@ function getResumeHtml(data, logoUrl) {
             text-transform: uppercase;
             letter-spacing: 0.05em;
         }
-        
-        .divider-blue {
-            border-bottom: 1px solid #004b87;
-            margin-top: 2px;
-        }
-        
+
         .summary-text {
-            margin: 8px 0 0 0;
+            margin: 5px 0 0 0;
             font-size: 11px;
             color: #444;
             text-align: justify;
-            line-height: 1.6;
+            line-height: 1.5;
         }
-        
+
         .domain-grid {
-            margin: 8px 0 0 0;
-            padding-left: 16px;
+            margin: 5px 0 0 0;
+            padding-left: 15px;
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 6px;
         }
-        
+
         .exp-item {
-            margin-bottom: 14px;
+            margin-bottom: 12px;
         }
-        
+
         .exp-header {
             display: flex;
             justify-content: space-between;
             align-items: baseline;
         }
-        
+
         .exp-company {
             font-weight: 700;
-            color: #333;
-            font-size: 12px;
+            color: #222;
+            font-size: 11.5px;
         }
-        
+
         .exp-dates {
-            font-size: 10px;
+            font-size: 9.5px;
             color: #666;
             font-style: italic;
         }
-        
+
         .exp-role {
             font-style: italic;
             color: #555;
-            font-size: 11px;
-            margin-top: 2px;
+            font-size: 10.5px;
+            margin-top: 1px;
             font-weight: 600;
         }
-        
+
         .exp-bullets {
-            margin: 6px 0 0 0;
-            padding-left: 16px;
+            margin: 4px 0 0 0;
+            padding-left: 15px;
             display: flex;
             flex-direction: column;
-            gap: 4px;
-            font-size: 11px;
+            gap: 2.5px;
+            font-size: 10.5px;
         }
-        
+
         .exp-bullets li {
             color: #555;
             text-align: justify;
@@ -898,16 +1030,35 @@ function getResumeHtml(data, logoUrl) {
 
         @media print {
             body {
-                background: #ffffff;
+                background: #ffffff !important;
+                color: #333333 !important;
+                -webkit-print-color-adjust: exact !important;
+                color-adjust: exact !important;
+                print-color-adjust: exact !important;
             }
             .resume-container {
-                width: 100%;
-                min-height: 100%;
-                page-break-inside: avoid;
+                background: #ffffff !important;
+                -webkit-print-color-adjust: exact !important;
+                color-adjust: exact !important;
+                print-color-adjust: exact !important;
             }
-            .page-break {
-                page-break-before: always;
-                break-before: page;
+            .left-panel {
+                background-color: #e6f0fa !important;
+                -webkit-print-color-adjust: exact !important;
+                color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            .right-panel {
+                background: #ffffff !important;
+            }
+            h4 {
+                color: #004b87 !important;
+            }
+            .candidate-name {
+                color: #004b87 !important;
+            }
+            .candidate-title {
+                color: #4b779a !important;
             }
         }
     </style>
@@ -1472,7 +1623,7 @@ function CandidateDetailsModal({ candidate, onClose, onViewPdf, onToggleStatus }
         if (!formattedData) return;
         const printWindow = window.open('', '_blank');
         if (printWindow) {
-            printWindow.document.write(getResumeHtml(formattedData, alamaticzLogo));
+            printWindow.document.write(getResumeHtml(formattedData, candidate, alamaticzLogo));
             printWindow.document.close();
         } else {
             alert('Please allow popups to print/export PDF.');
@@ -1956,7 +2107,7 @@ function CandidateDetailsModal({ candidate, onClose, onViewPdf, onToggleStatus }
                                 ) : isEditingFormatted ? (
                                     <ResumeEditor formData={editedFormState} setFormData={setEditedFormState} />
                                 ) : (
-                                    <ResumePreview data={formattedData} logoUrl={alamaticzLogo} />
+                                    <ResumePreview data={formattedData} candidate={candidate} logoUrl={alamaticzLogo} />
                                 )}
                             </>
                         ) : (
@@ -2231,6 +2382,57 @@ export default function JobsPage() {
     const [editVal, setEditVal] = useState('');
 
     const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500) }
+
+    const [isParsingJD, setIsParsingJD] = useState(false);
+
+    const onJdDrop = useCallback(async (acceptedFiles) => {
+        if (!acceptedFiles || acceptedFiles.length === 0) return;
+        const file = acceptedFiles[0];
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        setIsParsingJD(true);
+        try {
+            const res = await axios.post(`${API_URL}/api/jobs/parse-document`, formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data'
+                }
+            });
+            const extracted = res.data || {};
+            setNewJob(prev => ({
+                ...prev,
+                title: extracted.title || prev.title,
+                description: extracted.description || prev.description,
+                client_name: extracted.client_name || prev.client_name,
+                client_phone: extracted.client_phone || prev.client_phone,
+                contact_name: extracted.contact_name || prev.contact_name,
+                account_manager: extracted.account_manager || prev.account_manager,
+                assigned_recruiter: extracted.assigned_recruiter || prev.assigned_recruiter,
+                target_date: extracted.target_date || prev.target_date,
+                job_type: extracted.job_type || prev.job_type,
+                job_status: extracted.job_status || prev.job_status,
+                work_experience: extracted.work_experience || prev.work_experience,
+                industry: extracted.industry || prev.industry,
+                salary: extracted.salary || prev.salary,
+                required_skills: extracted.required_skills || prev.required_skills
+            }));
+            showToast('Job Description parsed and fields auto-filled successfully!');
+        } catch (err) {
+            showToast(err.response?.data?.detail || 'Failed to parse JD document', 'error');
+        } finally {
+            setIsParsingJD(false);
+        }
+    }, []);
+
+    const { getRootProps: getJdRootProps, getInputProps: getJdInputProps, isDragActive: isJdDragActive } = useDropzone({
+        onDrop: onJdDrop,
+        accept: {
+            'application/pdf': ['.pdf'],
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+            'application/msword': ['.doc']
+        },
+        multiple: false
+    });
 
     const loadCols = () => axios.get(`${API_URL}/api/columns`).then(r => {
         const base = (r.data.base || []).map(c => ({ key: c.col_key, label: c.col_label, pct: BASE_WIDTHS[c.col_key] || '120px', col_key: c.col_key, col_label: c.col_label }))
@@ -2877,6 +3079,52 @@ export default function JobsPage() {
                         <div className="modern-form-card">
                             <h2 style={{ fontFamily: 'var(--fh)', color: 'var(--gold)', marginBottom: '2rem', fontSize: '1.75rem', fontWeight: 800 }}>Create New Job Description</h2>
                             
+                            {/* JD Document Upload Zone */}
+                            <div style={{ marginBottom: '2rem' }}>
+                                <label className="modern-label" style={{ display: 'block', marginBottom: '8px', color: 'var(--sky-dim)' }}>
+                                    Optionally Upload JD Document to Auto-Fill Form
+                                </label>
+                                <div 
+                                    {...getJdRootProps()} 
+                                    style={{
+                                        border: `2px dashed ${isJdDragActive ? 'var(--gold)' : 'var(--border)'}`,
+                                        borderRadius: '12px',
+                                        padding: '2rem',
+                                        textAlign: 'center',
+                                        background: isJdDragActive ? 'rgba(var(--gold-rgb), 0.1)' : 'rgba(var(--navy-rgb), 0.2)',
+                                        cursor: isParsingJD ? 'not-allowed' : 'pointer',
+                                        transition: 'all 0.2s',
+                                        position: 'relative'
+                                    }}
+                                >
+                                    <input {...getJdInputProps()} disabled={isParsingJD} />
+                                    {isParsingJD ? (
+                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+                                            <Loader size={36} className="spin" style={{ color: 'var(--gold)' }} />
+                                            <span style={{ fontSize: '0.9rem', color: 'var(--text)', fontWeight: 600 }}>
+                                                AI is extracting job details... Please wait...
+                                            </span>
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+                                            <UploadCloud size={36} style={{ color: 'var(--sky)' }} />
+                                            <span style={{ fontSize: '0.9rem', color: 'var(--text-dim)' }}>
+                                                {isJdDragActive ? (
+                                                    <strong>Drop the JD document here...</strong>
+                                                ) : (
+                                                    <>
+                                                        <strong>Drag & drop JD file (PDF or Word)</strong> here, or click to browse
+                                                    </>
+                                                )}
+                                            </span>
+                                            <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', opacity: 0.7 }}>
+                                                Supported formats: PDF, DOCX, DOC
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
                             <div className="form-section-title">
                                 <Briefcase size={18} /> Role & Client Details
                             </div>

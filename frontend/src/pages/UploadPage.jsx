@@ -180,6 +180,7 @@ export default function UploadPage() {
     const [hiddenColumnKeys, setHiddenColumnKeys] = useState([])
     const [draggedColKey, setDraggedColKey] = useState(null)
     const [dragOverColKey, setDragOverColKey] = useState(null)
+    const [loadingCandidates, setLoadingCandidates] = useState(false)
 
     const toggleColumnVisibility = (key) => {
         setHiddenColumnKeys(prev => 
@@ -304,7 +305,16 @@ export default function UploadPage() {
     });
 
     const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500) }
-    const load = () => axios.get(`${API_URL}/api/candidates`).then(r => setCandidates(r.data)).catch(() => { })
+    const load = () => {
+        setLoadingCandidates(true);
+        return axios.get(`${API_URL}/api/candidates`)
+            .then(r => setCandidates(r.data))
+            .catch(err => {
+                console.error("Failed to load candidates", err);
+                showToast("Failed to load candidates", "error");
+            })
+            .finally(() => setLoadingCandidates(false));
+    }
     const handleAddCandidateSubmit = async () => {
         if (!newCandidateForm.full_name || !newCandidateForm.full_name.trim()) {
             alert("Candidate Name is required!");
@@ -394,7 +404,17 @@ export default function UploadPage() {
         }
     }
 
-    useEffect(() => { load(); loadCols() }, [])
+    useEffect(() => {
+        load();
+        loadCols();
+        
+        // Poll for new candidates automatically every 20 seconds
+        const interval = setInterval(() => {
+            load();
+        }, 20000);
+        
+        return () => clearInterval(interval);
+    }, [])
 
     // Polling mechanism to auto-refresh the table when resumes are processing in the background
     useEffect(() => {
@@ -687,8 +707,13 @@ export default function UploadPage() {
                         >
                             <Download size={14} /> Download Excel
                         </button>
-                        <button className="btn btn-secondary" onClick={() => { load(); loadCols(); }} style={{ gap: 6 }}>
-                            <RefreshCw size={14} /> Refresh
+                        <button 
+                            className="btn btn-secondary" 
+                            onClick={() => { load(); loadCols(); }} 
+                            style={{ gap: 6 }}
+                            disabled={loadingCandidates}
+                        >
+                            <RefreshCw size={14} className={loadingCandidates ? 'spin' : ''} /> {loadingCandidates ? 'Refreshing...' : 'Refresh'}
                         </button>
                         {user?.role === 'admin' && (
                             <button className="btn btn-secondary" onClick={() => setShowIntegrations(true)} style={{ gap: 6, color: 'var(--gold)', borderColor: 'rgba(var(--gold-rgb), 0.3)' }}>
