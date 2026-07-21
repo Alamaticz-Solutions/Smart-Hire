@@ -36,3 +36,5 @@ Thumbs.db
 .vscode/
 .idea/
 node_modules/
+
+backend/Client_secret.json

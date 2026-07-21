@@ -145,6 +145,99 @@ const TD_BASE = {
     overflow: 'hidden',
 }
 
+const THEME_PRESETS = {
+  professional: {
+    name: "Professional (Default)",
+    subject: "Re: {subject} (Ref: {ref})",
+    body_missing: `Dear {candidate_name},
+
+Thank you for your interest in Alamaticz Solutions and for submitting your application.
+
+We appreciate the time you have taken to apply for this opportunity. To help us evaluate your profile further, kindly share the following details:
+
+{missing_fields}
+
+Once we receive the above information, our recruitment team will review your profile and get back to you regarding the next steps in the selection process.
+
+We look forward to hearing from you.
+
+Best regards,
+
+HR Team
+Alamaticz Solutions`,
+    body_complete: `Dear {candidate_name},
+
+Thank you for your interest in Alamaticz Solutions and for submitting your application.
+
+We appreciate the time you have taken to apply for this opportunity. Our recruitment team will review your profile and get back to you regarding the next steps in the selection process.
+
+Best regards,
+
+HR Team
+Alamaticz Solutions`
+  },
+  creative: {
+    name: "Creative / Enthusiastic",
+    subject: "Excited to connect! Re: {subject} (Ref: {ref})",
+    body_missing: `Hi {candidate_name}!
+
+Thanks for reaching out and sharing your resume with us. We love connecting with talented people!
+
+We are eager to dive into your application, but we are missing a few details. Could you please share the following with us?
+
+{missing_fields}
+
+As soon as we get these details, we'll review your profile and get back to you regarding the next steps.
+
+Can't wait to hear back from you!
+
+Cheers,
+
+The Talent Team
+Alamaticz Solutions`,
+    body_complete: `Hi {candidate_name}!
+
+Thanks for reaching out and sharing your application with us!
+
+We have everything we need. Our team is already looking over your profile, and we'll be in touch soon with the next steps.
+
+Have a fantastic day!
+
+Cheers,
+
+The Talent Team
+Alamaticz Solutions`
+  },
+  warm: {
+    name: "Warm / Friendly",
+    subject: "Thank you for applying! Re: {subject} (Ref: {ref})",
+    body_missing: `Hello {candidate_name},
+
+We hope you are having a wonderful day! Thank you so much for taking the time to apply to our team.
+
+To help us get a better picture of your experience and fit for the role, could you please help us with these remaining details?
+
+{missing_fields}
+
+We really appreciate your support and look forward to reviewing your application as soon as we receive this.
+
+Wishing you all the best,
+
+Your Friends at HR
+Alamaticz Solutions`,
+    body_complete: `Hello {candidate_name},
+
+We hope you are doing well! Thank you so much for sending over your application.
+
+This is just a quick note to let you know we've received all your information. Our team will review everything carefully and get back to you soon.
+
+Take care,
+
+Your Friends at HR
+Alamaticz Solutions`
+  }
+};
+
 /* ─── Page ────────────────────────────────────────────────────────────────── */
 export default function UploadPage() {
     const { user } = useOutletContext()
@@ -168,13 +261,135 @@ export default function UploadPage() {
     
     const [showIntegrations, setShowIntegrations] = useState(false)
     const [integrationsTab, setIntegrationsTab] = useState('mail')
+    const [previewType, setPreviewType] = useState('missing')
     const [integrationsSettings, setIntegrationsSettings] = useState({
         email_enabled: 0, imap_host: 'imap.gmail.com', imap_port: 993,
         smtp_host: 'smtp.gmail.com', smtp_port: 587, email_user: '',
-        email_pass: '', keywords: 'resume,alamaticz,solution,job', drive_enabled: 0
+        email_pass: '', keywords: 'resume,alamaticz,solution,job', drive_enabled: 0,
+        reply_theme: 'professional',
+        reply_subject: '',
+        reply_body_missing: '',
+        reply_body_complete: '',
+        gdrive_client_id: '',
+        gdrive_client_secret: '',
+        gdrive_refresh_token: '',
+        gdrive_folder_id: '',
+        gdrive_email: ''
     })
     const [testStatus, setTestStatus] = useState({ status: 'idle', message: '' })
     const [testingConnection, setTestingConnection] = useState(false)
+    const [gdriveAuthCode, setGdriveAuthCode] = useState('')
+    const [exchangingGdriveCode, setExchangingGdriveCode] = useState(false)
+
+    const handleGenerateGdriveAuthUrl = () => {
+        const clientId = integrationsSettings.gdrive_client_id?.trim();
+        if (!clientId) {
+            alert('Please enter a Google Client ID first.');
+            return;
+        }
+        
+        const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` + 
+            `client_id=${encodeURIComponent(clientId)}` +
+            `&redirect_uri=${encodeURIComponent('http://localhost')}` +
+            `&response_type=code` +
+            `&scope=${encodeURIComponent('https://www.googleapis.com/auth/drive.file')}` +
+            `&access_type=offline` +
+            `&prompt=consent`;
+            
+        window.open(authUrl, '_blank');
+    };
+
+    const handleExchangeGdriveCode = async () => {
+        const clientId = integrationsSettings.gdrive_client_id?.trim();
+        const clientSecret = integrationsSettings.gdrive_client_secret?.trim();
+        if (!clientId || !clientSecret) {
+            alert('Please enter Client ID and Client Secret first.');
+            return;
+        }
+        if (!gdriveAuthCode.trim()) {
+            alert('Please paste the authorization code or redirect URL first.');
+            return;
+        }
+        
+        setExchangingGdriveCode(true);
+        try {
+            const res = await axios.post(`${BACKEND_URL}/api/integrations/gdrive/exchange`, {
+                client_id: clientId,
+                client_secret: clientSecret,
+                code: gdriveAuthCode.trim()
+            }, {
+                headers: { 'x-user-username': user?.username }
+            });
+            
+            const { refresh_token, email } = res.data;
+            setIntegrationsSettings(prev => ({
+                ...prev,
+                gdrive_refresh_token: refresh_token,
+                gdrive_email: email
+            }));
+            setGdriveAuthCode('');
+            showToast(`Connected successfully to ${email}!`, 'success');
+        } catch (err) {
+            alert(err.response?.data?.detail || 'Failed to exchange authorization code.');
+        } finally {
+            setExchangingGdriveCode(false);
+        }
+    };
+
+    const handleDisconnectGdrive = () => {
+        if (window.confirm('Are you sure you want to disconnect this Google Drive account?')) {
+            setIntegrationsSettings(prev => ({
+                ...prev,
+                gdrive_refresh_token: '',
+                gdrive_email: '',
+                drive_enabled: 0
+            }));
+            showToast('Google Drive account disconnected. Make sure to save settings to persist.', 'info');
+        }
+    };
+
+    const handleThemeChange = (newTheme) => {
+        if (newTheme !== 'custom') {
+            const preset = THEME_PRESETS[newTheme];
+            setIntegrationsSettings(prev => ({
+                ...prev,
+                reply_theme: newTheme,
+                reply_subject: preset.subject,
+                reply_body_missing: preset.body_missing,
+                reply_body_complete: preset.body_complete
+            }));
+        } else {
+            setIntegrationsSettings(prev => {
+                const currentPreset = THEME_PRESETS[prev.reply_theme] || THEME_PRESETS.professional;
+                return {
+                    ...prev,
+                    reply_theme: 'custom',
+                    reply_subject: prev.reply_subject || currentPreset.subject,
+                    reply_body_missing: prev.reply_body_missing || currentPreset.body_missing,
+                    reply_body_complete: prev.reply_body_complete || currentPreset.body_complete
+                };
+            });
+        }
+    }
+
+    const getPreviewText = (subjectTpl, bodyTpl) => {
+        const candidateName = "Somasekhar Kundurthi";
+        const subjectVal = "React Developer Application";
+        const refVal = "CAND-407";
+        const missingFields = `* Total years of experience\n* Current CTC\n* Expected CTC`;
+
+        let subject = (subjectTpl || "Re: {subject} (Ref: {ref})")
+            .replace(/{subject}/g, subjectVal)
+            .replace(/{ref}/g, refVal);
+
+        let body = (bodyTpl || "")
+            .replace(/{candidate_name}/g, candidateName)
+            .replace(/{missing_fields}/g, missingFields)
+            .replace(/{subject}/g, subjectVal)
+            .replace(/{ref}/g, refVal);
+
+        return { subject, body };
+    }
     
     const [showColVisibility, setShowColVisibility] = useState(false)
     const [hiddenColumnKeys, setHiddenColumnKeys] = useState([])
@@ -1431,7 +1646,15 @@ export default function UploadPage() {
             {/* Integrations settings modal */}
             {showIntegrations && (
                 <div className="modal-overlay" style={{ zIndex: 9999 }}>
-                    <div className="card" style={{ width: 620, maxWidth: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
+                    <div className="card" style={{ 
+                        width: integrationsTab === 'templates' ? 920 : 620, 
+                        maxWidth: '95%', 
+                        maxHeight: '90vh', 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        padding: 0,
+                        transition: 'width 0.3s ease'
+                    }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
                             <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: 8 }}>
                                 🔗 System Integrations
@@ -1446,17 +1669,27 @@ export default function UploadPage() {
                                 style={{
                                     flex: 1, padding: '12px', border: 'none', background: integrationsTab === 'mail' ? 'rgba(var(--sky-rgb), 0.1)' : 'transparent',
                                     color: integrationsTab === 'mail' ? 'var(--gold)' : 'var(--text-dim)', fontWeight: 700, cursor: 'pointer', borderBottom: integrationsTab === 'mail' ? '2px solid var(--gold)' : 'none',
-                                    fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
+                                    fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
                                 }}
                             >
                                 📧 Connect with Mail
+                            </button>
+                            <button 
+                                onClick={() => setIntegrationsTab('templates')}
+                                style={{
+                                    flex: 1, padding: '12px', border: 'none', background: integrationsTab === 'templates' ? 'rgba(var(--sky-rgb), 0.1)' : 'transparent',
+                                    color: integrationsTab === 'templates' ? 'var(--gold)' : 'var(--text-dim)', fontWeight: 700, cursor: 'pointer', borderBottom: integrationsTab === 'templates' ? '2px solid var(--gold)' : 'none',
+                                    fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
+                                }}
+                            >
+                                📝 Reply Templates
                             </button>
                             <button 
                                 onClick={() => setIntegrationsTab('drive')}
                                 style={{
                                     flex: 1, padding: '12px', border: 'none', background: integrationsTab === 'drive' ? 'rgba(var(--sky-rgb), 0.1)' : 'transparent',
                                     color: integrationsTab === 'drive' ? 'var(--gold)' : 'var(--text-dim)', fontWeight: 700, cursor: 'pointer', borderBottom: integrationsTab === 'drive' ? '2px solid var(--gold)' : 'none',
-                                    fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
+                                    fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
                                 }}
                             >
                                 💾 Connect with Drive
@@ -1464,7 +1697,7 @@ export default function UploadPage() {
                         </div>
 
                         <div style={{ overflowY: 'auto', flex: 1, padding: '20px', display: 'flex', flexDirection: 'column', gap: 15 }}>
-                            {integrationsTab === 'mail' ? (
+                            {integrationsTab === 'mail' && (
                                 <>
                                     {/* Enable switch */}
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderRadius: 8, background: 'rgba(var(--sky-rgb), 0.05)', border: '1px solid rgba(var(--sky-rgb), 0.15)' }}>
@@ -1654,25 +1887,210 @@ export default function UploadPage() {
                                         </div>
                                     </div>
                                 </>
-                            ) : (
-                                <>
-                                    {/* Google Drive Tab */}
+                            )}
+
+                            {integrationsTab === 'templates' && (
+                                <div style={{ display: 'flex', gap: 20, height: '100%' }}>
+                                    {/* Left Form */}
+                                    <div style={{ flex: 1.1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                        <div>
+                                            <label className="modern-label" style={{ fontSize: '0.75rem', marginBottom: 4 }}>Select Email Theme Preset</label>
+                                            <select 
+                                                value={integrationsSettings.reply_theme || 'professional'}
+                                                onChange={e => handleThemeChange(e.target.value)}
+                                                style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                                            >
+                                                <option value="professional">💼 Professional (Default)</option>
+                                                <option value="creative">🚀 Creative & Enthusiastic</option>
+                                                <option value="warm">❤️ Warm & Friendly</option>
+                                                <option value="custom">✏️ Custom Template (Editable)</option>
+                                            </select>
+                                        </div>
+
+                                        {/* Custom Edit Option */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, opacity: integrationsSettings.reply_theme === 'custom' ? 1 : 0.7 }}>
+                                            {integrationsSettings.reply_theme !== 'custom' && (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'rgba(var(--sky-rgb), 0.05)', borderRadius: 6, border: '1px solid rgba(var(--sky-rgb), 0.15)' }}>
+                                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+                                                        Showing read-only preset template. Want to customize?
+                                                    </span>
+                                                    <button 
+                                                        type="button" 
+                                                        className="btn" 
+                                                        onClick={() => handleThemeChange('custom')}
+                                                        style={{ padding: '4px 10px', fontSize: '0.7rem', background: 'var(--gradient-gold)', color: '#000', fontWeight: 'bold', cursor: 'pointer', border: 'none', borderRadius: 4 }}
+                                                    >
+                                                        ✏️ Customize
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                            <div>
+                                                <label className="modern-label" style={{ fontSize: '0.75rem' }}>Subject Format</label>
+                                                <input 
+                                                    value={integrationsSettings.reply_subject || ''}
+                                                    onChange={e => setIntegrationsSettings(prev => ({ ...prev, reply_subject: e.target.value }))}
+                                                    disabled={integrationsSettings.reply_theme !== 'custom'}
+                                                    placeholder="Re: {subject} (Ref: {ref})"
+                                                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="modern-label" style={{ fontSize: '0.75rem', display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span>Missing Info Message Body</span>
+                                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>Sent when candidate details are missing</span>
+                                                </label>
+                                                <textarea 
+                                                    value={integrationsSettings.reply_body_missing || ''}
+                                                    onChange={e => setIntegrationsSettings(prev => ({ ...prev, reply_body_missing: e.target.value }))}
+                                                    disabled={integrationsSettings.reply_theme !== 'custom'}
+                                                    rows={5}
+                                                    placeholder="Enter template body..."
+                                                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', fontFamily: 'monospace', fontSize: '0.78rem', resize: 'vertical' }}
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="modern-label" style={{ fontSize: '0.75rem', display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span>Completed Application Message Body</span>
+                                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>Sent when candidate profile is complete</span>
+                                                </label>
+                                                <textarea 
+                                                    value={integrationsSettings.reply_body_complete || ''}
+                                                    onChange={e => setIntegrationsSettings(prev => ({ ...prev, reply_body_complete: e.target.value }))}
+                                                    disabled={integrationsSettings.reply_theme !== 'custom'}
+                                                    rows={5}
+                                                    placeholder="Enter template body..."
+                                                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', fontFamily: 'monospace', fontSize: '0.78rem', resize: 'vertical' }}
+                                                />
+                                            </div>
+
+                                            {/* Variables Reference */}
+                                            <div style={{ background: 'rgba(255,255,255,0.02)', padding: 10, borderRadius: 6, border: '1px solid var(--border)' }}>
+                                                <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--gold)', marginBottom: 6 }}>💡 Insertable Variables:</div>
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                                    {['{candidate_name}', '{missing_fields}', '{subject}', '{ref}'].map(variable => (
+                                                        <span 
+                                                            key={variable} 
+                                                            title="Click to copy variable placeholder"
+                                                            onClick={() => {
+                                                                navigator.clipboard.writeText(variable);
+                                                                showToast(`Copied ${variable} to clipboard!`, 'info');
+                                                            }}
+                                                            style={{
+                                                                fontSize: '0.7rem', fontFamily: 'monospace', background: 'rgba(var(--sky-rgb), 0.15)',
+                                                                color: 'var(--sky-dim)', border: '1px solid rgba(var(--sky-rgb), 0.3)',
+                                                                borderRadius: 4, padding: '2px 6px', cursor: 'pointer'
+                                                            }}
+                                                        >
+                                                            {variable}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Right Preview */}
+                                    <div style={{ flex: 0.9, display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--border)', paddingLeft: 20 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                                            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase' }}>👁️ Real-time Email Preview</span>
+                                            
+                                            {/* Toggle buttons */}
+                                            <div style={{ display: 'flex', gap: 2, background: 'rgba(0,0,0,0.2)', borderRadius: 6, padding: 2, border: '1px solid var(--border)' }}>
+                                                <button 
+                                                    type="button"
+                                                    onClick={() => setPreviewType('missing')}
+                                                    style={{
+                                                        padding: '4px 10px', fontSize: '0.7rem', border: 'none', borderRadius: 4,
+                                                        background: previewType === 'missing' ? 'var(--gold)' : 'transparent',
+                                                        color: previewType === 'missing' ? '#000' : 'var(--text-dim)',
+                                                        fontWeight: 600, cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    Missing Info
+                                                </button>
+                                                <button 
+                                                    type="button"
+                                                    onClick={() => setPreviewType('complete')}
+                                                    style={{
+                                                        padding: '4px 10px', fontSize: '0.7rem', border: 'none', borderRadius: 4,
+                                                        background: previewType === 'complete' ? 'var(--gold)' : 'transparent',
+                                                        color: previewType === 'complete' ? '#000' : 'var(--text-dim)',
+                                                        fontWeight: 600, cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    Complete Info
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Email Client Simulator */}
+                                        <div style={{
+                                            flex: 1, background: '#0e1724', borderRadius: 8, border: '1px solid var(--border)',
+                                            display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: 'inset 0 0 15px rgba(0,0,0,0.5)',
+                                            minHeight: 280
+                                        }}>
+                                            {/* Mock header window control bar */}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#162235', padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
+                                                <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ff5f56' }}></div>
+                                                <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ffbd2e' }}></div>
+                                                <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#27c93f' }}></div>
+                                                <div style={{ marginLeft: 10, fontSize: '0.7rem', color: 'var(--text-dim)', fontFamily: 'monospace' }}>mail-ack-daemon</div>
+                                            </div>
+
+                                            {/* Email headers */}
+                                            <div style={{ padding: 12, borderBottom: '1px solid rgba(var(--sky-rgb), 0.15)', display: 'flex', flexDirection: 'column', gap: 6, background: '#111b2b', fontSize: '0.78rem' }}>
+                                                <div>
+                                                    <span style={{ color: 'var(--text-dim)' }}>From: </span>
+                                                    <strong style={{ color: 'var(--sky-dim)' }}>Alamaticz Solutions HR Team</strong> &lt;{integrationsSettings.email_user || 'hr@alamaticz.com'}&gt;
+                                                </div>
+                                                <div>
+                                                    <span style={{ color: 'var(--text-dim)' }}>To: </span>
+                                                    <strong style={{ color: 'var(--text)' }}>Somasekhar Kundurthi</strong> &lt;candidate@gmail.com&gt;
+                                                </div>
+                                                <div>
+                                                    <span style={{ color: 'var(--text-dim)' }}>Subject: </span>
+                                                    <span style={{ color: 'var(--gold)', fontWeight: 600 }}>
+                                                        {getPreviewText(integrationsSettings.reply_subject, previewType === 'missing' ? integrationsSettings.reply_body_missing : integrationsSettings.reply_body_complete).subject}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {/* Email body */}
+                                            <div style={{
+                                                flex: 1, padding: 16, overflowY: 'auto', fontSize: '0.78rem',
+                                                color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.5, background: '#09101b'
+                                            }}>
+                                                {getPreviewText(integrationsSettings.reply_subject, previewType === 'missing' ? integrationsSettings.reply_body_missing : integrationsSettings.reply_body_complete).body}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {integrationsTab === 'drive' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                                    {/* Google Drive Status/Toggle */}
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderRadius: 8, background: 'rgba(var(--sky-rgb), 0.05)', border: '1px solid rgba(var(--sky-rgb), 0.15)' }}>
                                         <div>
-                                            <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text)' }}>Enable Google Drive Sync (Placeholder)</div>
-                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Synchronize candidate resumes from a shared Google Drive directory.</div>
+                                            <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text)' }}>Enable Google Drive Sync</div>
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Automatically upload processed candidate resumes to your Google Drive folder.</div>
                                         </div>
                                         <label style={{ position: 'relative', display: 'inline-block', width: 44, height: 22, cursor: 'pointer' }}>
                                             <input 
                                                 type="checkbox" 
                                                 checked={integrationsSettings.drive_enabled === 1}
+                                                disabled={!integrationsSettings.gdrive_refresh_token}
                                                 onChange={e => setIntegrationsSettings(prev => ({ ...prev, drive_enabled: e.target.checked ? 1 : 0 }))}
                                                 style={{ opacity: 0, width: 0, height: 0 }}
                                             />
                                             <span style={{
                                                 position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
                                                 backgroundColor: integrationsSettings.drive_enabled === 1 ? 'var(--gold)' : '#334155',
-                                                transition: '0.3s', borderRadius: 24, display: 'block'
+                                                transition: '0.3s', borderRadius: 24, display: 'block',
+                                                opacity: !integrationsSettings.gdrive_refresh_token ? 0.5 : 1
                                             }} />
                                             <span style={{
                                                 position: 'absolute', content: '""', height: 16, width: 16, left: integrationsSettings.drive_enabled === 1 ? 24 : 4, bottom: 3,
@@ -1680,29 +2098,150 @@ export default function UploadPage() {
                                             }} />
                                         </label>
                                     </div>
+                                    
+                                    {!integrationsSettings.gdrive_refresh_token && (
+                                        <div style={{ padding: '8px 12px', background: 'rgba(239, 35, 60, 0.08)', border: '1px solid rgba(239, 35, 60, 0.3)', borderRadius: 8, fontSize: '0.75rem', color: '#ef233c' }}>
+                                            ⚠️ Google Drive is not authorized. Please complete the authorization process below before enabling sync.
+                                        </div>
+                                    )}
 
-                                    {/* Google Drive Setup Instructions */}
-                                    <div style={{ padding: 15, background: 'rgba(var(--navy-dark-rgb), 0.3)', border: '1px solid var(--border)', borderRadius: 12 }}>
-                                        <h4 style={{ margin: '0 0 10px 0', color: 'var(--gold)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.04rem' }}>🛠 Connection Instructions</h4>
-                                        <ol style={{ margin: 0, paddingLeft: 16, fontSize: '0.78rem', color: 'var(--text-dim)', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                            <li>Go to the <strong>Google Cloud Console</strong>.</li>
-                                            <li>Create a new project and enable the <strong>Google Drive API</strong>.</li>
-                                            <li>Create credentials of type <strong>OAuth client ID</strong>.</li>
-                                            <li>Download the client secrets JSON configuration file.</li>
-                                            <li>Save the file as <code>client_secrets.json</code> inside the <code>backend/</code> folder.</li>
-                                            <li>Toggle Drive sync on to authorize connection.</li>
-                                        </ol>
+                                    {/* Setup instructions with direct URLs */}
+                                    <div style={{ 
+                                        padding: '12px 14px', 
+                                        background: 'rgba(var(--sky-rgb), 0.04)', 
+                                        border: '1px solid rgba(var(--sky-rgb), 0.15)', 
+                                        borderRadius: 8, 
+                                        fontSize: '0.76rem', 
+                                        color: 'var(--text-dim)',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: 8
+                                    }}>
+                                        <div style={{ fontWeight: 700, color: 'var(--gold)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            ℹ️ Google Drive Integration Setup Guide
+                                        </div>
+                                        <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4, lineHeight: '1.4' }}>
+                                            <li>
+                                                Enable the <a href="https://console.cloud.google.com/apis/library/drive.googleapis.com" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--sky-dim)', fontWeight: 600, textDecoration: 'underline' }}>Google Drive API</a> in your Google Cloud Console.
+                                            </li>
+                                            <li>
+                                                Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--sky-dim)', fontWeight: 600, textDecoration: 'underline' }}>Credentials page</a>, click <strong>Create Credentials</strong> &gt; <strong>OAuth Client ID</strong>, select <strong>Web application</strong>.
+                                            </li>
+                                            <li>
+                                                Add <code>http://localhost</code> to the <strong>Authorized redirect URIs</strong>.
+                                            </li>
+                                            <li>
+                                                Folder ID: Create or open a folder on <a href="https://drive.google.com" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--sky-dim)', fontWeight: 600, textDecoration: 'underline' }}>Google Drive</a>, and copy the long string from the end of the URL (e.g. the <code>1A2B3C...</code> in <code>drive.google.com/drive/folders/1A2B3C...</code>).
+                                            </li>
+                                        </ul>
+                                    </div>
+
+                                    {/* Credentials Form */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                                            <div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                                    <label className="modern-label" style={{ fontSize: '0.75rem', margin: 0 }}>Google Client ID</label>
+                                                    <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.7rem', color: 'var(--sky-dim)', textDecoration: 'underline' }}>Find Key ↗</a>
+                                                </div>
+                                                <input 
+                                                    value={integrationsSettings.gdrive_client_id || ''}
+                                                    onChange={e => setIntegrationsSettings(prev => ({ ...prev, gdrive_client_id: e.target.value }))}
+                                                    placeholder="Enter your OAuth 2.0 Client ID"
+                                                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', fontSize: '0.8rem' }}
+                                                />
+                                            </div>
+                                            <div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                                    <label className="modern-label" style={{ fontSize: '0.75rem', margin: 0 }}>Google Client Secret</label>
+                                                    <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.7rem', color: 'var(--sky-dim)', textDecoration: 'underline' }}>Find Secret ↗</a>
+                                                </div>
+                                                <input 
+                                                    type="text"
+                                                    value={integrationsSettings.gdrive_client_secret || ''}
+                                                    onChange={e => setIntegrationsSettings(prev => ({ ...prev, gdrive_client_secret: e.target.value }))}
+                                                    placeholder={integrationsSettings.gdrive_client_secret === '****' ? '••••••••••••••••' : 'Enter your OAuth 2.0 Client Secret'}
+                                                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', fontSize: '0.8rem' }}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                                <label className="modern-label" style={{ fontSize: '0.75rem', margin: 0 }}>Google Drive Target Folder ID</label>
+                                                <a href="https://drive.google.com" target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.7rem', color: 'var(--sky-dim)', textDecoration: 'underline' }}>Open Drive ↗</a>
+                                            </div>
+                                            <input 
+                                                value={integrationsSettings.gdrive_folder_id || ''}
+                                                onChange={e => setIntegrationsSettings(prev => ({ ...prev, gdrive_folder_id: e.target.value }))}
+                                                placeholder="Enter target Folder ID (leave empty for root directory)"
+                                                style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', fontSize: '0.8rem' }}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Authorization Area */}
+                                    <div style={{ background: 'rgba(0, 0, 0, 0.2)', border: '1px solid var(--border)', borderRadius: 12, padding: 15 }}>
+                                        <h4 style={{ margin: '0 0 12px 0', color: 'var(--gold)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.04rem' }}>🔐 Google Drive Account Authorization</h4>
                                         
-                                        {integrationsSettings.drive_enabled === 1 && (
-                                            <div style={{ marginTop: 12, padding: '8px 12px', border: '1px solid rgba(var(--sky-rgb), 0.3)', background: 'rgba(var(--sky-rgb), 0.05)', borderRadius: 6, display: 'flex', gap: 6, alignItems: 'center' }}>
-                                                <Loader size={14} className="spin" style={{ color: 'var(--sky-dim)' }} />
-                                                <span style={{ fontSize: '0.75rem', color: 'var(--sky-dim)' }}>
-                                                    Looking for credentials: <code>client_secrets.json</code>... (Simulating Drive Sync)
-                                                </span>
+                                        {integrationsSettings.gdrive_email ? (
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(74, 222, 128, 0.05)', border: '1px solid rgba(74, 222, 128, 0.3)', padding: '10px 14px', borderRadius: 8 }}>
+                                                <div>
+                                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Connected Account</div>
+                                                    <strong style={{ fontSize: '0.82rem', color: '#4ade80' }}>{integrationsSettings.gdrive_email}</strong>
+                                                </div>
+                                                <button 
+                                                    type="button" 
+                                                    className="btn btn-secondary" 
+                                                    onClick={handleDisconnectGdrive}
+                                                    style={{ color: '#ef233c', borderColor: 'rgba(239, 35, 60, 0.3)', padding: '6px 12px', fontSize: '0.75rem', height: 'fit-content' }}
+                                                >
+                                                    Disconnect
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                                                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--gold)', color: '#000', width: 20, height: 20, borderRadius: '50%', fontWeight: 'bold', fontSize: '0.72rem' }}>1</span>
+                                                    <span style={{ fontSize: '0.78rem', color: 'var(--text)' }}>Generate Authorization Link</span>
+                                                    <button 
+                                                        type="button" 
+                                                        className="btn btn-secondary" 
+                                                        onClick={handleGenerateGdriveAuthUrl}
+                                                        disabled={!integrationsSettings.gdrive_client_id}
+                                                        style={{ marginLeft: 'auto', padding: '4px 10px', fontSize: '0.7rem' }}
+                                                    >
+                                                        Generate URL
+                                                    </button>
+                                                </div>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                                    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                                                        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--gold)', color: '#000', width: 20, height: 20, borderRadius: '50%', fontWeight: 'bold', fontSize: '0.72rem' }}>2</span>
+                                                        <span style={{ fontSize: '0.78rem', color: 'var(--text)' }}>Paste redirect URL or authorization code</span>
+                                                    </div>
+                                                    <input 
+                                                        value={gdriveAuthCode}
+                                                        onChange={e => setGdriveAuthCode(e.target.value)}
+                                                        placeholder="http://localhost/?code=4/0Af... or code value"
+                                                        style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', fontSize: '0.75rem' }}
+                                                    />
+                                                </div>
+                                                <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 4 }}>
+                                                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--gold)', color: '#000', width: 20, height: 20, borderRadius: '50%', fontWeight: 'bold', fontSize: '0.72rem' }}>3</span>
+                                                    <span style={{ fontSize: '0.78rem', color: 'var(--text)' }}>Confirm connection</span>
+                                                    <button 
+                                                        type="button" 
+                                                        className="btn" 
+                                                        onClick={handleExchangeGdriveCode}
+                                                        disabled={exchangingGdriveCode || !gdriveAuthCode || !integrationsSettings.gdrive_client_id}
+                                                        style={{ marginLeft: 'auto', background: 'var(--gradient-gold)', color: '#000', fontWeight: 'bold', padding: '4px 12px', fontSize: '0.7rem' }}
+                                                    >
+                                                        {exchangingGdriveCode ? 'Connecting...' : 'Connect Account'}
+                                                    </button>
+                                                </div>
                                             </div>
                                         )}
                                     </div>
-                                </>
+                                </div>
                             )}
                         </div>
 

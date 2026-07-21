@@ -15,3 +15,7 @@ python-multipart
 sentence-transformers
 openpyxl
 psycopg2-binary
+pgvector
+boto3
+requests
+google-auth

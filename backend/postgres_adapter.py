@@ -258,15 +258,24 @@ def connect_pg(*args, **kwargs):
 
 def patch_if_configured():
     """
-    Patches sqlite3.connect dynamically if PostgreSQL is configured.
+    Patches sqlite3.connect dynamically to enforce PostgreSQL.
     """
-    if IS_PG_CONFIGURED:
-        try:
-            import psycopg2
-            sqlite3.connect = connect_pg
-            print("💡 Database: Successfully patched sqlite3 to route queries to remote PostgreSQL server.")
-            return True
-        except ImportError:
-            print("⚠️ Warning: PostgreSQL env variables are set but 'psycopg2-binary' package is not installed. Falling back to local/other DB config.")
-            return False
-    return False
+    if not IS_PG_CONFIGURED:
+        raise RuntimeError("Database Configuration Error: PostgreSQL connection details are not configured in the environment variables.")
+    
+    try:
+        import psycopg2
+    except ImportError as e:
+        raise RuntimeError("Database Dependency Error: 'psycopg2-binary' package is not installed. PostgreSQL is required.") from e
+        
+    try:
+        # Test connection immediately on startup to ensure remote database is reachable
+        test_conn = connect_pg()
+        test_conn.close()
+    except Exception as e:
+        raise RuntimeError(f"Database Connection Error: Failed to connect to remote PostgreSQL server: {e}") from e
+
+    sqlite3.connect = connect_pg
+    print("Database: Successfully patched sqlite3 to route queries to remote PostgreSQL server.")
+    return True
+

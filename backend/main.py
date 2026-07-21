@@ -118,22 +118,28 @@ class SafePyMuPDFLoader:
 from langchain_community.document_loaders import Docx2txtLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_chroma import Chroma
+from langchain_community.vectorstores import PGVector
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 
-# ── Config ────────────────────────────────────────────────────────────────────
+# Load root .env first
 load_dotenv()
+# Explicitly load backend/.env to override/supplement configuration
+_backend_env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+if os.path.exists(_backend_env_path):
+    load_dotenv(_backend_env_path, override=True)
 
-# Check and patch PostgreSQL if configured
+# Check and patch PostgreSQL (Mandatory)
 from postgres_adapter import patch_if_configured
-PG_ACTIVE = patch_if_configured()
-
-if not PG_ACTIVE:
-    print("💡 Database: Running locally using SQLite file (stats.db).")
+try:
+    PG_ACTIVE = patch_if_configured()
+except Exception as e:
+    print(f"CRITICAL CONFIGURATION ERROR: {e}")
+    import sys
+    sys.exit(1)
 
 BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
@@ -160,6 +166,53 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+from fastapi.responses import Response
+import mimetypes
+
+@app.get("/static/{filename}")
+def serve_file_from_db(filename: str):
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    cur = conn.cursor()
+    
+    # Query file_url and file_bytes
+    cur.execute("PRAGMA table_info(candidate_metadata)")
+    existing_cols = {c[1] for c in cur.fetchall()}
+    
+    if 'file_url' in existing_cols:
+        cur.execute("SELECT file_url, file_bytes FROM candidate_metadata WHERE filename = ? LIMIT 1", (filename,))
+        row = cur.fetchone()
+        file_url = row[0] if row else None
+        file_bytes = row[1] if row else None
+    else:
+        cur.execute("SELECT file_bytes FROM candidate_metadata WHERE filename = ? AND file_bytes IS NOT NULL LIMIT 1", (filename,))
+        row = cur.fetchone()
+        file_url = None
+        file_bytes = row[0] if row else None
+        
+    conn.close()
+    
+    if file_url:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=file_url)
+        
+    if not file_bytes:
+        raise HTTPException(status_code=404, detail="File not found")
+        
+    # If returned as memoryview, convert to bytes
+    if isinstance(file_bytes, memoryview):
+        file_bytes = file_bytes.tobytes()
+        
+    mime_type, _ = mimetypes.guess_type(filename)
+    if not mime_type:
+        mime_type = "application/octet-stream"
+        
+    return Response(
+        content=file_bytes,
+        media_type=mime_type,
+        headers={"Content-Disposition": f"inline; filename={filename}"}
+    )
+
 
 # Serve uploaded resumes
 app.mount("/static", StaticFiles(directory=UPLOAD_DIR), name="static")
@@ -224,7 +277,8 @@ def init_db():
             phone                TEXT,
             linkedin             TEXT,
             created_by           TEXT DEFAULT 'admin',
-            timestamp            DATETIME DEFAULT CURRENT_TIMESTAMP
+            timestamp            DATETIME DEFAULT CURRENT_TIMESTAMP,
+            file_bytes           BYTEA
         )
     ''')
     cur.execute('''
@@ -325,8 +379,9 @@ def init_db():
         for kw in ["CSSA", "LSA"]:
             cur.execute("INSERT OR IGNORE INTO masked_keywords (keyword) VALUES (?)", (kw,))
 
-    # Delete stale candidate processing placeholders from DB on startup
-    cur.execute("DELETE FROM candidate_metadata WHERE full_name LIKE '%Processing%'")
+    # Clean up any lingering processing states from an ungraceful shutdown
+    # We update instead of deleting to prevent foreign key violations if the candidate was already linked to a job
+    cur.execute("UPDATE candidate_metadata SET full_name = REPLACE(full_name, '⏳ Processing: ', '❌ Failed: ') WHERE full_name LIKE '%Processing%'")
 
     # Migration: add missing columns to candidate_metadata
     cur.execute("PRAGMA table_info(candidate_metadata)")
@@ -354,7 +409,9 @@ def init_db():
         'sender_email': 'TEXT',
         'is_qualified': 'INTEGER DEFAULT 0',
         'is_approved': 'INTEGER DEFAULT 1',
-        'created_by': "TEXT DEFAULT 'admin'"
+        'created_by': "TEXT DEFAULT 'admin'",
+        'file_bytes': 'BYTEA',
+        'file_url': 'TEXT'
     }
     for col, dtype in new_cols.items():
         if col not in existing:
@@ -449,9 +506,40 @@ def init_db():
         email_user TEXT,
         email_pass TEXT,
         keywords TEXT DEFAULT 'resume,alamaticz,solution,job',
-        drive_enabled INTEGER DEFAULT 0
+        drive_enabled INTEGER DEFAULT 0,
+        reply_theme TEXT DEFAULT 'professional',
+        reply_subject TEXT DEFAULT 'Re: {subject} (Ref: {ref})',
+        reply_body_missing TEXT,
+        reply_body_complete TEXT,
+        gdrive_client_id TEXT,
+        gdrive_client_secret TEXT,
+        gdrive_refresh_token TEXT,
+        gdrive_folder_id TEXT,
+        gdrive_email TEXT
     )
     ''')
+
+    # Check/add email template customization columns to integrations_settings (migration for existing DBs)
+    cur.execute("PRAGMA table_info(integrations_settings)")
+    existing_settings_cols = {c[1] for c in cur.fetchall()}
+    if 'reply_theme' not in existing_settings_cols:
+        cur.execute("ALTER TABLE integrations_settings ADD COLUMN reply_theme TEXT DEFAULT 'professional'")
+    if 'reply_subject' not in existing_settings_cols:
+        cur.execute("ALTER TABLE integrations_settings ADD COLUMN reply_subject TEXT DEFAULT 'Re: {subject} (Ref: {ref})'")
+    if 'reply_body_missing' not in existing_settings_cols:
+        cur.execute("ALTER TABLE integrations_settings ADD COLUMN reply_body_missing TEXT")
+    if 'reply_body_complete' not in existing_settings_cols:
+        cur.execute("ALTER TABLE integrations_settings ADD COLUMN reply_body_complete TEXT")
+    if 'gdrive_client_id' not in existing_settings_cols:
+        cur.execute("ALTER TABLE integrations_settings ADD COLUMN gdrive_client_id TEXT")
+    if 'gdrive_client_secret' not in existing_settings_cols:
+        cur.execute("ALTER TABLE integrations_settings ADD COLUMN gdrive_client_secret TEXT")
+    if 'gdrive_refresh_token' not in existing_settings_cols:
+        cur.execute("ALTER TABLE integrations_settings ADD COLUMN gdrive_refresh_token TEXT")
+    if 'gdrive_folder_id' not in existing_settings_cols:
+        cur.execute("ALTER TABLE integrations_settings ADD COLUMN gdrive_folder_id TEXT")
+    if 'gdrive_email' not in existing_settings_cols:
+        cur.execute("ALTER TABLE integrations_settings ADD COLUMN gdrive_email TEXT")
 
     # Seed integrations_settings if empty, loading from environment variables if present
     cur.execute("SELECT COUNT(*) FROM integrations_settings")
@@ -536,18 +624,35 @@ def log_candidate(data: dict):
     
     # Filter data to only valid columns
     cols = [c for c in data.keys() if c in existing_cols and c != 'id']
-    vals = [str(data.get(c, '')) if data.get(c) is not None else '' for c in cols]
+    vals = []
+    for c in cols:
+        val = data.get(c)
+        if c == 'file_bytes':
+            vals.append(val)
+        else:
+            if val == '' or val is None:
+                vals.append(None)
+            elif isinstance(val, (dict, list)):
+                import json
+                vals.append(json.dumps(val))
+            else:
+                vals.append(val)
     
-    if data.get('filename'):
-        cur.execute("DELETE FROM candidate_metadata WHERE filename = ?", (data.get('filename'),))
-    
-    new_id = None
-    if cols:
-        cur.execute(
-            f"INSERT INTO candidate_metadata ({','.join(cols)}) VALUES ({','.join(['?']*len(cols))})",
-            vals
-        )
-        new_id = cur.lastrowid
+    existing_id = data.get('id')
+            
+    if existing_id is not None:
+        if cols:
+            set_clause = ', '.join([f"{c} = ?" for c in cols])
+            cur.execute(f"UPDATE candidate_metadata SET {set_clause} WHERE id = ?", vals + [existing_id])
+            new_id = existing_id
+    else:
+        new_id = None
+        if cols:
+            cur.execute(
+                f"INSERT INTO candidate_metadata ({','.join(cols)}) VALUES ({','.join(['?']*len(cols))})",
+                vals
+            )
+            new_id = cur.lastrowid
     conn.commit()
     conn.close()
     return new_id
@@ -1067,38 +1172,75 @@ def get_formatted_resume_data(candidate_id: int, request: Request):
             pass
 
     filename = candidate.get("filename", "")
+    file_bytes = candidate.get("file_bytes")
+    file_url = candidate.get("file_url")
+    
+    if isinstance(file_bytes, memoryview):
+        file_bytes = file_bytes.tobytes()
+        
+    if filename and not file_bytes and file_url:
+        import requests
+        try:
+            resp = requests.get(file_url, timeout=15)
+            if resp.status_code == 200:
+                file_bytes = resp.content
+                print(f"INFO: Successfully fetched resume bytes from {file_url} for formatting")
+            else:
+                print(f"Warning: Failed to fetch resume bytes from {file_url}: status {resp.status_code}")
+        except Exception as fetch_err:
+            print(f"Error fetching resume bytes from {file_url}: {fetch_err}")
+            
+    temp_path = None
+    if filename and file_bytes:
+        import tempfile
+        suffix = os.path.splitext(filename)[1]
+        try:
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                tmp.write(file_bytes)
+                temp_path = tmp.name
+        except Exception as e:
+            print(f"Error creating temp file for formatting: {e}")
+            
+    path = temp_path if temp_path else (os.path.join(UPLOAD_DIR, filename) if filename else None)
     
     # Calculate original page count if PDF
     original_page_count = 1
-    if filename:
-        path = os.path.join(UPLOAD_DIR, filename)
-        if os.path.exists(path) and filename.lower().endswith(".pdf"):
-            try:
-                import fitz
-                doc = fitz.open(path)
-                original_page_count = len(doc)
-                doc.close()
-            except Exception:
-                pass
+    if filename and path and os.path.exists(path) and filename.lower().endswith(".pdf"):
+        try:
+            import fitz
+            doc = fitz.open(path)
+            original_page_count = len(doc)
+            doc.close()
+        except Exception:
+            pass
 
     if cached_data:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
         cached_data["original_page_count"] = original_page_count
         return cached_data
     
     # Try to load original text
     text = ""
-    if filename:
-        path = os.path.join(UPLOAD_DIR, filename)
-        if os.path.exists(path) and not filename.lower().endswith(('.xlsx', '.xls', '.csv')):
-            try:
-                if filename.lower().endswith(".pdf"):
-                    loader = SafePyMuPDFLoader(path)
-                else:
-                    loader = Docx2txtLoader(path)
-                docs = loader.load()
-                text = "\n".join([d.page_content for d in docs])
-            except Exception as e:
-                print(f"Error loading resume file: {e}")
+    if filename and path and os.path.exists(path) and not filename.lower().endswith(('.xlsx', '.xls', '.csv')):
+        try:
+            if filename.lower().endswith(".pdf"):
+                loader = SafePyMuPDFLoader(path)
+            else:
+                loader = Docx2txtLoader(path)
+            docs = loader.load()
+            text = "\n".join([d.page_content for d in docs])
+        except Exception as e:
+            print(f"Error loading resume file: {e}")
+            
+    if temp_path and os.path.exists(temp_path):
+        try:
+            os.remove(temp_path)
+        except Exception:
+            pass
 
     # Fallback to metadata if file text couldn't be loaded
     if not text:
@@ -1308,7 +1450,7 @@ Resume and Email Content:
 JSON:"""
 
 
-def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, username: str = "unknown", email_message: str = None, sender_email: str = None):
+def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, username: str = "unknown", email_message: str = None, sender_email: str = None, file_url: str = None, placeholder_id: Optional[int] = None):
     try:
         _, llm = get_models()
         embeddings, _ = get_models()
@@ -1480,27 +1622,70 @@ def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, userna
                     match_id = ec["id"]
                     break
                 
+        # Ensure file is uploaded to external storage if provider is configured and file_url not provided
+        if not file_url:
+            from storage import upload_to_external_storage, STORAGE_PROVIDER
+            if STORAGE_PROVIDER != "local":
+                url, err = upload_to_external_storage(path, safe_name)
+                if not err:
+                    file_url = url
+                else:
+                    print(f"Warning: External upload in background failed: {err}")
+
         if match_id:
-            # Match found! Delete the placeholder record we created in upload_resume
-            cur.execute("DELETE FROM candidate_metadata WHERE filename = ?", (safe_name,))
-            
-            # Fetch the existing candidate metadata to merge values
+            # Match found! Retrieve the file_bytes and file_url from the placeholder first
             cur.execute("PRAGMA table_info(candidate_metadata)")
             allowed_cols = {c[1] for c in cur.fetchall()}
             
+            placeholder_bytes = None
+            placeholder_url = None
+            
+            if 'file_url' in allowed_cols:
+                if placeholder_id:
+                    cur.execute("SELECT file_bytes, file_url FROM candidate_metadata WHERE id = ? LIMIT 1", (placeholder_id,))
+                else:
+                    cur.execute("SELECT file_bytes, file_url FROM candidate_metadata WHERE filename = ? LIMIT 1", (safe_name,))
+                placeholder_row = cur.fetchone()
+                if placeholder_row:
+                    placeholder_bytes = placeholder_row[0]
+                    placeholder_url = placeholder_row[1]
+            else:
+                if placeholder_id:
+                    cur.execute("SELECT file_bytes FROM candidate_metadata WHERE id = ? LIMIT 1", (placeholder_id,))
+                else:
+                    cur.execute("SELECT file_bytes FROM candidate_metadata WHERE filename = ? LIMIT 1", (safe_name,))
+                placeholder_row = cur.fetchone()
+                if placeholder_row:
+                    placeholder_bytes = placeholder_row[0]
+
+            # Match found! Delete the placeholder record we created in upload_resume
+            if placeholder_id:
+                cur.execute("DELETE FROM candidate_metadata WHERE id = ?", (placeholder_id,))
+            else:
+                cur.execute("DELETE FROM candidate_metadata WHERE filename = ?", (safe_name,))
+            
+            # Fetch the existing candidate metadata to merge values
             cur.execute("SELECT * FROM candidate_metadata WHERE id = ?", (match_id,))
             cur.row_factory = sqlite3.Row
             existing_row = dict(cur.fetchone())
             
             updates = {}
             for k, v in data.items():
-                if k in allowed_cols and k != 'id' and k != 'filename':
+                if k in allowed_cols and k != 'id' and k != 'filename' and k != 'file_bytes' and k != 'file_url':
                     if v is not None and v != "":
                         existing_val = existing_row.get(k)
                         if username == "email_worker" or existing_val is None or str(existing_val).strip() == "" or existing_val == 0.0 or existing_val == 0:
                             updates[k] = v
             # Always update or attach the filename to the matched candidate
             updates['filename'] = safe_name
+            if placeholder_bytes and not file_url:
+                updates['file_bytes'] = placeholder_bytes
+            
+            if file_url:
+                updates['file_url'] = file_url
+            elif placeholder_url:
+                updates['file_url'] = placeholder_url
+                
             if username == "email_worker":
                 updates['source'] = 'uploaded from mail'
                 if email_message:
@@ -1522,12 +1707,21 @@ def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, userna
             data['candidate_status'] = 'New'
             data['is_approved'] = is_approved
             data['created_by'] = username
+            if file_url:
+                data['file_url'] = file_url
+            
+            # If we uploaded externally, don't store bytes in DB
+            if file_url:
+                data['file_bytes'] = None
+                
             if username == "email_worker":
                 data['source'] = 'uploaded from mail'
                 if email_message:
                     data['email_message'] = email_message
                 if sender_email:
                     data['sender_email'] = sender_email
+            if placeholder_id:
+                data['id'] = placeholder_id
             candidate_id = log_candidate(data)
             
     except Exception as e:
@@ -1538,7 +1732,10 @@ def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, userna
         try:
             conn = sqlite3.connect(STATS_DB, timeout=30.0)
             cur = conn.cursor()
-            cur.execute("DELETE FROM candidate_metadata WHERE filename = ?", (safe_name,))
+            if placeholder_id:
+                cur.execute("DELETE FROM candidate_metadata WHERE id = ?", (placeholder_id,))
+            else:
+                cur.execute("DELETE FROM candidate_metadata WHERE filename = ?", (safe_name,))
             conn.commit()
             conn.close()
         except Exception as db_err:
@@ -1552,13 +1749,28 @@ def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, userna
                 print(f"Error cleaning up failed resume file {path}: {file_err}")
         return
 
-    # Add to ChromaDB
+    # Add to PGVector
     try:
+        # First, remove old embeddings for this resume to prevent duplicates
+        try:
+            conn = sqlite3.connect(STATS_DB, timeout=30.0)
+            cur = conn.cursor()
+            cur.execute("DELETE FROM langchain_pg_embedding WHERE cmetadata->>'source' = ?", (safe_name,))
+            conn.commit()
+            conn.close()
+        except Exception as embed_err:
+            print(f"Failed to delete old embeddings: {embed_err}")
+            
         for d in docs:
             d.metadata['source'] = safe_name
         splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
         chunks   = splitter.split_documents(docs)
-        Chroma.from_documents(chunks, embeddings, persist_directory=CHROMA_PATH)
+        PGVector.from_documents(
+            documents=chunks,
+            embedding=embeddings,
+            connection_string=os.getenv("POSTGRES_DATABASE_URL"),
+            collection_name="resume_embeddings"
+        )
     except Exception as e:
         pass
 
@@ -1965,14 +2177,28 @@ def process_excel_file_logic(safe_name: str, path: str, username: str):
             print(f"Error matching candidate {cid}: {match_err}")
 
 def process_excel_file(safe_name: str, path: str, username: str = "unknown"):
-    with _processing_lock:
-        process_excel_file_logic(safe_name, path, username)
+    try:
+        with _processing_lock:
+            process_excel_file_logic(safe_name, path, username)
+    finally:
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            pass
 
-def process_resume(safe_name: str, path: str, is_approved: int = 1, username: str = "unknown", email_message: str = None, sender_email: str = None):
+def process_resume(safe_name: str, path: str, is_approved: int = 1, username: str = "unknown", email_message: str = None, sender_email: str = None, file_url: str = None, placeholder_id: Optional[int] = None):
     # Use a lock to ensure only one resume is processed at a time
     # This prevents Render memory crashes (OOM), Groq Rate Limits, and SQLite database locks
-    with _processing_lock:
-        process_resume_logic(safe_name, path, is_approved, username, email_message, sender_email)
+    try:
+        with _processing_lock:
+            process_resume_logic(safe_name, path, is_approved, username, email_message, sender_email, file_url, placeholder_id)
+    finally:
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            pass
 
 
 @app.post("/api/upload")
@@ -1995,14 +2221,31 @@ async def upload_resume(request: Request, background_tasks: BackgroundTasks, fil
         background_tasks.add_task(process_excel_file, safe_name, path, username or "unknown")
         return {"status": "processing", "message": "Excel sheet uploaded and is processing in the background."}
     else:
+        # Upload to external storage if configured
+        from storage import upload_to_external_storage
+        file_url, err = upload_to_external_storage(path, safe_name)
+        if err:
+            print(f"Warning: External storage upload failed: {err}. Storing file bytes in database.")
+            file_bytes_to_save = content
+        else:
+            file_bytes_to_save = None
+
         # Placeholder while processing in background
-        log_candidate({"filename": safe_name, "full_name": f"⏳ Processing: {safe_name}", "is_approved": is_approved, "created_by": username or "unknown"})
+        placeholder_id = log_candidate({
+            "filename": safe_name, 
+            "full_name": f"⏳ Processing: {safe_name}", 
+            "is_approved": is_approved, 
+            "created_by": username or "unknown", 
+            "file_bytes": file_bytes_to_save,
+            "file_url": file_url
+        })
         
         # Process asynchronously
         log_activity_db(username or "unknown", f"uploaded resume '{safe_name}'")
-        background_tasks.add_task(process_resume, safe_name, path, is_approved, username or "unknown")
+        background_tasks.add_task(process_resume, safe_name, path, is_approved, username or "unknown", None, None, file_url, placeholder_id)
 
         return {"status": "processing", "message": "Resume uploaded and is processing in the background."}
+
 
 @app.post("/api/jobs/parse-document")
 async def parse_jd_document(request: Request, file: UploadFile = File(...)):
@@ -2420,11 +2663,26 @@ HR question: "{prompt}"
         pass  # Fall through to RAG
 
     # ── Route 3: RAG (ChromaDB) — for very specific resume content ────────────
-    if not os.path.exists(CHROMA_PATH):
+    # Check if PGVector has any records
+    has_vectors = False
+    try:
+        conn = sqlite3.connect(STATS_DB, timeout=30.0)
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM langchain_pg_embedding")
+        has_vectors = (cur.fetchone()[0] > 0)
+        conn.close()
+    except Exception:
+        has_vectors = False
+
+    if not has_vectors:
         return {"type": "text", "answer": "No resumes uploaded yet. Please upload resumes first."}
 
     try:
-        db        = Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings)
+        db = PGVector(
+            connection_string=os.getenv("POSTGRES_DATABASE_URL"),
+            embedding_function=embeddings,
+            collection_name="resume_embeddings"
+        )
         retriever = db.as_retriever(search_kwargs={"k": 6})
         qa_prompt = PromptTemplate.from_template("""You are Hire AI, an expert HR recruitment assistant.
 Answer using ONLY the resume context below. Be specific and structured.
@@ -2461,11 +2719,26 @@ def match_jd(req: JDMatchRequest):
     if not jd:
         raise HTTPException(status_code=400, detail="Empty Job Description")
     
-    if not os.path.exists(CHROMA_PATH):
+    # Check if PGVector has any records
+    has_vectors = False
+    try:
+        conn = sqlite3.connect(STATS_DB, timeout=30.0)
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM langchain_pg_embedding")
+        has_vectors = (cur.fetchone()[0] > 0)
+        conn.close()
+    except Exception:
+        has_vectors = False
+
+    if not has_vectors:
         return {"matches": []}
 
     embeddings, llm = get_models()
-    db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings)
+    db = PGVector(
+        connection_string=os.getenv("POSTGRES_DATABASE_URL"),
+        embedding_function=embeddings,
+        collection_name="resume_embeddings"
+    )
     
     try:
         docs = db.similarity_search(jd, k=15)
@@ -2484,12 +2757,14 @@ def match_jd(req: JDMatchRequest):
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     placeholders = ",".join("?" * len(matched_sources))
-    cur.execute(f"SELECT * FROM candidate_metadata WHERE filename IN ({placeholders})", list(matched_sources))
+    # Use tuple for psycopg2 compatibility with IN clauses
+    cur.execute(f"SELECT * FROM candidate_metadata WHERE filename IN ({placeholders})", tuple(matched_sources))
     db_rows = [dict(r) for r in cur.fetchall()]
     conn.close()
 
     if not is_user_admin:
-        db_rows = [r for r in db_rows if r.get('created_by') and r['created_by'].lower() == username.lower()]
+        # Allow rows where created_by matches username OR where created_by is null/empty (shared records)
+        db_rows = [r for r in db_rows if not r.get('created_by') or r['created_by'].lower() == username.lower()]
 
     if not db_rows:
         return {"matches": []}
@@ -3234,8 +3509,13 @@ def reset_all(request: Request):
     conn.commit()
     conn.close()
     try:
-        if os.path.exists(CHROMA_PATH):
-            shutil.rmtree(CHROMA_PATH)
+        embeddings, _ = get_models()
+        db = PGVector(
+            connection_string=os.getenv("POSTGRES_DATABASE_URL"),
+            embedding_function=embeddings,
+            collection_name="resume_embeddings"
+        )
+        db.delete_collection()
     except Exception:
         pass
     return {"status": "reset complete"}
@@ -4107,8 +4387,13 @@ def approve_change_request(request_id: int, request: Request, background_tasks: 
         elif action_type == "reset_all":
             cur.execute("DELETE FROM candidate_metadata")
             try:
-                if os.path.exists(CHROMA_PATH):
-                    shutil.rmtree(CHROMA_PATH)
+                embeddings, _ = get_models()
+                db = PGVector(
+                    connection_string=os.getenv("POSTGRES_DATABASE_URL"),
+                    embedding_function=embeddings,
+                    collection_name="resume_embeddings"
+                )
+                db.delete_collection()
             except Exception:
                 pass
                 
@@ -4153,6 +4438,77 @@ def reject_change_request(request_id: int, request: Request):
     conn.close()
     return {"status": "rejected"}
 
+# THEME PRESETS FOR CONFIRMATION REPLY EMAILS
+THEME_TEMPLATES = {
+    'professional': {
+        'subject': 'Re: {subject} (Ref: {ref})',
+        'body_missing': (
+            "Dear {candidate_name},\n\n"
+            "Thank you for your interest in Alamaticz Solutions and for submitting your application.\n\n"
+            "We appreciate the time you have taken to apply for this opportunity. To help us evaluate your profile further, "
+            "kindly share the following details:\n\n"
+            "{missing_fields}\n\n"
+            "Once we receive the above information, our recruitment team will review your profile and get back to you regarding the next steps in the selection process.\n\n"
+            "We look forward to hearing from you.\n\n"
+            "Best regards,\n\n"
+            "HR Team\n"
+            "Alamaticz Solutions"
+        ),
+        'body_complete': (
+            "Dear {candidate_name},\n\n"
+            "Thank you for your interest in Alamaticz Solutions and for submitting your application.\n\n"
+            "We appreciate the time you have taken to apply for this opportunity. Our recruitment team will review your profile and get back to you regarding the next steps in the selection process.\n\n"
+            "Best regards,\n\n"
+            "HR Team\n"
+            "Alamaticz Solutions"
+        )
+    },
+    'creative': {
+        'subject': 'Excited to connect! Re: {subject} (Ref: {ref})',
+        'body_missing': (
+            "Hi {candidate_name}!\n\n"
+            "Thanks for reaching out and sharing your resume with us. We love connecting with talented people!\n\n"
+            "We are eager to dive into your application, but we are missing a few details. Could you please share the following with us?\n\n"
+            "{missing_fields}\n\n"
+            "As soon as we get these details, we'll review your profile and get back to you regarding the next steps.\n\n"
+            "Can't wait to hear back from you!\n\n"
+            "Cheers,\n\n"
+            "The Talent Team\n"
+            "Alamaticz Solutions"
+        ),
+        'body_complete': (
+            "Hi {candidate_name}!\n\n"
+            "Thanks for reaching out and sharing your application with us!\n\n"
+            "We have everything we need. Our team is already looking over your profile, and we'll be in touch soon with the next steps.\n\n"
+            "Have a fantastic day!\n\n"
+            "Cheers,\n\n"
+            "The Talent Team\n"
+            "Alamaticz Solutions"
+        )
+    },
+    'warm': {
+        'subject': 'Thank you for applying! Re: {subject} (Ref: {ref})',
+        'body_missing': (
+            "Hello {candidate_name},\n\n"
+            "We hope you are having a wonderful day! Thank you so much for taking the time to apply to our team.\n\n"
+            "To help us get a better picture of your experience and fit for the role, could you please help us with these remaining details?\n\n"
+            "{missing_fields}\n\n"
+            "We really appreciate your support and look forward to reviewing your application as soon as we receive this.\n\n"
+            "Wishing you all the best,\n\n"
+            "Your Friends at HR\n"
+            "Alamaticz Solutions"
+        ),
+        'body_complete': (
+            "Hello {candidate_name},\n\n"
+            "We hope you are doing well! Thank you so much for sending over your application.\n\n"
+            "This is just a quick note to let you know we've received all your information. Our team will review everything carefully and get back to you soon.\n\n"
+            "Take care,\n\n"
+            "Your Friends at HR\n"
+            "Alamaticz Solutions"
+        )
+    }
+}
+
 # ── Integrations Settings Endpoints ───────────────────────────────────────────
 class IntegrationSettingsRequest(BaseModel):
     email_enabled: int
@@ -4164,6 +4520,15 @@ class IntegrationSettingsRequest(BaseModel):
     email_pass: str
     keywords: str
     drive_enabled: int
+    reply_theme: Optional[str] = "professional"
+    reply_subject: Optional[str] = "Re: {subject} (Ref: {ref})"
+    reply_body_missing: Optional[str] = None
+    reply_body_complete: Optional[str] = None
+    gdrive_client_id: Optional[str] = None
+    gdrive_client_secret: Optional[str] = None
+    gdrive_refresh_token: Optional[str] = None
+    gdrive_folder_id: Optional[str] = None
+    gdrive_email: Optional[str] = None
 
 @app.get("/api/integrations")
 def get_integrations_settings(request: Request):
@@ -4174,7 +4539,13 @@ def get_integrations_settings(request: Request):
         
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
-    cur.execute("SELECT email_enabled, imap_host, imap_port, smtp_host, smtp_port, email_user, email_pass, keywords, drive_enabled FROM integrations_settings LIMIT 1")
+    cur.execute("""
+        SELECT email_enabled, imap_host, imap_port, smtp_host, smtp_port, 
+               email_user, email_pass, keywords, drive_enabled,
+               reply_theme, reply_subject, reply_body_missing, reply_body_complete,
+               gdrive_client_id, gdrive_client_secret, gdrive_refresh_token, gdrive_folder_id, gdrive_email
+        FROM integrations_settings LIMIT 1
+    """)
     row = cur.fetchone()
     conn.close()
     
@@ -4182,12 +4553,49 @@ def get_integrations_settings(request: Request):
         return {
             "email_enabled": 0, "imap_host": "imap.gmail.com", "imap_port": 993,
             "smtp_host": "smtp.gmail.com", "smtp_port": 587, "email_user": "",
-            "email_pass": "", "keywords": "resume,alamaticz,solution,job", "drive_enabled": 0
+            "email_pass": "", "keywords": "resume,alamaticz,solution,job", "drive_enabled": 0,
+            "reply_theme": "professional",
+            "reply_subject": "Re: {subject} (Ref: {ref})",
+            "reply_body_missing": THEME_TEMPLATES["professional"]["body_missing"],
+            "reply_body_complete": THEME_TEMPLATES["professional"]["body_complete"],
+            "gdrive_client_id": "",
+            "gdrive_client_secret": "",
+            "gdrive_refresh_token": "",
+            "gdrive_folder_id": "",
+            "gdrive_email": ""
         }
         
     masked_pass = ""
     if row[6]:
         masked_pass = "****"
+        
+    reply_theme = row[9] or "professional"
+    reply_subject = row[10]
+    reply_body_missing = row[11]
+    reply_body_complete = row[12]
+    
+    # Load default templates if preset is not custom
+    if reply_theme in THEME_TEMPLATES:
+        if reply_theme != 'custom':
+            reply_subject = THEME_TEMPLATES[reply_theme]['subject']
+            reply_body_missing = THEME_TEMPLATES[reply_theme]['body_missing']
+            reply_body_complete = THEME_TEMPLATES[reply_theme]['body_complete']
+        else:
+            if not reply_subject: reply_subject = THEME_TEMPLATES['professional']['subject']
+            if not reply_body_missing: reply_body_missing = THEME_TEMPLATES['professional']['body_missing']
+            if not reply_body_complete: reply_body_complete = THEME_TEMPLATES['professional']['body_complete']
+    else:
+        if not reply_subject: reply_subject = THEME_TEMPLATES['professional']['subject']
+        if not reply_body_missing: reply_body_missing = THEME_TEMPLATES['professional']['body_missing']
+        if not reply_body_complete: reply_body_complete = THEME_TEMPLATES['professional']['body_complete']
+        
+    masked_gdrive_secret = ""
+    if row[14]:
+        masked_gdrive_secret = "****"
+        
+    masked_gdrive_refresh = ""
+    if row[15]:
+        masked_gdrive_refresh = "****"
         
     return {
         "email_enabled": row[0],
@@ -4198,7 +4606,16 @@ def get_integrations_settings(request: Request):
         "email_user": row[5] or "",
         "email_pass": masked_pass,
         "keywords": row[7] or "resume,alamaticz,solution,job",
-        "drive_enabled": row[8]
+        "drive_enabled": row[8],
+        "reply_theme": reply_theme,
+        "reply_subject": reply_subject,
+        "reply_body_missing": reply_body_missing,
+        "reply_body_complete": reply_body_complete,
+        "gdrive_client_id": row[13] or "",
+        "gdrive_client_secret": masked_gdrive_secret,
+        "gdrive_refresh_token": masked_gdrive_refresh,
+        "gdrive_folder_id": row[16] or "",
+        "gdrive_email": row[17] or ""
     }
 
 @app.post("/api/integrations")
@@ -4211,31 +4628,56 @@ def save_integrations_settings(settings: IntegrationSettingsRequest, request: Re
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
     
-    cur.execute("SELECT id, email_pass FROM integrations_settings LIMIT 1")
+    cur.execute("SELECT id, email_pass, gdrive_client_secret, gdrive_refresh_token FROM integrations_settings LIMIT 1")
     row = cur.fetchone()
     
     final_pass = settings.email_pass
     if final_pass == "****" and row:
         final_pass = row[1]
         
+    final_gdrive_secret = settings.gdrive_client_secret
+    if final_gdrive_secret == "****" and row:
+        final_gdrive_secret = row[2]
+        
+    final_gdrive_refresh = settings.gdrive_refresh_token
+    if final_gdrive_refresh == "****" and row:
+        final_gdrive_refresh = row[3]
+        
     if row:
         cur.execute("""
         UPDATE integrations_settings SET
             email_enabled = ?, imap_host = ?, imap_port = ?,
             smtp_host = ?, smtp_port = ?, email_user = ?,
-            email_pass = ?, keywords = ?, drive_enabled = ?
+            email_pass = ?, keywords = ?, drive_enabled = ?,
+            reply_theme = ?, reply_subject = ?,
+            reply_body_missing = ?, reply_body_complete = ?,
+            gdrive_client_id = ?, gdrive_client_secret = ?,
+            gdrive_refresh_token = ?, gdrive_folder_id = ?,
+            gdrive_email = ?
         WHERE id = ?
         """, (settings.email_enabled, settings.imap_host, settings.imap_port,
               settings.smtp_host, settings.smtp_port, settings.email_user,
-              final_pass, settings.keywords, settings.drive_enabled, row[0]))
+              final_pass, settings.keywords, settings.drive_enabled,
+              settings.reply_theme, settings.reply_subject,
+              settings.reply_body_missing, settings.reply_body_complete,
+              settings.gdrive_client_id, final_gdrive_secret,
+              settings.gdrive_refresh_token, settings.gdrive_folder_id,
+              settings.gdrive_email, row[0]))
     else:
         cur.execute("""
         INSERT INTO integrations_settings (
-            email_enabled, imap_host, imap_port, smtp_host, smtp_port, email_user, email_pass, keywords, drive_enabled
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            email_enabled, imap_host, imap_port, smtp_host, smtp_port, email_user, email_pass, keywords, drive_enabled,
+            reply_theme, reply_subject, reply_body_missing, reply_body_complete,
+            gdrive_client_id, gdrive_client_secret, gdrive_refresh_token, gdrive_folder_id, gdrive_email
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (settings.email_enabled, settings.imap_host, settings.imap_port,
               settings.smtp_host, settings.smtp_port, settings.email_user,
-              final_pass, settings.keywords, settings.drive_enabled))
+              final_pass, settings.keywords, settings.drive_enabled,
+              settings.reply_theme, settings.reply_subject,
+              settings.reply_body_missing, settings.reply_body_complete,
+              settings.gdrive_client_id, final_gdrive_secret,
+              settings.gdrive_refresh_token, settings.gdrive_folder_id,
+              settings.gdrive_email))
               
     if settings.email_enabled == 0:
         try:
@@ -4262,6 +4704,77 @@ def save_integrations_settings(settings: IntegrationSettingsRequest, request: Re
     
     log_activity_db(username, "updated integrations settings")
     return {"status": "saved"}
+
+class GDriveExchangeRequest(BaseModel):
+    client_id: str
+    client_secret: str
+    code: str
+
+@app.post("/api/integrations/gdrive/exchange")
+def exchange_gdrive_code(payload: GDriveExchangeRequest, request: Request):
+    username = request.headers.get("x-user-username")
+    role = get_user_role(username)
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+        
+    import requests
+    
+    client_id = payload.client_id.strip('"\' ')
+    client_secret = payload.client_secret.strip('"\' ')
+    code = payload.code.strip()
+    
+    # Extract code if full URL was pasted
+    if "code=" in code:
+        import urllib.parse
+        try:
+            parsed = urllib.parse.urlparse(code)
+            code = urllib.parse.parse_qs(parsed.query)["code"][0]
+        except Exception:
+            pass
+            
+    token_url = "https://oauth2.googleapis.com/token"
+    token_data = {
+        "code": code,
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "redirect_uri": "http://localhost",
+        "grant_type": "authorization_code"
+    }
+    
+    try:
+        resp = requests.post(token_url, data=token_data, timeout=15)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=400, detail=f"Token exchange failed: {resp.text}")
+            
+        resp_data = resp.json()
+        refresh_token = resp_data.get("refresh_token")
+        access_token = resp_data.get("access_token")
+        
+        if not refresh_token:
+            raise HTTPException(
+                status_code=400,
+                detail="Google did not return a refresh token. Google only sends the refresh token on the FIRST authorization. Please go to Google Account Settings -> Security -> Third-party apps with account access, remove 'Hire AI' access, and authorize again."
+            )
+            
+        # Try to retrieve Google account email using drive/v3/about
+        email = "Unknown Google Account"
+        if access_token:
+            headers = {
+                "Authorization": f"Bearer {access_token}"
+            }
+            about_resp = requests.get("https://www.googleapis.com/drive/v3/about?fields=user", headers=headers, timeout=10)
+            if about_resp.status_code == 200:
+                user_info = about_resp.json().get("user", {})
+                email = user_info.get("emailAddress", "Unknown Google Account")
+                
+        return {
+            "refresh_token": refresh_token,
+            "email": email
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to communicate with Google API: {str(e)}")
 
 @app.get("/api/integrations/status")
 def test_integrations_connection(request: Request):
@@ -4317,7 +4830,8 @@ def poll_emails_and_process():
             cur = conn.cursor()
             cur.execute("""
                 SELECT email_enabled, imap_host, imap_port, smtp_host, smtp_port, 
-                       email_user, email_pass, keywords 
+                       email_user, email_pass, keywords,
+                       reply_theme, reply_subject, reply_body_missing, reply_body_complete 
                 FROM integrations_settings LIMIT 1
             """)
             row = cur.fetchone()
@@ -4327,7 +4841,7 @@ def poll_emails_and_process():
                 time.sleep(15)
                 continue
 
-            email_enabled, imap_host, imap_port, smtp_host, smtp_port, email_user, email_pass, keywords_str = row
+            email_enabled, imap_host, imap_port, smtp_host, smtp_port, email_user, email_pass, keywords_str, reply_theme, reply_subject, reply_body_missing, reply_body_complete = row
             if not imap_host or not email_user or not email_pass:
                 time.sleep(15)
                 continue
@@ -4477,6 +4991,7 @@ def poll_emails_and_process():
                         
                             # Check if a new resume file is attached and download/index it
                             new_filename = None
+                            new_file_bytes = None
                             resume_text = ""
                             if attachments:
                                 has_resume = any(
@@ -4495,8 +5010,9 @@ def poll_emails_and_process():
                                             with open(fpath, "wb") as f_out:
                                                 f_out.write(content)
                                             new_filename = safe_name
+                                            new_file_bytes = content
                                         
-                                            # Index in ChromaDB and extract text
+                                            # Index in PGVector and extract text
                                             try:
                                                 if safe_name.lower().endswith(".pdf"):
                                                     loader = SafePyMuPDFLoader(fpath)
@@ -4509,9 +5025,20 @@ def poll_emails_and_process():
                                                     d.metadata['source'] = safe_name
                                                 splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
                                                 chunks = splitter.split_documents(docs)
-                                                Chroma.from_documents(chunks, embeddings, persist_directory=CHROMA_PATH)
-                                            except Exception as chroma_err:
-                                                print(f"Error adding updated resume to Chroma: {chroma_err}")
+                                                PGVector.from_documents(
+                                                    documents=chunks,
+                                                    embedding=embeddings,
+                                                    connection_string=os.getenv("POSTGRES_DATABASE_URL"),
+                                                    collection_name="resume_embeddings"
+                                                )
+                                            except Exception as pg_err:
+                                                print(f"Error adding updated resume to PGVector: {pg_err}")
+                                            finally:
+                                                try:
+                                                    if os.path.exists(fpath):
+                                                        os.remove(fpath)
+                                                except Exception:
+                                                    pass
                                             break
 
                             # Use EXTRACT_PROMPT to parse the combined new resume content and/or email text
@@ -4615,6 +5142,8 @@ def poll_emails_and_process():
 
                             if new_filename:
                                 updates['filename'] = new_filename
+                                if new_file_bytes:
+                                    updates['file_bytes'] = new_file_bytes
                             if sender_email:
                                 updates['sender_email'] = sender_email
                             updates['source'] = 'uploaded from mail'
@@ -4686,28 +5215,55 @@ def poll_emails_and_process():
                                     missing_fields.append("LinkedIn profile URL")
 
                                 if missing_fields:
-                                    missing_list_str = "\n".join(f"* {field}:" for field in missing_fields)
-                                    body_reply = f"Dear {candidate_name},\n\n" \
-                                                 f"Thank you for providing the details.\n\n" \
-                                                 f"We noticed that the following required details are still missing. Kindly share them to proceed further:\n\n" \
-                                                 f"{missing_list_str}\n\n" \
-                                                 f"Once we receive the above information, our recruitment team will review your profile and get back to you regarding the next steps in the selection process.\n\n" \
-                                                 f"We look forward to hearing from you.\n\n" \
-                                                 f"Best regards,\n\n" \
-                                                 f"HR Team\n" \
-                                                 f"Alamaticz Solutions"
+                                    # Resolve templates
+                                    theme_name = reply_theme or 'professional'
+                                    subj_tpl = reply_subject
+                                    body_missing_tpl = reply_body_missing
+                                    body_complete_tpl = reply_body_complete
+
+                                    if theme_name in THEME_TEMPLATES:
+                                        if theme_name != 'custom':
+                                            subj_tpl = THEME_TEMPLATES[theme_name]['subject']
+                                            body_missing_tpl = THEME_TEMPLATES[theme_name]['body_missing']
+                                            body_complete_tpl = THEME_TEMPLATES[theme_name]['body_complete']
+                                        else:
+                                            if not subj_tpl: subj_tpl = THEME_TEMPLATES['professional']['subject']
+                                            if not body_missing_tpl: body_missing_tpl = THEME_TEMPLATES['professional']['body_missing']
+                                            if not body_complete_tpl: body_complete_tpl = THEME_TEMPLATES['professional']['body_complete']
+                                    else:
+                                        if not subj_tpl: subj_tpl = THEME_TEMPLATES['professional']['subject']
+                                        if not body_missing_tpl: body_missing_tpl = THEME_TEMPLATES['professional']['body_missing']
+                                        if not body_complete_tpl: body_complete_tpl = THEME_TEMPLATES['professional']['body_complete']
+
+                                    missing_list_str = "\n".join(f"* {field}" for field in missing_fields)
+                                    body_reply = body_missing_tpl.replace("{candidate_name}", candidate_name).replace("{missing_fields}", missing_list_str)
                                 else:
-                                    body_reply = f"Dear {candidate_name},\n\n" \
-                                                 f"Thank you for your interest in Alamaticz Solutions and for submitting your application.\n\n" \
-                                                 f"We have successfully received all required details. Our recruitment team will review your profile and get back to you regarding the next steps in the selection process.\n\n" \
-                                                 f"Best regards,\n\n" \
-                                                 f"HR Team\n" \
-                                                 f"Alamaticz Solutions"
+                                    # Resolve templates
+                                    theme_name = reply_theme or 'professional'
+                                    subj_tpl = reply_subject
+                                    body_missing_tpl = reply_body_missing
+                                    body_complete_tpl = reply_body_complete
+
+                                    if theme_name in THEME_TEMPLATES:
+                                        if theme_name != 'custom':
+                                            subj_tpl = THEME_TEMPLATES[theme_name]['subject']
+                                            body_missing_tpl = THEME_TEMPLATES[theme_name]['body_missing']
+                                            body_complete_tpl = THEME_TEMPLATES[theme_name]['body_complete']
+                                        else:
+                                            if not subj_tpl: subj_tpl = THEME_TEMPLATES['professional']['subject']
+                                            if not body_missing_tpl: body_missing_tpl = THEME_TEMPLATES['professional']['body_missing']
+                                            if not body_complete_tpl: body_complete_tpl = THEME_TEMPLATES['professional']['body_complete']
+                                    else:
+                                        if not subj_tpl: subj_tpl = THEME_TEMPLATES['professional']['subject']
+                                        if not body_missing_tpl: body_missing_tpl = THEME_TEMPLATES['professional']['body_missing']
+                                        if not body_complete_tpl: body_complete_tpl = THEME_TEMPLATES['professional']['body_complete']
+
+                                    body_reply = body_complete_tpl.replace("{candidate_name}", candidate_name)
 
                                 ack_msg = MIMEMultipart()
                                 ack_msg['From'] = email_user
                                 ack_msg['To'] = sender_email
-                                ack_msg['Subject'] = f"Re: {decoded_subject} (Ref: CAND-{updated_candidate['id']})"
+                                ack_msg['Subject'] = subj_tpl.replace("{subject}", decoded_subject).replace("{ref}", f"CAND-{updated_candidate['id']}")
                                 ack_msg.attach(MIMEText(body_reply, 'plain'))
 
                                 if sender_email.lower() == email_user.lower():
@@ -4865,33 +5421,38 @@ def poll_emails_and_process():
                                                 "LinkedIn profile URL"
                                             ]
 
-                                        if missing_fields:
-                                            missing_list_str = "\n".join(f"* {field}:" for field in missing_fields)
-                                            body_reply = f"Dear {candidate_name},\n\n" \
-                                                         f"Thank you for your interest in Alamaticz Solutions and for submitting your application.\n\n" \
-                                                         f"We appreciate the time you have taken to apply for this opportunity. To help us evaluate your profile further, kindly share the following details:\n\n" \
-                                                         f"{missing_list_str}\n\n" \
-                                                         f"Once we receive the above information, our recruitment team will review your profile and get back to you regarding the next steps in the selection process.\n\n" \
-                                                         f"We look forward to hearing from you.\n\n" \
-                                                         f"Best regards,\n\n" \
-                                                         f"HR Team\n" \
-                                                         f"Alamaticz Solutions"
+                                        # Resolve templates
+                                        theme_name = reply_theme or 'professional'
+                                        subj_tpl = reply_subject
+                                        body_missing_tpl = reply_body_missing
+                                        body_complete_tpl = reply_body_complete
+
+                                        if theme_name in THEME_TEMPLATES:
+                                            if theme_name != 'custom':
+                                                subj_tpl = THEME_TEMPLATES[theme_name]['subject']
+                                                body_missing_tpl = THEME_TEMPLATES[theme_name]['body_missing']
+                                                body_complete_tpl = THEME_TEMPLATES[theme_name]['body_complete']
+                                            else:
+                                                if not subj_tpl: subj_tpl = THEME_TEMPLATES['professional']['subject']
+                                                if not body_missing_tpl: body_missing_tpl = THEME_TEMPLATES['professional']['body_missing']
+                                                if not body_complete_tpl: body_complete_tpl = THEME_TEMPLATES['professional']['body_complete']
                                         else:
-                                            body_reply = f"Dear {candidate_name},\n\n" \
-                                                         f"Thank you for your interest in Alamaticz Solutions and for submitting your application.\n\n" \
-                                                         f"We appreciate the time you have taken to apply for this opportunity. Our recruitment team will review your profile and get back to you regarding the next steps in the selection process.\n\n" \
-                                                         f"Best regards,\n\n" \
-                                                         f"HR Team\n" \
-                                                         f"Alamaticz Solutions"
+                                            if not subj_tpl: subj_tpl = THEME_TEMPLATES['professional']['subject']
+                                            if not body_missing_tpl: body_missing_tpl = THEME_TEMPLATES['professional']['body_missing']
+                                            if not body_complete_tpl: body_complete_tpl = THEME_TEMPLATES['professional']['body_complete']
+
+                                        if missing_fields:
+                                            missing_list_str = "\n".join(f"* {field}" for field in missing_fields)
+                                            body_reply = body_missing_tpl.replace("{candidate_name}", candidate_name).replace("{missing_fields}", missing_list_str)
+                                        else:
+                                            body_reply = body_complete_tpl.replace("{candidate_name}", candidate_name)
 
                                         ack_msg = MIMEMultipart()
                                         ack_msg['From'] = email_user
                                         ack_msg['To'] = sender_email
                                         cand_id = candidate.get('id') if candidate else 0
-                                        if cand_id:
-                                            ack_msg['Subject'] = f"Re: {decoded_subject} (Ref: CAND-{cand_id})"
-                                        else:
-                                            ack_msg['Subject'] = f"Re: {decoded_subject}"
+                                        ref_str = f"CAND-{cand_id}" if cand_id else "NEW"
+                                        ack_msg['Subject'] = subj_tpl.replace("{subject}", decoded_subject).replace("{ref}", ref_str)
                                         ack_msg.attach(MIMEText(body_reply, 'plain'))
                                     
                                         if sender_email.lower() == email_user.lower():
