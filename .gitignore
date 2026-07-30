@@ -38,3 +38,4 @@ Thumbs.db
 node_modules/
 
 backend/Client_secret.json
+*.log

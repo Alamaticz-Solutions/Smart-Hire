@@ -60,8 +60,14 @@ class PGCursor:
         translated = self._translate_query(query)
         pg_params = params
         if params is not None:
-            if not isinstance(params, (list, tuple, dict)):
-                pg_params = (params,)
+            if isinstance(params, dict):
+                pg_params = {k: (None if v == "" else v) for k, v in params.items()}
+            elif isinstance(params, (list, tuple)):
+                pg_params = [None if v == "" else v for v in params]
+            else:
+                pg_params = (None if params == "" else params,)
+        else:
+            pg_params = None
         
         # Execute query
         self.pg_cursor.execute(translated, pg_params)
@@ -78,7 +84,16 @@ class PGCursor:
 
     def executemany(self, query, params_list):
         translated = self._translate_query(query)
-        self.pg_cursor.executemany(translated, params_list)
+        cleaned_list = []
+        for params in params_list:
+            if isinstance(params, dict):
+                cleaned = {k: (None if v == "" else v) for k, v in params.items()}
+            elif isinstance(params, (list, tuple)):
+                cleaned = [None if v == "" else v for v in params]
+            else:
+                cleaned = None if params == "" else params
+            cleaned_list.append(cleaned)
+        self.pg_cursor.executemany(translated, cleaned_list)
         return self
 
     def fetchone(self):

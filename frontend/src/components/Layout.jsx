@@ -1,7 +1,7 @@
 import { Outlet, NavLink } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import axios from 'axios'
-import { LayoutDashboard, Upload, MessageSquare, LogOut, Sun, Moon, Briefcase, Shield, Users, Download, Activity, X } from 'lucide-react'
+import { LayoutDashboard, Upload, MessageSquare, LogOut, Sun, Moon, Briefcase, Shield, Users, Download, Activity, X, Link, FileText } from 'lucide-react'
 import alamaticzLogo from '../assets/alamaticz-logo.jpg'
 
 export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUser }) {
@@ -59,12 +59,15 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
         { to: '/', label: 'Dashboard', Icon: LayoutDashboard },
         ...((user?.is_hr === 1 || user?.is_external === 1) ? [{ to: '/jobs', label: 'Job Description', Icon: Briefcase }] : []),
         { to: '/upload', label: 'Candidate Profiles', Icon: Users },
-        { to: '/chat', label: 'Chat with Hire-Ai', Icon: MessageSquare },
     ]
 
     if (user?.role === 'admin' || user?.is_admin === 1) {
+        navItems.push({ to: '/connect', label: 'Connect', Icon: Link })
+        navItems.push({ to: '/templates', label: 'Reply Templates', Icon: FileText })
         navItems.push({ to: '/admin', label: 'Admin Portal', Icon: Shield })
     }
+
+    navItems.push({ to: '/chat', label: 'Chat with Hire-Ai', Icon: MessageSquare })
 
 
 

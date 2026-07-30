@@ -7,6 +7,8 @@ import JobsPage from './pages/JobsPage'
 import UploadPage from './pages/UploadPage'
 import ChatPage from './pages/ChatPage'
 import AdminPage from './pages/AdminPage'
+import ConnectPage from './pages/ConnectPage'
+import TemplatesPage from './pages/TemplatesPage'
 import Layout from './components/Layout'
 
 export default function App() {
@@ -49,6 +51,8 @@ export default function App() {
                     <Route path="/upload" element={<UploadPage />} />
                     <Route path="/chat" element={<ChatPage />} />
                     <Route path="/admin" element={(user?.is_admin === 1 || user?.role === 'admin') && user?.is_external !== 1 ? <AdminPage /> : <Navigate to="/" />} />
+                    <Route path="/connect" element={(user?.is_admin === 1 || user?.role === 'admin') && user?.is_external !== 1 ? <ConnectPage /> : <Navigate to="/" />} />
+                    <Route path="/templates" element={(user?.is_admin === 1 || user?.role === 'admin') && user?.is_external !== 1 ? <TemplatesPage /> : <Navigate to="/" />} />
                 </Route>
                 <Route path="*" element={<Navigate to="/" />} />
             </Routes>

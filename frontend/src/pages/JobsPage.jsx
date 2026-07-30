@@ -1560,7 +1560,7 @@ function ResumeEditor({ formData, setFormData }) {
 }
 
 /* ─── Candidate Details Modal ────────────────────────────────────────────── */
-function CandidateDetailsModal({ candidate, onClose, onViewPdf, onToggleStatus }) {
+function CandidateDetailsModal({ candidate, onClose, onViewPdf, onToggleStatus, onDeleteCandidate }) {
     const [activeTab, setActiveTab] = React.useState('profile');
     const [jobs, setJobs] = React.useState([]);
     const [loadingJobs, setLoadingJobs] = React.useState(false);
@@ -1703,6 +1703,22 @@ function CandidateDetailsModal({ candidate, onClose, onViewPdf, onToggleStatus }
                                     }}
                                 >
                                     {jobStatus === 'selected' ? '✓ Selected for Job' : '➕ Select Candidate'}
+                                </button>
+                            )}
+                            {onDeleteCandidate && (
+                                <button 
+                                    onClick={() => onDeleteCandidate(candidate.id)}
+                                    style={{
+                                        background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)',
+                                        color: '#ef4444', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
+                                        fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 700,
+                                        display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s',
+                                        outline: 'none'
+                                    }}
+                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.25)'}
+                                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)'}
+                                >
+                                    <Trash2 size={14} /> Delete Candidate
                                 </button>
                             )}
                             {candidate.filename && !candidate.filename.toLowerCase().endsWith('.xlsx') && !candidate.filename.toLowerCase().endsWith('.xls') && !candidate.filename.toLowerCase().endsWith('.csv') && (
@@ -2678,6 +2694,7 @@ export default function JobsPage() {
         if (!window.confirm('Delete this candidate completely from the database? This cannot be undone.')) return;
         try {
             await axios.delete(`${API_URL}/api/candidates/${candidateId}`);
+            setSelectedCandidateForDetails(null);
             loadCandidates(selectedJob.id);
             loadJobs();
             showToast('Candidate deleted completely');
@@ -4781,6 +4798,7 @@ export default function JobsPage() {
                         setViewingPdf({ url: `${BACKEND_URL}/static/${filename}`, name });
                     }}
                     onToggleStatus={handleStatusChange}
+                    onDeleteCandidate={handleDeleteCandidate}
                 />
             )}
             
