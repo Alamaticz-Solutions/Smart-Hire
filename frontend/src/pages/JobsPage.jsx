@@ -405,18 +405,7 @@ function ResumePreview({ data, logoUrl }) {
                         }}>
                             {isFirstPage ? (
                                 <div style={{ height: '133px', visibility: 'hidden', pointerEvents: 'none' }} />
-                            ) : (
-                                <div style={{ height: '95px', display: 'flex', flexDirection: 'column', gap: '6px', borderBottom: '1px solid #004b87', marginBottom: '30px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#004b87', textTransform: 'uppercase' }}>
-                                            {full_name}
-                                        </span>
-                                        {logoUrl && (
-                                            <img src={logoUrl} alt="Logo" style={{ height: '24px', objectFit: 'contain' }} />
-                                        )}
-                                    </div>
-                                </div>
-                            )}
+                            ) : null}
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
                                 {leftSections.map(secType => {
@@ -580,26 +569,7 @@ function ResumePreview({ data, logoUrl }) {
                                         </div>
                                     </div>
                                 </div>
-                            ) : (
-                                <div style={{ 
-                                    height: '76px', 
-                                    display: 'flex', 
-                                    flexDirection: 'column', 
-                                    justifyContent: 'center',
-                                    borderBottom: '1px solid #004b87',
-                                    marginBottom: '20px',
-                                    boxSizing: 'border-box'
-                                }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#004b87', textTransform: 'uppercase' }}>
-                                            {full_name}
-                                        </span>
-                                        {logoUrl && (
-                                            <img src={logoUrl} alt="Logo" style={{ height: '24px', objectFit: 'contain' }} />
-                                        )}
-                                    </div>
-                                </div>
-                            )}
+                            ) : null}
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
                                 {isFirstPage && profile_summary && (
@@ -718,16 +688,7 @@ function getResumeHtml(data, candidate, logoUrl) {
             <div class="left-panel">
                 ${isFirstPage ? `
                     <div style="height: 35mm; visibility: hidden; pointer-events: none;"></div>
-                ` : `
-                    <div style="height: 25mm; display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid #004b87; margin-bottom: 8mm;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                            <span style="font-size: 11px; font-weight: 700; color: #004b87; text-transform: uppercase; letter-spacing: 0.05em;">
-                                ${full_name}
-                            </span>
-                            ${fullLogoUrl ? `<img src="${fullLogoUrl}" alt="Logo" style="height: 24px;" />` : ''}
-                        </div>
-                    </div>
-                `}
+                ` : ''}
 
                 <div style="display: flex; flex-direction: column; gap: 8mm;">
                     ${leftSections.map(secType => {
@@ -795,32 +756,23 @@ function getResumeHtml(data, candidate, logoUrl) {
             <!-- Right Panel -->
             <div class="right-panel">
                 ${isFirstPage ? `
-                    <div style="min-height: 35mm; height: auto; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid #004b87; padding-bottom: 2mm; box-sizing: border-box;">
-                        <div style="display: flex; justify-content: flex-end; align-items: center; gap: 8px;">
+                    <div style="border-bottom: 1px solid #004b87; padding-bottom: 4mm; margin-bottom: 6mm; box-sizing: border-box;">
+                        <div style="display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-bottom: 4mm;">
                             ${fullLogoUrl ? `<img src="${fullLogoUrl}" alt="Logo ribbon" style="height: 36px; object-fit: contain;" />` : ''}
                             <div style="display: flex; flex-direction: column; font-family: 'Outfit', sans-serif; line-height: 1.1; text-align: left;">
                                 <span style="font-weight: 800; font-size: 20px; color: #0f172a; letter-spacing: 0.05em; text-transform: uppercase;">ALAMATICZ</span>
                                 <span style="font-weight: 400; font-size: 11px; color: #64748b; letter-spacing: 0.18em; text-transform: uppercase;">SOLUTIONS</span>
                             </div>
                         </div>
-                        <div style="border-bottom: 1px solid #ddd; padding-bottom: 4px;"></div>
-                        <div style="margin-top: 4px;">
-                            <h1 class="candidate-name">${full_name}</h1>
-                            <div class="candidate-title">${job_title}</div>
+                        <div style="border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-bottom: 4mm;"></div>
+                        <div>
+                            <h1 class="candidate-name" style="margin: 0; font-size: 30px; font-weight: 800; color: #004b87; text-transform: uppercase; line-height: 1.2;">${full_name}</h1>
+                            <div class="candidate-title" style="margin-top: 4px; font-size: 12px; color: #4b779a; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">${job_title}</div>
                         </div>
                     </div>
-                ` : `
-                    <div style="height: 20mm; display: flex; flex-direction: column; justify-content: center; border-bottom: 1px solid #004b87; margin-bottom: 5mm; box-sizing: border-box;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                            <span style="font-size: 11px; font-weight: 700; color: #004b87; text-transform: uppercase; letter-spacing: 0.05em;">
-                                ${full_name}
-                            </span>
-                            ${fullLogoUrl ? `<img src="${fullLogoUrl}" alt="Logo" style="height: 24px;" />` : ''}
-                        </div>
-                    </div>
-                `}
+                ` : ''}
 
-                <div style="display: flex; flex-direction: column; gap: 8mm;">
+                <div>
                     ${isFirstPage && profile_summary ? `
                     <div class="section">
                         <h4>Profile Summary</h4>
@@ -912,16 +864,12 @@ function getResumeHtml(data, candidate, logoUrl) {
             print-color-adjust: exact !important;
             padding: 20mm 15mm 15mm 15mm;
             border-right: 1px solid rgba(0,0,0,0.05);
-            display: flex;
-            flex-direction: column;
         }
 
         .right-panel {
             width: 68%;
             height: 100%;
             padding: 20mm 20mm 15mm 20mm;
-            display: flex;
-            flex-direction: column;
         }
 
         .section {
