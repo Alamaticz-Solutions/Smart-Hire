@@ -118,7 +118,8 @@ export default function TemplatesPage() {
         gdrive_refresh_token: '',
         gdrive_folder_id: '',
         gdrive_email: '',
-        additional_emails: '[]'
+        additional_emails: '[]',
+        theme_usage_counts: '{}'
     })
 
     const showToast = (msg, type = 'success') => {
@@ -166,6 +167,7 @@ export default function TemplatesPage() {
                 headers: { 'x-user-username': user?.username }
             })
             showToast("Reply templates saved successfully!", "success")
+            fetchIntegrationsSettings()
         } catch (err) {
             alert(err.response?.data?.detail || "Failed to save template settings")
         } finally {
@@ -239,6 +241,24 @@ export default function TemplatesPage() {
         setPreviewType(tab);
     }
 
+    const getMostlyUsedTheme = () => {
+        try {
+            const counts = JSON.parse(integrationsSettings.theme_usage_counts || '{}');
+            let maxKey = null;
+            let maxVal = 0;
+            for (const [key, val] of Object.entries(counts)) {
+                if (val > maxVal) {
+                    maxVal = val;
+                    maxKey = key;
+                }
+            }
+            return maxKey;
+        } catch (e) {
+            return null;
+        }
+    };
+    const mostlyUsedTheme = getMostlyUsedTheme();
+
     return (
         <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
             {toast && <div className={`toast ${toast.type}`}>{toast.msg}</div>}
@@ -285,11 +305,36 @@ export default function TemplatesPage() {
                                 color: 'var(--text)', outline: 'none', fontWeight: 600, fontSize: '0.88rem' 
                             }}
                         >
-                            <option value="professional">💼 Professional Theme (Standard Recruiter Tone)</option>
-                            <option value="creative">🚀 Creative & Enthusiastic Theme (Startup/Tech Tone)</option>
-                            <option value="warm">❤️ Warm & Friendly Theme (Supportive Recruiter Tone)</option>
-                            <option value="custom">✏️ Custom Template (Fully Editable Editor)</option>
+                            <option value="professional">
+                                💼 Professional Theme (Standard Recruiter Tone){mostlyUsedTheme === 'professional' ? ' (🔥 Mostly Chosen)' : ''}
+                            </option>
+                            <option value="creative">
+                                🚀 Creative & Enthusiastic Theme (Startup/Tech Tone){mostlyUsedTheme === 'creative' ? ' (🔥 Mostly Chosen)' : ''}
+                            </option>
+                            <option value="warm">
+                                ❤️ Warm & Friendly Theme (Supportive Recruiter Tone){mostlyUsedTheme === 'warm' ? ' (🔥 Mostly Chosen)' : ''}
+                            </option>
+                            <option value="custom">
+                                ✏️ Custom Template (Fully Editable Editor){mostlyUsedTheme === 'custom' ? ' (🔥 Mostly Chosen)' : ''}
+                            </option>
                         </select>
+                        {mostlyUsedTheme && (
+                            <div style={{ 
+                                marginTop: '10px', 
+                                padding: '6px 12px', 
+                                background: 'rgba(212, 175, 55, 0.1)', 
+                                border: '1px dashed rgba(212, 175, 55, 0.4)', 
+                                borderRadius: '6px', 
+                                display: 'inline-flex', 
+                                alignItems: 'center', 
+                                gap: '6px',
+                                fontSize: '0.78rem',
+                                color: 'var(--gold)',
+                                fontWeight: 500
+                            }}>
+                                <span>🔥 <strong>Mostly Chosen Template:</strong> {mostlyUsedTheme === 'professional' ? 'Professional Theme' : mostlyUsedTheme === 'creative' ? 'Creative Theme' : mostlyUsedTheme === 'warm' ? 'Warm Theme' : 'Custom Template'}</span>
+                            </div>
+                        )}
                     </div>
 
                     {/* Editor Panel Card */}

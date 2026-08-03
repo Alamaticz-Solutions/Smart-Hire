@@ -532,7 +532,11 @@ function SkillBadges({ skills }) {
 const COLORS = ['#FB8500', '#FFB703', '#219EBC', '#8ECAE6', '#023047']
 
 export default function DashboardPage() {
-    const [candidates, setCandidates] = useState([])
+    const [candidates, setCandidates] = useState(() => {
+        try {
+            return JSON.parse(sessionStorage.getItem('cached_candidates')) || [];
+        } catch { return []; }
+    })
     const [columns, setColumns] = useState([])
     const [loading, setLoading] = useState(true)
     const [filterType, setFilterType] = useState('all') // 'all' | 'immediate'
@@ -552,6 +556,7 @@ export default function DashboardPage() {
             axios.get(`${import.meta.env.VITE_API_URL || ''}/api/columns`)
         ]).then(([candRes, colRes]) => {
             setCandidates(candRes.data)
+            sessionStorage.setItem('cached_candidates', JSON.stringify(candRes.data))
             setColumns([...colRes.data.base, ...colRes.data.custom])
         }).catch(() => { })
             .finally(() => setLoading(false))

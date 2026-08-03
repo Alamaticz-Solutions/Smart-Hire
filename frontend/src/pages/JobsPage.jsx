@@ -551,7 +551,16 @@ function ResumePreview({ data, logoUrl }) {
                             overflow: 'hidden'
                         }}>
                             {isFirstPage ? (
-                                <div style={{ height: '133px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                <div style={{ 
+                                    minHeight: '133px', 
+                                    height: 'auto', 
+                                    display: 'flex', 
+                                    flexDirection: 'column', 
+                                    gap: '12px',
+                                    borderBottom: '1px solid #004b87',
+                                    paddingBottom: '10px',
+                                    boxSizing: 'border-box'
+                                }}>
                                     <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px' }}>
                                         {logoUrl && (
                                             <img src={logoUrl} alt="Logo ribbon" style={{ height: '36px', objectFit: 'contain' }} />
@@ -563,17 +572,24 @@ function ResumePreview({ data, logoUrl }) {
                                     </div>
                                     <div style={{ borderBottom: '1px solid #ddd', paddingBottom: '4px' }} />
                                     <div style={{ marginTop: '8px' }}>
-                                        <h1 style={{ margin: 0, fontSize: '2.5rem', fontWeight: 800, color: '#004b87', textTransform: 'uppercase', letterSpacing: '0.02em', fontFamily: "'Outfit', sans-serif", lineHeight: '1.1' }}>
+                                        <h1 style={{ margin: 0, fontSize: '1.8rem', fontWeight: 800, color: '#004b87', textTransform: 'uppercase', letterSpacing: '0.02em', fontFamily: "'Outfit', sans-serif", lineHeight: '1.1' }}>
                                             {full_name}
                                         </h1>
                                         <div style={{ fontSize: '0.85rem', color: '#4b779a', fontWeight: 600, marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                                             {job_title}
                                         </div>
                                     </div>
-                                    <div style={{ borderBottom: '1px solid #004b87', marginTop: '2px' }} />
                                 </div>
                             ) : (
-                                <div style={{ height: '76px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <div style={{ 
+                                    height: '76px', 
+                                    display: 'flex', 
+                                    flexDirection: 'column', 
+                                    justifyContent: 'center',
+                                    borderBottom: '1px solid #004b87',
+                                    marginBottom: '20px',
+                                    boxSizing: 'border-box'
+                                }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#004b87', textTransform: 'uppercase' }}>
                                             {full_name}
@@ -582,7 +598,6 @@ function ResumePreview({ data, logoUrl }) {
                                             <img src={logoUrl} alt="Logo" style={{ height: '24px', objectFit: 'contain' }} />
                                         )}
                                     </div>
-                                    <div style={{ borderBottom: '1px solid #004b87', marginTop: '2px', marginBottom: '10px' }} />
                                 </div>
                             )}
 
@@ -780,7 +795,7 @@ function getResumeHtml(data, candidate, logoUrl) {
             <!-- Right Panel -->
             <div class="right-panel">
                 ${isFirstPage ? `
-                    <div style="height: 35mm; display: flex; flex-direction: column; gap: 8px;">
+                    <div style="min-height: 35mm; height: auto; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid #004b87; padding-bottom: 2mm; box-sizing: border-box;">
                         <div style="display: flex; justify-content: flex-end; align-items: center; gap: 8px;">
                             ${fullLogoUrl ? `<img src="${fullLogoUrl}" alt="Logo ribbon" style="height: 36px; object-fit: contain;" />` : ''}
                             <div style="display: flex; flex-direction: column; font-family: 'Outfit', sans-serif; line-height: 1.1; text-align: left;">
@@ -795,14 +810,13 @@ function getResumeHtml(data, candidate, logoUrl) {
                         </div>
                     </div>
                 ` : `
-                    <div style="height: 20mm; display: flex; flex-direction: column; gap: 6px;">
+                    <div style="height: 20mm; display: flex; flex-direction: column; justify-content: center; border-bottom: 1px solid #004b87; margin-bottom: 5mm; box-sizing: border-box;">
                         <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
                             <span style="font-size: 11px; font-weight: 700; color: #004b87; text-transform: uppercase; letter-spacing: 0.05em;">
                                 ${full_name}
                             </span>
                             ${fullLogoUrl ? `<img src="${fullLogoUrl}" alt="Logo" style="height: 24px;" />` : ''}
                         </div>
-                        <div style="border-bottom: 1px solid #004b87; margin-top: 2px;"></div>
                     </div>
                 `}
 
@@ -2295,9 +2309,25 @@ export default function JobsPage() {
     const isExternal = user?.is_external === 1;
     const isAdmin = user?.role === 'admin' || user?.is_admin === 1 || user?.is_hr === 1;
 
-    const [jobs, setJobs] = useState([]);
-    const [selectedJob, setSelectedJob] = useState(null);
-    const [candidates, setCandidates] = useState([]);
+    const [jobs, setJobs] = useState(() => {
+        try {
+            return JSON.parse(sessionStorage.getItem('cached_jobs')) || [];
+        } catch { return []; }
+    });
+    const [selectedJob, setSelectedJob] = useState(() => {
+        try {
+            return JSON.parse(sessionStorage.getItem('cached_selected_job')) || null;
+        } catch { return null; }
+    });
+    const [candidates, setCandidates] = useState(() => {
+        try {
+            const initialSelected = JSON.parse(sessionStorage.getItem('cached_selected_job'));
+            if (initialSelected) {
+                return JSON.parse(sessionStorage.getItem(`cached_job_candidates_${initialSelected.id}`)) || [];
+            }
+        } catch {}
+        return [];
+    });
     const [showNewForm, setShowNewForm] = useState(false);
     const [newJob, setNewJob] = useState({
         title: '',
@@ -2355,6 +2385,7 @@ export default function JobsPage() {
         required_skills: ''
     });
     const [isSavingJob, setIsSavingJob] = useState(false);
+    const [isCreatingJob, setIsCreatingJob] = useState(false);
     
     // Sharing & External Roles states
     const [showDropdown, setShowDropdown] = useState(false);
@@ -2499,9 +2530,13 @@ export default function JobsPage() {
         try {
             const r = await axios.get(`${API_URL}/api/jobs`);
             setJobs(r.data);
+            sessionStorage.setItem('cached_jobs', JSON.stringify(r.data));
             if (selectedJob) {
                 const updated = r.data.find(j => j.id === selectedJob.id);
-                if (updated) setSelectedJob(updated);
+                if (updated) {
+                    setSelectedJob(updated);
+                    sessionStorage.setItem('cached_selected_job', JSON.stringify(updated));
+                }
             }
         } catch (e) {
             console.error(e);
@@ -2512,6 +2547,7 @@ export default function JobsPage() {
         try {
             const r = await axios.get(`${API_URL}/api/jobs/${jobId}/candidates`);
             setCandidates(r.data);
+            sessionStorage.setItem(`cached_job_candidates_${jobId}`, JSON.stringify(r.data));
         } catch (e) {
             console.error(e);
         }
@@ -2555,8 +2591,17 @@ export default function JobsPage() {
 
     useEffect(() => {
         if (selectedJob) {
+            sessionStorage.setItem('cached_selected_job', JSON.stringify(selectedJob));
+            try {
+                const cachedCand = sessionStorage.getItem(`cached_job_candidates_${selectedJob.id}`);
+                if (cachedCand) {
+                    setCandidates(JSON.parse(cachedCand));
+                }
+            } catch (e) {}
             loadCandidates(selectedJob.id);
             loadCols();
+        } else {
+            sessionStorage.removeItem('cached_selected_job');
         }
     }, [selectedJob]);
 
@@ -2577,6 +2622,8 @@ export default function JobsPage() {
 
     const handleCreateJob = async () => {
         if (!newJob.title || !newJob.description) return showToast('Title and Description are required', 'error');
+        if (isCreatingJob) return;
+        setIsCreatingJob(true);
         try {
             const r = await axios.post(`${API_URL}/api/jobs`, newJob);
             setJobs([r.data, ...jobs]);
@@ -2601,6 +2648,8 @@ export default function JobsPage() {
             showToast('Job Created!');
         } catch (e) {
             showToast('Failed to create job', 'error');
+        } finally {
+            setIsCreatingJob(false);
         }
     }
 
@@ -3289,8 +3338,10 @@ export default function JobsPage() {
                             </div>
                             
                             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', borderTop: '1px solid rgba(var(--sky-rgb), 0.15)', paddingTop: '1.5rem' }}>
-                                <button className="btn btn-secondary" style={{ padding: '10px 22px', fontSize: '0.85rem' }} onClick={() => setShowNewForm(false)}>Cancel</button>
-                                <button className="btn btn-primary" style={{ padding: '10px 22px', fontSize: '0.85rem', boxShadow: '0 4px 14px rgba(var(--primary-rgb), 0.3)' }} onClick={handleCreateJob}>Create Job Description</button>
+                                <button className="btn btn-secondary" style={{ padding: '10px 22px', fontSize: '0.85rem' }} onClick={() => setShowNewForm(false)} disabled={isCreatingJob}>Cancel</button>
+                                <button className="btn btn-primary" style={{ padding: '10px 22px', fontSize: '0.85rem', boxShadow: '0 4px 14px rgba(var(--primary-rgb), 0.3)' }} onClick={handleCreateJob} disabled={isCreatingJob}>
+                                    {isCreatingJob ? 'Creating...' : 'Create Job Description'}
+                                </button>
                             </div>
                         </div>
                     </div>

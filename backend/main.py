@@ -516,7 +516,8 @@ def init_db():
         gdrive_refresh_token TEXT,
         gdrive_folder_id TEXT,
         gdrive_email TEXT,
-        additional_emails TEXT DEFAULT '[]'
+        additional_emails TEXT DEFAULT '[]',
+        theme_usage_counts TEXT DEFAULT '{}'
     )
     ''')
 
@@ -525,6 +526,8 @@ def init_db():
     existing_settings_cols = {c[1] for c in cur.fetchall()}
     if 'reply_theme' not in existing_settings_cols:
         cur.execute("ALTER TABLE integrations_settings ADD COLUMN reply_theme TEXT DEFAULT 'professional'")
+    if 'theme_usage_counts' not in existing_settings_cols:
+        cur.execute("ALTER TABLE integrations_settings ADD COLUMN theme_usage_counts TEXT DEFAULT '{}'")
     if 'reply_subject' not in existing_settings_cols:
         cur.execute("ALTER TABLE integrations_settings ADD COLUMN reply_subject TEXT DEFAULT 'Re: {subject} (Ref: {ref})'")
     if 'reply_body_missing' not in existing_settings_cols:
@@ -581,7 +584,7 @@ def get_candidates_list(username: Optional[str] = None, role: str = "user") -> l
             "skills, certifications, ctc, notice_period, current_organization, email, phone, "
             "linkedin, created_by, timestamp, source, cdh_exp, expected_ctc, percentage_hike, "
             "candidate_interview_status, availability_in_days, current_location, pref_locations, "
-            "current_client, domain, tier, certification_version, email_message, formatted_json, "
+            "current_client, domain, tier, certification_version, "
             "sender_email, is_qualified, is_approved, file_url"
         )
         if role == "admin" or is_hr_or_admin or not username:
@@ -1744,8 +1747,6 @@ def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, userna
             # Match found! Delete the placeholder record we created in upload_resume
             if placeholder_id:
                 cur.execute("DELETE FROM candidate_metadata WHERE id = ?", (placeholder_id,))
-            else:
-                cur.execute("DELETE FROM candidate_metadata WHERE filename = ?", (safe_name,))
             
             # Fetch the existing candidate metadata to merge values
             cur.execute("SELECT * FROM candidate_metadata WHERE id = ?", (match_id,))
@@ -1817,8 +1818,6 @@ def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, userna
             cur = conn.cursor()
             if placeholder_id:
                 cur.execute("DELETE FROM candidate_metadata WHERE id = ?", (placeholder_id,))
-            else:
-                cur.execute("DELETE FROM candidate_metadata WHERE filename = ?", (safe_name,))
             conn.commit()
             conn.close()
         except Exception as db_err:
@@ -2507,7 +2506,15 @@ def query_candidates_by_filters(filters: dict, username: str, role: str) -> list
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     
-    query = "SELECT * FROM candidate_metadata WHERE 1=1"
+    cols_to_select = (
+        "id, filename, full_name, candidate_status, total_experience, pega_experience, "
+        "skills, certifications, ctc, notice_period, current_organization, email, phone, "
+        "linkedin, created_by, timestamp, source, cdh_exp, expected_ctc, percentage_hike, "
+        "candidate_interview_status, availability_in_days, current_location, pref_locations, "
+        "current_client, domain, tier, certification_version, "
+        "sender_email, is_qualified, is_approved, file_url"
+    )
+    query = f"SELECT {cols_to_select} FROM candidate_metadata WHERE 1=1"
     params = []
     
     # Non-admins and non-HRs can only see their own candidates
@@ -3191,7 +3198,7 @@ def get_job_candidates(job_id: int, request: Request):
         "c.skills, c.certifications, c.ctc, c.notice_period, c.current_organization, c.email, c.phone, "
         "c.linkedin, c.created_by, c.timestamp, c.source, c.cdh_exp, c.expected_ctc, c.percentage_hike, "
         "c.candidate_interview_status, c.availability_in_days, c.current_location, c.pref_locations, "
-        "c.current_client, c.domain, c.tier, c.certification_version, c.email_message, c.formatted_json, "
+        "c.current_client, c.domain, c.tier, c.certification_version, "
         "c.sender_email, c.is_qualified, c.is_approved, c.file_url"
     )
     cur.execute(f"""
@@ -4615,6 +4622,7 @@ class IntegrationSettingsRequest(BaseModel):
     gdrive_folder_id: Optional[str] = None
     gdrive_email: Optional[str] = None
     additional_emails: Optional[str] = "[]"
+    theme_usage_counts: Optional[str] = "{}"
 
 @app.get("/api/integrations")
 def get_integrations_settings(request: Request):
@@ -4630,7 +4638,7 @@ def get_integrations_settings(request: Request):
                email_user, email_pass, keywords, drive_enabled,
                reply_theme, reply_subject, reply_body_missing, reply_body_complete,
                gdrive_client_id, gdrive_client_secret, gdrive_refresh_token, gdrive_folder_id, gdrive_email,
-               additional_emails
+               additional_emails, theme_usage_counts
         FROM integrations_settings LIMIT 1
     """)
     row = cur.fetchone()
@@ -4650,7 +4658,8 @@ def get_integrations_settings(request: Request):
             "gdrive_refresh_token": "",
             "gdrive_folder_id": "",
             "gdrive_email": "",
-            "additional_emails": "[]"
+            "additional_emails": "[]",
+            "theme_usage_counts": "{}"
         }
         
     masked_pass = ""
@@ -4697,6 +4706,8 @@ def get_integrations_settings(request: Request):
         except Exception:
             pass
 
+    theme_usage_counts = row[19] if len(row) > 19 else "{}"
+
     return {
         "email_enabled": row[0],
         "imap_host": row[1] or "imap.gmail.com",
@@ -4716,7 +4727,8 @@ def get_integrations_settings(request: Request):
         "gdrive_refresh_token": masked_gdrive_refresh,
         "gdrive_folder_id": row[16] or "",
         "gdrive_email": row[17] or "",
-        "additional_emails": masked_additional_emails
+        "additional_emails": masked_additional_emails,
+        "theme_usage_counts": theme_usage_counts
     }
 
 @app.post("/api/integrations")
@@ -4729,7 +4741,7 @@ def save_integrations_settings(settings: IntegrationSettingsRequest, request: Re
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
     
-    cur.execute("SELECT id, email_pass, gdrive_client_secret, gdrive_refresh_token, additional_emails FROM integrations_settings LIMIT 1")
+    cur.execute("SELECT id, email_pass, gdrive_client_secret, gdrive_refresh_token, additional_emails, theme_usage_counts FROM integrations_settings LIMIT 1")
     row = cur.fetchone()
     
     final_pass = settings.email_pass
@@ -4766,6 +4778,17 @@ def save_integrations_settings(settings: IntegrationSettingsRequest, request: Re
             
     final_additional_emails = json.dumps(new_list)
 
+    # Load and increment theme usage count
+    current_counts = {}
+    if row and len(row) > 5 and row[5]:
+        try:
+            current_counts = json.loads(row[5])
+        except Exception:
+            current_counts = {}
+    selected_theme = settings.reply_theme or "professional"
+    current_counts[selected_theme] = current_counts.get(selected_theme, 0) + 1
+    final_theme_usage = json.dumps(current_counts)
+
     if row:
         cur.execute("""
         UPDATE integrations_settings SET
@@ -4776,7 +4799,8 @@ def save_integrations_settings(settings: IntegrationSettingsRequest, request: Re
             reply_body_missing = ?, reply_body_complete = ?,
             gdrive_client_id = ?, gdrive_client_secret = ?,
             gdrive_refresh_token = ?, gdrive_folder_id = ?,
-            gdrive_email = ?, additional_emails = ?
+            gdrive_email = ?, additional_emails = ?,
+            theme_usage_counts = ?
         WHERE id = ?
         """, (settings.email_enabled, settings.imap_host, settings.imap_port,
               settings.smtp_host, settings.smtp_port, settings.email_user,
@@ -4785,14 +4809,15 @@ def save_integrations_settings(settings: IntegrationSettingsRequest, request: Re
               settings.reply_body_missing, settings.reply_body_complete,
               settings.gdrive_client_id, final_gdrive_secret,
               settings.gdrive_refresh_token, settings.gdrive_folder_id,
-              settings.gdrive_email, final_additional_emails, row[0]))
+              settings.gdrive_email, final_additional_emails, final_theme_usage, row[0]))
     else:
         cur.execute("""
         INSERT INTO integrations_settings (
             email_enabled, imap_host, imap_port, smtp_host, smtp_port, email_user, email_pass, keywords, drive_enabled,
             reply_theme, reply_subject, reply_body_missing, reply_body_complete,
-            gdrive_client_id, gdrive_client_secret, gdrive_refresh_token, gdrive_folder_id, gdrive_email, additional_emails
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            gdrive_client_id, gdrive_client_secret, gdrive_refresh_token, gdrive_folder_id, gdrive_email, additional_emails,
+            theme_usage_counts
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (settings.email_enabled, settings.imap_host, settings.imap_port,
               settings.smtp_host, settings.smtp_port, settings.email_user,
               final_pass, settings.keywords, settings.drive_enabled,
@@ -4800,8 +4825,8 @@ def save_integrations_settings(settings: IntegrationSettingsRequest, request: Re
               settings.reply_body_missing, settings.reply_body_complete,
               settings.gdrive_client_id, final_gdrive_secret,
               settings.gdrive_refresh_token, settings.gdrive_folder_id,
-              settings.gdrive_email, final_additional_emails))
-              
+              settings.gdrive_email, final_additional_emails, final_theme_usage))
+
     if settings.email_enabled == 0:
         try:
             cur.execute("SELECT id, filename FROM candidate_metadata WHERE source = 'uploaded from mail'")

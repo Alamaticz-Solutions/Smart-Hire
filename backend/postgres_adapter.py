@@ -61,16 +61,26 @@ class PGCursor:
         pg_params = params
         if params is not None:
             if isinstance(params, dict):
-                pg_params = {k: (None if v == "" else v) for k, v in params.items()}
+                pg_params = {k: (None if (isinstance(v, str) and v.strip() == "") else v) for k, v in params.items()}
             elif isinstance(params, (list, tuple)):
-                pg_params = [None if v == "" else v for v in params]
+                pg_params = [None if (isinstance(v, str) and v.strip() == "") else v for v in params]
             else:
-                pg_params = (None if params == "" else params,)
+                pg_params = (None if (isinstance(params, str) and params.strip() == "") else params,)
         else:
             pg_params = None
         
         # Execute query
-        self.pg_cursor.execute(translated, pg_params)
+        try:
+            self.pg_cursor.execute(translated, pg_params)
+        except Exception as e:
+            try:
+                print(f"--- POSTGRES EXECUTION FAILURE ---")
+                print(f"Query: {translated.encode('ascii', errors='replace').decode('ascii')}")
+                print(f"Params: {str(pg_params).encode('ascii', errors='replace').decode('ascii')}")
+                print(f"Error: {e}")
+            except Exception:
+                pass
+            raise e
         
         # Capture last inserted ID if query has RETURNING id
         if "RETURNING id" in translated:
@@ -132,6 +142,8 @@ class PGCursor:
         
         # 1. Placeholders: ? -> %s
         translated = q.replace("?", "%s")
+        # Escape literal '%' (not followed by 's') to '%%' for psycopg2 format compatibility
+        translated = re.sub(r'%(?!s)', '%%', translated)
         
         # 2. CREATE TABLE translations
         # id INTEGER PRIMARY KEY AUTOINCREMENT -> id SERIAL PRIMARY KEY
@@ -269,6 +281,7 @@ def connect_pg(*args, **kwargs):
             password=PG_PASS,
             database=PG_DB
         )
+    conn.set_client_encoding('UTF8')
     return PGConnection(conn)
 
 def patch_if_configured():

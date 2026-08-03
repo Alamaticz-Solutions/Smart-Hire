@@ -148,7 +148,11 @@ const TD_BASE = {
 /* ─── Page ────────────────────────────────────────────────────────────────── */
 export default function UploadPage() {
     const { user } = useOutletContext()
-    const [candidates, setCandidates] = useState([])
+    const [candidates, setCandidates] = useState(() => {
+        try {
+            return JSON.parse(sessionStorage.getItem('cached_candidates')) || [];
+        } catch { return []; }
+    })
     const [progress, setProgress] = useState([])
     const [toast, setToast] = useState(null)
     const [editCell, setEditCell] = useState(null)
@@ -301,7 +305,10 @@ export default function UploadPage() {
     const load = () => {
         setLoadingCandidates(true);
         return axios.get(`${API_URL}/api/candidates`)
-            .then(r => setCandidates(r.data))
+            .then(r => {
+                setCandidates(r.data);
+                sessionStorage.setItem('cached_candidates', JSON.stringify(r.data));
+            })
             .catch(err => {
                 console.error("Failed to load candidates", err);
                 showToast("Failed to load candidates", "error");
