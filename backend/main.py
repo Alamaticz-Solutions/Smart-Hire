@@ -324,13 +324,16 @@ def init_db():
     cur.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            full_name TEXT NOT NULL,
+            full_name TEXT,
             username TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL,
             role TEXT DEFAULT 'user',
             is_hr INTEGER DEFAULT 0,
             is_admin INTEGER DEFAULT 0,
-            is_external INTEGER DEFAULT 0
+            is_external INTEGER DEFAULT 0,
+            hidden_fields TEXT DEFAULT '',
+            email TEXT,
+            is_approved INTEGER DEFAULT 0
         )
     ''')
     cur.execute('''
@@ -440,47 +443,58 @@ def init_db():
             cur.execute(f"ALTER TABLE jobs ADD COLUMN {col} {dtype}")
             
     # Migration: add missing columns to users
+    # Wrapped in try/except because PostgreSQL raises an error if the column already exists
     cur.execute("PRAGMA table_info(users)")
     existing_users_cols = [c[1] for c in cur.fetchall()]
-    if 'is_hr' not in existing_users_cols:
-        cur.execute("ALTER TABLE users ADD COLUMN is_hr INTEGER DEFAULT 0")
-    if 'is_admin' not in existing_users_cols:
-        cur.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0")
-    if 'is_external' not in existing_users_cols:
-        cur.execute("ALTER TABLE users ADD COLUMN is_external INTEGER DEFAULT 0")
-    if 'hidden_fields' not in existing_users_cols:
-        cur.execute("ALTER TABLE users ADD COLUMN hidden_fields TEXT DEFAULT ''")
-    if 'email' not in existing_users_cols:
-        cur.execute("ALTER TABLE users ADD COLUMN email TEXT")
-    if 'is_approved' not in existing_users_cols:
-        cur.execute("ALTER TABLE users ADD COLUMN is_approved INTEGER DEFAULT 0")
+    users_migrate_cols = {
+        'is_hr': 'INTEGER DEFAULT 0',
+        'is_admin': 'INTEGER DEFAULT 0',
+        'is_external': 'INTEGER DEFAULT 0',
+        'hidden_fields': "TEXT DEFAULT ''",
+        'email': 'TEXT',
+        'is_approved': 'INTEGER DEFAULT 0',
+        'full_name': 'TEXT',
+    }
+    for col, dtype in users_migrate_cols.items():
+        if col not in existing_users_cols:
+            try:
+                cur.execute(f"ALTER TABLE users ADD COLUMN {col} {dtype}")
+                conn.commit()
+            except Exception:
+                conn.rollback()
 
     # Seed default users if empty (do NOT wipe the table to preserve registered users!)
     cur.execute("SELECT COUNT(*) FROM users WHERE LOWER(username) = 'admin'")
     if cur.fetchone()[0] == 0:
-        cur.execute("INSERT INTO users (full_name, username, password, role, is_hr, is_admin, email) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    ("System Admin", "admin", "admin", "admin", 1, 1, "admin@gmail.com"))
+        cur.execute("INSERT INTO users (full_name, username, password, role, is_hr, is_admin, email, is_approved) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    ("System Admin", "admin", "admin", "admin", 1, 1, "admin@gmail.com", 1))
     else:
-        # Guarantee admin password is 'admin' as requested by the user
-        cur.execute("UPDATE users SET password = ?, role = 'admin', is_hr = 1, is_admin = 1 WHERE LOWER(username) = 'admin'", ("admin",))
+        # Guarantee admin role/flags are set correctly
+        try:
+            cur.execute("UPDATE users SET role = 'admin', is_hr = 1, is_admin = 1, is_approved = 1 WHERE LOWER(username) = 'admin'")
+        except Exception as e:
+            print(f"Warning: could not update admin user flags: {e}")
 
     cur.execute("SELECT COUNT(*) FROM users WHERE LOWER(username) = 'user'")
     if cur.fetchone()[0] == 0:
-        cur.execute("INSERT INTO users (full_name, username, password, role, is_hr, is_admin, email) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    ("Test User", "user", "user", "user", 0, 0, "user@gmail.com"))
+        cur.execute("INSERT INTO users (full_name, username, password, role, is_hr, is_admin, email, is_approved) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    ("Test User", "user", "user", "user", 0, 0, "user@gmail.com", 1))
 
     # Seed the 4 recruiters in user management if they do not exist
     for m in ["Boopathi", "Praveen", "Harish", "Sabari"]:
         uname = m.lower()
         role = "admin" if uname == "sabari" else "user"
-        is_admin = 1 if uname == "sabari" else 0
-        is_hr = 1 if uname == "sabari" else 0
+        is_admin_val = 1 if uname == "sabari" else 0
+        is_hr_val = 1 if uname == "sabari" else 0
         cur.execute("SELECT COUNT(*) FROM users WHERE LOWER(username) = ?", (uname,))
         if cur.fetchone()[0] == 0:
-            cur.execute("INSERT INTO users (full_name, username, password, role, is_hr, is_admin, email) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        (m, uname, uname, role, is_hr, is_admin, f"{uname}@gmail.com"))
+            cur.execute("INSERT INTO users (full_name, username, password, role, is_hr, is_admin, email, is_approved) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        (m, uname, uname, role, is_hr_val, is_admin_val, f"{uname}@gmail.com", 1))
         else:
-            cur.execute("UPDATE users SET is_hr = ?, is_admin = ?, role = ? WHERE LOWER(username) = ?", (is_hr, is_admin, role, uname))
+            try:
+                cur.execute("UPDATE users SET is_hr = ?, is_admin = ?, role = ?, is_approved = 1 WHERE LOWER(username) = ?", (is_hr_val, is_admin_val, role, uname))
+            except Exception as e:
+                print(f"Warning: could not update user {uname}: {e}")
         
     cur.execute("SELECT COUNT(*) FROM team_members")
     if cur.fetchone()[0] == 0:
@@ -488,11 +502,17 @@ def init_db():
             cur.execute("INSERT OR IGNORE INTO team_members (name) VALUES (?)", (m,))
         
     # Pre-approve seeded/default users
-    cur.execute("UPDATE users SET is_approved = 1 WHERE LOWER(username) IN ('admin', 'user', 'boopathi', 'praveen', 'harish', 'sabari')")
+    try:
+        cur.execute("UPDATE users SET is_approved = 1 WHERE LOWER(username) IN ('admin', 'user', 'boopathi', 'praveen', 'harish', 'sabari')")
+    except Exception as e:
+        print(f"Warning: could not pre-approve default users: {e}")
 
-    # Fix emails of existing seeded/default users and Somasekhar9 if they are NULL/empty
+    # Fix emails of existing seeded/default users if they are NULL/empty
     for uname in ["admin", "user", "boopathi", "praveen", "harish", "sabari", "somasekhar9"]:
-        cur.execute("UPDATE users SET email = ? WHERE LOWER(username) = ? AND (email IS NULL OR email = '')", (f"{uname}@gmail.com", uname))
+        try:
+            cur.execute("UPDATE users SET email = ? WHERE LOWER(username) = ? AND (email IS NULL OR email = '')", (f"{uname}@gmail.com", uname))
+        except Exception:
+            pass
 
     # Create integrations_settings table
     cur.execute('''

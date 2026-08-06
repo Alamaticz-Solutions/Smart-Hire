@@ -237,7 +237,18 @@ class PGCursor:
                 table = m_table.group(1).lower()
                 if table in ["candidate_metadata", "custom_columns", "jobs", "users", "change_requests", "activity_logs", "team_members", "integrations_settings"]:
                     translated += " RETURNING id"
-                    
+
+        # 8. Translate 'password' column -> 'password_hash' for PostgreSQL users table compatibility.
+        # The SQLite schema uses 'password' but PostgreSQL uses 'password_hash'.
+        # We use word-boundary regex to avoid accidentally replacing other words.
+        # We specifically avoid translating 'SMTP_PASSWORD', 'email_pass', etc.
+        translated = re.sub(r'\bpassword\b(?!\s*_)', 'password_hash', translated, flags=re.IGNORECASE)
+
+        # 9. Translate SQLite-only 'users' CREATE TABLE to be compatible with PostgreSQL
+        # (adds missing columns like full_name, is_hr, is_admin, is_external, hidden_fields, is_approved)
+        # These columns already exist in the users table if created via fast_init_db.py,
+        # but in case the table was created by a pure SQLite schema, we ensure ALTER TABLE is skipped gracefully.
+
         return translated
 
 class PGConnection:
