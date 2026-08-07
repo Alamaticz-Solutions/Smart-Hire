@@ -372,7 +372,7 @@ export default function ConnectPage() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderRadius: 8, background: 'rgba(var(--sky-rgb), 0.05)', border: '1px solid rgba(var(--sky-rgb), 0.15)' }}>
                             <div>
                                 <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text)' }}>Enable Candidate Email Sync</div>
-                                <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>Polls Gmail unseen messages for attached resumes matching keywords.</div>
+                                <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>Polls Email unseen messages for attached resumes matching keywords.</div>
                             </div>
                             <label style={{ position: 'relative', display: 'inline-block', width: 48, height: 24, cursor: 'pointer' }}>
                                 <input 
@@ -399,6 +399,39 @@ export default function ConnectPage() {
                                 <h3 style={{ margin: '0 0 16px 0', color: 'var(--gold)', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 8 }}>
                                     📧 Primary Admin Mailbox Sync
                                 </h3>
+                                <div style={{ marginBottom: 16 }}>
+                                    <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Email Provider</label>
+                                    <div style={{ display: 'flex', gap: 8 }}>
+                                        {['Gmail', 'Outlook', 'Custom'].map(provider => {
+                                            let isActive = false;
+                                            if (provider === 'Gmail' && integrationsSettings.imap_host?.includes('gmail')) isActive = true;
+                                            else if (provider === 'Outlook' && integrationsSettings.imap_host?.includes('office365')) isActive = true;
+                                            else if (provider === 'Custom' && !integrationsSettings.imap_host?.includes('gmail') && !integrationsSettings.imap_host?.includes('office365')) isActive = true;
+                                            
+                                            return (
+                                                <button
+                                                    key={provider}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (provider === 'Gmail') {
+                                                            setIntegrationsSettings(prev => ({ ...prev, imap_host: 'imap.gmail.com', smtp_host: 'smtp.gmail.com', imap_port: 993, smtp_port: 587 }))
+                                                        } else if (provider === 'Outlook') {
+                                                            setIntegrationsSettings(prev => ({ ...prev, imap_host: 'outlook.office365.com', smtp_host: 'smtp.office365.com', imap_port: 993, smtp_port: 587 }))
+                                                        }
+                                                    }}
+                                                    style={{
+                                                        padding: '6px 16px', borderRadius: 20, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
+                                                        border: isActive ? '1px solid var(--gold)' : '1px solid var(--border)',
+                                                        background: isActive ? 'rgba(var(--sky-rgb), 0.15)' : 'rgba(0,0,0,0.2)',
+                                                        color: isActive ? 'var(--gold)' : 'var(--text-dim)'
+                                                    }}
+                                                >
+                                                    {provider}
+                                                </button>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
                                     <div>
                                         <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Email Address</label>
@@ -409,16 +442,49 @@ export default function ConnectPage() {
                                             style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
                                         />
                                     </div>
-                                    <div>
-                                        <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>App Password</label>
-                                        <input 
-                                            type="password"
-                                            value={integrationsSettings.email_pass || ''}
-                                            onChange={e => setIntegrationsSettings(prev => ({ ...prev, email_pass: e.target.value }))}
-                                            placeholder={integrationsSettings.email_pass === '****' ? '••••••••••••••••' : '16-character app password'}
-                                            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
-                                        />
-                                    </div>
+                                    {integrationsSettings.imap_host?.includes('office365') ? (
+                                        <>
+                                            <div>
+                                                <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Application ID (Client ID)</label>
+                                                <input 
+                                                    value={integrationsSettings.ms_client_id || ''}
+                                                    onChange={e => setIntegrationsSettings(prev => ({ ...prev, ms_client_id: e.target.value }))}
+                                                    placeholder="00000000-0000-0000-0000-000000000000"
+                                                    style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Tenant ID</label>
+                                                <input 
+                                                    value={integrationsSettings.ms_tenant_id || ''}
+                                                    onChange={e => setIntegrationsSettings(prev => ({ ...prev, ms_tenant_id: e.target.value }))}
+                                                    placeholder="common or tenant id"
+                                                    style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Client Secret</label>
+                                                <input 
+                                                    type="password"
+                                                    value={integrationsSettings.ms_client_secret || ''}
+                                                    onChange={e => setIntegrationsSettings(prev => ({ ...prev, ms_client_secret: e.target.value }))}
+                                                    placeholder={integrationsSettings.ms_client_secret === '****' ? '                ' : 'Client Secret Value'}
+                                                    style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                                                />
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div>
+                                            <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>App Password</label>
+                                            <input 
+                                                type="password"
+                                                value={integrationsSettings.email_pass || ''}
+                                                onChange={e => setIntegrationsSettings(prev => ({ ...prev, email_pass: e.target.value }))}
+                                                placeholder={integrationsSettings.email_pass === '****' ? '                ' : '16-character app password'}
+                                                style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Keywords List */}
@@ -615,6 +681,39 @@ export default function ConnectPage() {
                                 {/* Add Connection Card */}
                                 <div style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: 16 }}>
                                     <h4 style={{ margin: '0 0 12px 0', color: 'var(--text)', fontSize: '0.85rem' }}>➕ Add New Shared Mailbox</h4>
+                                    <div style={{ marginBottom: 12 }}>
+                                        <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-dim)', marginBottom: 6 }}>Email Provider</label>
+                                        <div style={{ display: 'flex', gap: 8 }}>
+                                            {['Gmail', 'Outlook', 'Custom'].map(provider => {
+                                                let isActive = false;
+                                                if (provider === 'Gmail' && newEmailForm.imap_host?.includes('gmail')) isActive = true;
+                                                else if (provider === 'Outlook' && newEmailForm.imap_host?.includes('office365')) isActive = true;
+                                                else if (provider === 'Custom' && !newEmailForm.imap_host?.includes('gmail') && !newEmailForm.imap_host?.includes('office365')) isActive = true;
+                                                
+                                                return (
+                                                    <button
+                                                        key={provider}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            if (provider === 'Gmail') {
+                                                                setNewEmailForm(prev => ({ ...prev, imap_host: 'imap.gmail.com', smtp_host: 'smtp.gmail.com', imap_port: 993, smtp_port: 587 }))
+                                                            } else if (provider === 'Outlook') {
+                                                                setNewEmailForm(prev => ({ ...prev, imap_host: 'outlook.office365.com', smtp_host: 'smtp.office365.com', imap_port: 993, smtp_port: 587 }))
+                                                            }
+                                                        }}
+                                                        style={{
+                                                            padding: '4px 12px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
+                                                            border: isActive ? '1px solid var(--gold)' : '1px solid var(--border)',
+                                                            background: isActive ? 'rgba(var(--sky-rgb), 0.15)' : 'rgba(0,0,0,0.2)',
+                                                            color: isActive ? 'var(--gold)' : 'var(--text-dim)'
+                                                        }}
+                                                    >
+                                                        {provider}
+                                                    </button>
+                                                )
+                                            })}
+                                        </div>
+                                    </div>
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                                         <div>
                                             <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-dim)', marginBottom: 4 }}>Email Address</label>
@@ -625,19 +724,25 @@ export default function ConnectPage() {
                                                 style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', fontSize: '0.8rem' }}
                                             />
                                         </div>
-                                        <div>
-                                            <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-dim)', marginBottom: 4 }}>App Password</label>
-                                            <input 
-                                                type="password"
-                                                value={newEmailForm.email_pass}
-                                                onChange={e => setNewEmailForm(prev => ({ ...prev, email_pass: e.target.value }))}
-                                                placeholder="app password"
-                                                style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', fontSize: '0.8rem' }}
-                                            />
-                                        </div>
+                                        {newEmailForm.imap_host?.includes('office365') ? (
+                                            <div style={{ display: 'flex', alignItems: 'center', color: 'var(--text-dim)', fontSize: '0.72rem' }}>
+                                                Uses global Microsoft Graph API settings configured in Primary Mailbox.
+                                            </div>
+                                        ) : (
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-dim)', marginBottom: 4 }}>App Password</label>
+                                                <input 
+                                                    type="password"
+                                                    value={newEmailForm.email_pass}
+                                                    onChange={e => setNewEmailForm(prev => ({ ...prev, email_pass: e.target.value }))}
+                                                    placeholder="app password"
+                                                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', fontSize: '0.8rem' }}
+                                                />
+                                            </div>
+                                        )}
                                     </div>
                                     <details style={{ cursor: 'pointer', background: 'rgba(0,0,0,0.1)', padding: 8, borderRadius: 6, marginBottom: 12 }}>
-                                        <summary style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Config (Default IMAP: Gmail)</summary>
+                                        <summary style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Config (Auto-detects Gmail/Outlook)</summary>
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 8 }}>
                                             <div>
                                                 <label style={{ display: 'block', fontSize: '0.68rem', color: 'var(--text-dim)' }}>IMAP Host</label>

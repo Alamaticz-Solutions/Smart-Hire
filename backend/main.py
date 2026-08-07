@@ -537,6 +537,9 @@ def init_db():
         gdrive_refresh_token TEXT,
         gdrive_folder_id TEXT,
         gdrive_email TEXT,
+        ms_client_id TEXT,
+        ms_client_secret TEXT,
+        ms_tenant_id TEXT DEFAULT 'common',
         additional_emails TEXT DEFAULT '[]',
         theme_usage_counts TEXT DEFAULT '{}'
     )
@@ -567,6 +570,12 @@ def init_db():
         cur.execute("ALTER TABLE integrations_settings ADD COLUMN gdrive_email TEXT")
     if 'additional_emails' not in existing_settings_cols:
         cur.execute("ALTER TABLE integrations_settings ADD COLUMN additional_emails TEXT DEFAULT '[]'")
+    if 'ms_client_id' not in existing_settings_cols:
+        cur.execute("ALTER TABLE integrations_settings ADD COLUMN ms_client_id TEXT")
+    if 'ms_client_secret' not in existing_settings_cols:
+        cur.execute("ALTER TABLE integrations_settings ADD COLUMN ms_client_secret TEXT")
+    if 'ms_tenant_id' not in existing_settings_cols:
+        cur.execute("ALTER TABLE integrations_settings ADD COLUMN ms_tenant_id TEXT DEFAULT 'common'")
 
     # Seed integrations_settings if empty, loading from environment variables if present
     cur.execute("SELECT COUNT(*) FROM integrations_settings")
@@ -4642,6 +4651,9 @@ class IntegrationSettingsRequest(BaseModel):
     gdrive_refresh_token: Optional[str] = None
     gdrive_folder_id: Optional[str] = None
     gdrive_email: Optional[str] = None
+    ms_client_id: Optional[str] = None
+    ms_client_secret: Optional[str] = None
+    ms_tenant_id: Optional[str] = "common"
     additional_emails: Optional[str] = "[]"
     theme_usage_counts: Optional[str] = "{}"
 
@@ -4659,6 +4671,7 @@ def get_integrations_settings(request: Request):
                email_user, email_pass, keywords, drive_enabled,
                reply_theme, reply_subject, reply_body_missing, reply_body_complete,
                gdrive_client_id, gdrive_client_secret, gdrive_refresh_token, gdrive_folder_id, gdrive_email,
+               ms_client_id, ms_client_secret, ms_tenant_id,
                additional_emails, theme_usage_counts
         FROM integrations_settings LIMIT 1
     """)
@@ -4679,6 +4692,9 @@ def get_integrations_settings(request: Request):
             "gdrive_refresh_token": "",
             "gdrive_folder_id": "",
             "gdrive_email": "",
+            "ms_client_id": "",
+            "ms_client_secret": "",
+            "ms_tenant_id": "common",
             "additional_emails": "[]",
             "theme_usage_counts": "{}"
         }
@@ -4715,7 +4731,13 @@ def get_integrations_settings(request: Request):
     if row[15]:
         masked_gdrive_refresh = "****"
         
-    additional_emails_raw = row[18] if len(row) > 18 else "[]"
+    masked_ms_secret = ""
+    if row[19]:
+        masked_ms_secret = "****"
+        
+    ms_tenant_id = row[20] or "common"
+        
+    additional_emails_raw = row[21] if len(row) > 21 else "[]"
     masked_additional_emails = "[]"
     if additional_emails_raw:
         try:
@@ -4727,7 +4749,7 @@ def get_integrations_settings(request: Request):
         except Exception:
             pass
 
-    theme_usage_counts = row[19] if len(row) > 19 else "{}"
+    theme_usage_counts = row[22] if len(row) > 22 else "{}"
 
     return {
         "email_enabled": row[0],
@@ -4748,6 +4770,9 @@ def get_integrations_settings(request: Request):
         "gdrive_refresh_token": masked_gdrive_refresh,
         "gdrive_folder_id": row[16] or "",
         "gdrive_email": row[17] or "",
+        "ms_client_id": row[18] or "",
+        "ms_client_secret": masked_ms_secret,
+        "ms_tenant_id": ms_tenant_id,
         "additional_emails": masked_additional_emails,
         "theme_usage_counts": theme_usage_counts
     }
@@ -4762,7 +4787,7 @@ def save_integrations_settings(settings: IntegrationSettingsRequest, request: Re
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
     
-    cur.execute("SELECT id, email_pass, gdrive_client_secret, gdrive_refresh_token, additional_emails, theme_usage_counts FROM integrations_settings LIMIT 1")
+    cur.execute("SELECT id, email_pass, gdrive_client_secret, gdrive_refresh_token, ms_client_secret, ms_tenant_id, additional_emails, theme_usage_counts FROM integrations_settings LIMIT 1")
     row = cur.fetchone()
     
     final_pass = settings.email_pass
@@ -4777,6 +4802,12 @@ def save_integrations_settings(settings: IntegrationSettingsRequest, request: Re
     if final_gdrive_refresh == "****" and row:
         final_gdrive_refresh = row[3]
         
+    final_ms_secret = settings.ms_client_secret
+    if final_ms_secret == "****" and row:
+        final_ms_secret = row[4]
+        
+    final_ms_tenant = settings.ms_tenant_id
+        
     # Handle additional_emails passwords restoration
     try:
         new_list = json.loads(settings.additional_emails or "[]")
@@ -4784,9 +4815,9 @@ def save_integrations_settings(settings: IntegrationSettingsRequest, request: Re
         new_list = []
 
     old_passwords = {}
-    if row and len(row) > 4 and row[4]:
+    if row and len(row) > 6 and row[6]:
         try:
-            old_list = json.loads(row[4])
+            old_list = json.loads(row[6])
             for item in old_list:
                 if "email_user" in item and "email_pass" in item:
                     old_passwords[item["email_user"].lower()] = item["email_pass"]
@@ -4801,9 +4832,9 @@ def save_integrations_settings(settings: IntegrationSettingsRequest, request: Re
 
     # Load and increment theme usage count
     current_counts = {}
-    if row and len(row) > 5 and row[5]:
+    if row and len(row) > 7 and row[7]:
         try:
-            current_counts = json.loads(row[5])
+            current_counts = json.loads(row[7])
         except Exception:
             current_counts = {}
     selected_theme = settings.reply_theme or "professional"
@@ -4820,7 +4851,8 @@ def save_integrations_settings(settings: IntegrationSettingsRequest, request: Re
             reply_body_missing = ?, reply_body_complete = ?,
             gdrive_client_id = ?, gdrive_client_secret = ?,
             gdrive_refresh_token = ?, gdrive_folder_id = ?,
-            gdrive_email = ?, additional_emails = ?,
+            gdrive_email = ?, ms_client_id = ?, ms_client_secret = ?, 
+            ms_tenant_id = ?, additional_emails = ?,
             theme_usage_counts = ?
         WHERE id = ?
         """, (settings.email_enabled, settings.imap_host, settings.imap_port,
@@ -4830,15 +4862,17 @@ def save_integrations_settings(settings: IntegrationSettingsRequest, request: Re
               settings.reply_body_missing, settings.reply_body_complete,
               settings.gdrive_client_id, final_gdrive_secret,
               settings.gdrive_refresh_token, settings.gdrive_folder_id,
-              settings.gdrive_email, final_additional_emails, final_theme_usage, row[0]))
+              settings.gdrive_email, settings.ms_client_id, final_ms_secret, 
+              final_ms_tenant, final_additional_emails, final_theme_usage, row[0]))
     else:
         cur.execute("""
         INSERT INTO integrations_settings (
             email_enabled, imap_host, imap_port, smtp_host, smtp_port, email_user, email_pass, keywords, drive_enabled,
             reply_theme, reply_subject, reply_body_missing, reply_body_complete,
-            gdrive_client_id, gdrive_client_secret, gdrive_refresh_token, gdrive_folder_id, gdrive_email, additional_emails,
+            gdrive_client_id, gdrive_client_secret, gdrive_refresh_token, gdrive_folder_id, gdrive_email, 
+            ms_client_id, ms_client_secret, ms_tenant_id, additional_emails,
             theme_usage_counts
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (settings.email_enabled, settings.imap_host, settings.imap_port,
               settings.smtp_host, settings.smtp_port, settings.email_user,
               final_pass, settings.keywords, settings.drive_enabled,
@@ -4846,7 +4880,8 @@ def save_integrations_settings(settings: IntegrationSettingsRequest, request: Re
               settings.reply_body_missing, settings.reply_body_complete,
               settings.gdrive_client_id, final_gdrive_secret,
               settings.gdrive_refresh_token, settings.gdrive_folder_id,
-              settings.gdrive_email, final_additional_emails, final_theme_usage))
+              settings.gdrive_email, settings.ms_client_id, final_ms_secret, 
+              final_ms_tenant, final_additional_emails, final_theme_usage))
 
     if settings.email_enabled == 0:
         try:
@@ -4986,20 +5021,60 @@ def test_mailbox_connection(settings: TestMailboxRequest, request: Request):
                 except Exception:
                     pass
                     
-    if email_pass == "****" or not email_pass:
-        return {"status": "error", "message": "Password is not configured."}
+    if 'office365' in imap_host.lower():
+        # Use Microsoft Graph API
+        conn = sqlite3.connect(STATS_DB, timeout=30.0)
+        cur = conn.cursor()
+        cur.execute("SELECT ms_client_id, ms_client_secret, ms_tenant_id FROM integrations_settings LIMIT 1")
+        ms_row = cur.fetchone()
+        conn.close()
         
-    import imaplib
-    try:
-        mail = imaplib.IMAP4_SSL(imap_host, imap_port, timeout=10)
-        mail.login(email_user, email_pass)
-        mail.logout()
-        return {"status": "connected", "message": f"Successfully connected to {email_user}!"}
-    except Exception as e:
-        err_msg = str(e)
-        if "Application-specific password required" in err_msg:
-            return {"status": "error", "message": "Authentication failed: Application-specific password required."}
-        return {"status": "error", "message": f"Connection failed: {err_msg}"}
+        if not ms_row or not ms_row[0] or not ms_row[1] or not ms_row[2]:
+            return {"status": "error", "message": "Microsoft Graph credentials are not configured in Primary Mailbox."}
+            
+        ms_client_id, ms_client_secret, ms_tenant_id = ms_row
+        
+        try:
+            import requests
+            token_url = f"https://login.microsoftonline.com/{ms_tenant_id}/oauth2/v2.0/token"
+            data = {
+                "client_id": ms_client_id,
+                "client_secret": ms_client_secret,
+                "scope": "https://graph.microsoft.com/.default",
+                "grant_type": "client_credentials"
+            }
+            token_res = requests.post(token_url, data=data)
+            token_data = token_res.json()
+            if "access_token" not in token_data:
+                return {"status": "error", "message": f"Failed to get Microsoft token: {token_data.get('error_description', 'Unknown error')}"}
+                
+            access_token = token_data["access_token"]
+            headers = {"Authorization": f"Bearer {access_token}"}
+            msg_url = f"https://graph.microsoft.com/v1.0/users/{email_user}/mailFolders/Inbox/messages?$top=1"
+            msg_res = requests.get(msg_url, headers=headers)
+            
+            if msg_res.status_code == 200:
+                return {"status": "connected", "message": f"Successfully connected to {email_user} via Microsoft Graph API!"}
+            else:
+                err = msg_res.json().get('error', {})
+                return {"status": "error", "message": f"Graph API Error: {err.get('message', 'Unknown')}"}
+        except Exception as e:
+            return {"status": "error", "message": f"Graph API Connection failed: {str(e)}"}
+    else:
+        if email_pass == "****" or not email_pass:
+            return {"status": "error", "message": "Password is not configured."}
+            
+        import imaplib
+        try:
+            mail = imaplib.IMAP4_SSL(imap_host, imap_port, timeout=10)
+            mail.login(email_user, email_pass)
+            mail.logout()
+            return {"status": "connected", "message": f"Successfully connected to {email_user}!"}
+        except Exception as e:
+            err_msg = str(e)
+            if "Application-specific password required" in err_msg:
+                return {"status": "error", "message": "Authentication failed: Application-specific password required."}
+            return {"status": "error", "message": f"Connection failed: {err_msg}"}
 
 @app.get("/api/integrations/status")
 def test_integrations_connection(request: Request):
@@ -5051,66 +5126,109 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
     if not keywords:
         keywords = ["resume", "alamaticz", "solution", "job"]
 
-    # Connect IMAP
-    mail = None
-    try:
-        mail = imaplib.IMAP4_SSL(imap_host, imap_port or 993, timeout=15)
-        mail.login(email_user, email_pass)
-        status_select, select_data = mail.select("inbox")
-
-        # Search unseen or recent messages to catch already read messages
-        unseen_nums = []
-        status_unseen, response_unseen = mail.search(None, "UNSEEN")
-        if status_unseen == "OK" and response_unseen[0]:
-            unseen_nums = response_unseen[0].split()
-
-        # Get total count of messages in Inbox to fetch the last 30 messages quickly
-        # without running a heavy search for ALL messages
-        total_msgs = int(select_data[0]) if status_select == "OK" and select_data[0] else 0
-        
-        recent_nums = []
-        if total_msgs > 0:
-            recent_nums = [str(i).encode() for i in range(max(1, total_msgs - 29), total_msgs + 1)]
-
-        # Combine them, deduplicate, and sort as integers to process in chronological order
-        msg_nums_set = set(unseen_nums + recent_nums)
-        msg_nums = sorted(list(msg_nums_set), key=lambda x: int(x))
-        for num in msg_nums:
+    # Connect IMAP or Graph API
+    raw_emails_to_process = []
+    
+    if 'office365' in imap_host.lower():
+        conn = sqlite3.connect(STATS_DB, timeout=30.0)
+        cur = conn.cursor()
+        cur.execute("SELECT ms_client_id, ms_client_secret, ms_tenant_id FROM integrations_settings LIMIT 1")
+        ms_row = cur.fetchone()
+        conn.close()
+        if ms_row and ms_row[0] and ms_row[1] and ms_row[2]:
+            ms_client_id, ms_client_secret, ms_tenant_id = ms_row
             try:
-                # Fetch message-id and headers without marking as seen
-                status, header_data = mail.fetch(num, '(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])')
-                msg_id = None
-                if status == "OK" and header_data[0]:
-                    header_text = header_data[0][1].decode('utf-8', errors='ignore')
-                    match = re.search(r'Message-ID:\s*<([^>]+)>', header_text, re.IGNORECASE)
-                    if match:
-                        msg_id = match.group(1)
+                import requests
+                token_url = f"https://login.microsoftonline.com/{ms_tenant_id}/oauth2/v2.0/token"
+                data = {
+                    "client_id": ms_client_id,
+                    "client_secret": ms_client_secret,
+                    "scope": "https://graph.microsoft.com/.default",
+                    "grant_type": "client_credentials"
+                }
+                token_res = requests.post(token_url, data=data)
+                access_token = token_res.json().get("access_token")
+                if access_token:
+                    headers = {"Authorization": f"Bearer {access_token}"}
+                    msg_url = f"https://graph.microsoft.com/v1.0/users/{email_user}/mailFolders/Inbox/messages?$top=30&$select=id"
+                    msg_res = requests.get(msg_url, headers=headers)
+                    if msg_res.status_code == 200:
+                        messages = msg_res.json().get('value', [])
+                        msg_ids = [m['id'] for m in messages]
+                        msg_ids.reverse() # chronological
+                        for m_id in msg_ids:
+                            mime_url = f"https://graph.microsoft.com/v1.0/users/{email_user}/messages/{m_id}/$value"
+                            mime_res = requests.get(mime_url, headers=headers)
+                            if mime_res.status_code == 200:
+                                raw_emails_to_process.append(mime_res.content)
+            except Exception as e:
+                print(f"Graph API Error: {e}")
+    else:
+        mail = None
+        try:
+            mail = imaplib.IMAP4_SSL(imap_host, imap_port or 993, timeout=15)
+            mail.login(email_user, email_pass)
+            status_select, select_data = mail.select("inbox")
+
+            unseen_nums = []
+            status_unseen, response_unseen = mail.search(None, "UNSEEN")
+            if status_unseen == "OK" and response_unseen[0]:
+                unseen_nums = response_unseen[0].split()
+
+            total_msgs = int(select_data[0]) if status_select == "OK" and select_data[0] else 0
             
-                if not msg_id:
-                    # Fallback: hash of headers to make a pseudo ID
-                    status, header_data2 = mail.fetch(num, '(BODY.PEEK[HEADER.FIELDS (SUBJECT DATE FROM)])')
-                    header_text2 = ""
-                    if status == "OK" and header_data2[0]:
-                        header_text2 = header_data2[0][1].decode('utf-8', errors='ignore')
-                    msg_id = hashlib.md5(header_text2.encode('utf-8', errors='ignore')).hexdigest()
+            recent_nums = []
+            if total_msgs > 0:
+                recent_nums = [str(i).encode() for i in range(max(1, total_msgs - 29), total_msgs + 1)]
 
-                # Check if already processed
-                conn = sqlite3.connect(STATS_DB, timeout=30.0)
-                cur = conn.cursor()
-                cur.execute("SELECT 1 FROM processed_emails WHERE msg_uid = ?", (msg_id,))
-                exists = cur.fetchone()
-                conn.close()
+            msg_nums_set = set(unseen_nums + recent_nums)
+            msg_nums = sorted(list(msg_nums_set), key=lambda x: int(x))
+            for num in msg_nums:
+                try:
+                    status, msg_data = mail.fetch(num, '(BODY.PEEK[])')
+                    if status == "OK" and msg_data[0]:
+                        raw_emails_to_process.append(msg_data[0][1])
+                except Exception as e:
+                    print(f"Error fetching IMAP email: {e}")
+        except Exception as e:
+            print(f"IMAP Error: {e}")
+        finally:
+            if mail:
+                try:
+                    mail.logout()
+                except:
+                    pass
 
-                if exists:
-                    continue
+    # Process all fetched emails
+    for raw_email in raw_emails_to_process:
+        try:
+            msg = email.message_from_bytes(raw_email)
+            
+            # Extract Message-ID
+            msg_id = msg.get("Message-ID", "")
+            if msg_id:
+                import re
+                match = re.search(r'<([^>]+)>', msg_id)
+                if match:
+                    msg_id = match.group(1)
+            
+            if not msg_id:
+                # Fallback: hash of headers to make a pseudo ID
+                subject_header = str(msg.get("Subject", ""))
+                date_header = str(msg.get("Date", ""))
+                from_header = str(msg.get("From", ""))
+                header_text2 = f"Subject: {subject_header}\nDate: {date_header}\nFrom: {from_header}\n\n"
+                msg_id = hashlib.md5(header_text2.encode('utf-8', errors='ignore')).hexdigest()
 
-                # Fetch full message content without marking read
-                status, msg_data = mail.fetch(num, '(BODY.PEEK[])')
-                if status != "OK" or not msg_data[0]:
-                    continue
+            # Check if already processed
+            conn = sqlite3.connect(STATS_DB, timeout=30.0)
+            cur = conn.cursor()
+            cur.execute("SELECT 1 FROM processed_emails WHERE msg_uid = ?", (msg_id,))
+            exists = cur.fetchone()
+            conn.close()
 
-                raw_email = msg_data[0][1]
-                msg = email.message_from_bytes(raw_email)
+            if exists:
+                continue
 
                 # Extract Subject, From, Body
                 subject_header = msg.get("Subject", "")
@@ -5675,14 +5793,8 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                 conn.commit()
                 conn.close()
 
-            except Exception as msg_err:
-                print(f"ERROR: Failed processing single email: {msg_err}")
-    finally:
-        if mail:
-            try:
-                mail.logout()
-            except Exception:
-                pass
+        except Exception as msg_err:
+            print(f"ERROR: Failed processing single email: {msg_err}")
 
 def poll_emails_and_process():
     import time
