@@ -2,6 +2,7 @@ import os
 import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import json
+import hashlib
 import sqlite3
 import shutil
 import re
@@ -326,7 +327,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             full_name TEXT,
             username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
+            password_hash TEXT NOT NULL,
             role TEXT DEFAULT 'user',
             is_hr INTEGER DEFAULT 0,
             is_admin INTEGER DEFAULT 0,
@@ -466,8 +467,8 @@ def init_db():
     # Seed default users if empty (do NOT wipe the table to preserve registered users!)
     cur.execute("SELECT COUNT(*) FROM users WHERE LOWER(username) = 'admin'")
     if cur.fetchone()[0] == 0:
-        cur.execute("INSERT INTO users (full_name, username, password, role, is_hr, is_admin, email, is_approved) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    ("System Admin", "admin", "admin", "admin", 1, 1, "admin@gmail.com", 1))
+        cur.execute("INSERT INTO users (full_name, username, password_hash, role, is_hr, is_admin, email, is_approved) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    ("System Admin", "admin", hashlib.sha256("admin".encode()).hexdigest(), "admin", 1, 1, "admin@gmail.com", 1))
     else:
         # Guarantee admin role/flags are set correctly
         try:
@@ -477,8 +478,8 @@ def init_db():
 
     cur.execute("SELECT COUNT(*) FROM users WHERE LOWER(username) = 'user'")
     if cur.fetchone()[0] == 0:
-        cur.execute("INSERT INTO users (full_name, username, password, role, is_hr, is_admin, email, is_approved) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    ("Test User", "user", "user", "user", 0, 0, "user@gmail.com", 1))
+        cur.execute("INSERT INTO users (full_name, username, password_hash, role, is_hr, is_admin, email, is_approved) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    ("Test User", "user", hashlib.sha256("user".encode()).hexdigest(), "user", 0, 0, "user@gmail.com", 1))
 
     # Seed the 4 recruiters in user management if they do not exist
     for m in ["Boopathi", "Praveen", "Harish", "Sabari"]:
@@ -488,8 +489,8 @@ def init_db():
         is_hr_val = 1 if uname == "sabari" else 0
         cur.execute("SELECT COUNT(*) FROM users WHERE LOWER(username) = ?", (uname,))
         if cur.fetchone()[0] == 0:
-            cur.execute("INSERT INTO users (full_name, username, password, role, is_hr, is_admin, email, is_approved) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                        (m, uname, uname, role, is_hr_val, is_admin_val, f"{uname}@gmail.com", 1))
+            cur.execute("INSERT INTO users (full_name, username, password_hash, role, is_hr, is_admin, email, is_approved) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        (m, uname, hashlib.sha256(uname.encode()).hexdigest(), role, is_hr_val, is_admin_val, f"{uname}@gmail.com", 1))
         else:
             try:
                 cur.execute("UPDATE users SET is_hr = ?, is_admin = ?, role = ?, is_approved = 1 WHERE LOWER(username) = ?", (is_hr_val, is_admin_val, role, uname))
@@ -3655,8 +3656,8 @@ def register(req: RegisterRequest):
                 email_limit_exceeded = True
             else:
                 is_approved_val = 1 if req.username.lower() in ("admin", "user", "boopathi", "praveen", "harish", "sabari") else 0
-                cur.execute("INSERT INTO users (full_name, username, password, email, role, is_approved) VALUES (?, ?, ?, ?, 'user', ?)",
-                            (req.full_name, req.username, req.password, req.email, is_approved_val))
+                cur.execute("INSERT INTO users (full_name, username, password_hash, email, role, is_approved) VALUES (?, ?, ?, ?, 'user', ?)",
+                            (req.full_name, req.username, hashlib.sha256(req.password.encode()).hexdigest(), req.email, is_approved_val))
                 if is_approved_val == 0:
                     cur.execute("""
                         INSERT INTO change_requests (username, action_type, target_id, payload, description, status)
@@ -3682,7 +3683,7 @@ def login(req: LoginRequest):
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
-    cur.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?) AND password = ?", (req.username, req.password))
+    cur.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?) AND password_hash = ?", (req.username, hashlib.sha256(req.password.encode()).hexdigest()))
     user = cur.fetchone()
     conn.close()
     if not user:
@@ -3728,8 +3729,8 @@ def firebase_sync(req: FirebaseSyncRequest):
             
         try:
             is_approved_val = 1 if req.username.lower() in ("admin", "user", "boopathi", "praveen", "harish", "sabari") else 0
-            cur.execute("INSERT INTO users (full_name, username, password, email, role, is_approved) VALUES (?, ?, ?, ?, 'user', ?)",
-                        (req.full_name, req.username, "firebase_auth_managed", req.email, is_approved_val))
+            cur.execute("INSERT INTO users (full_name, username, password_hash, email, role, is_approved) VALUES (?, ?, ?, ?, 'user', ?)",
+                        (req.full_name, req.username, hashlib.sha256("firebase_auth_managed".encode()).hexdigest(), req.email, is_approved_val))
             if is_approved_val == 0:
                 cur.execute("""
                     INSERT INTO change_requests (username, action_type, target_id, payload, description, status)
@@ -4032,7 +4033,7 @@ def reset_password(req: ResetPasswordRequest):
     matching_users = [u for u in users if get_base_email(u[0]) == base_email]
     
     for mu in matching_users:
-        cur.execute("UPDATE users SET password = ? WHERE LOWER(email) = LOWER(?)", (new_pass, mu[0].lower()))
+        cur.execute("UPDATE users SET password_hash = ? WHERE LOWER(email) = LOWER(?)", (hashlib.sha256(new_pass.encode()).hexdigest(), mu[0].lower()))
         
     conn.commit()
     conn.close()
