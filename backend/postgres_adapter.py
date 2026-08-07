@@ -32,6 +32,9 @@ class PGRow:
             return self._mapping[key]
         raise TypeError("Row indices must be integers or strings")
 
+    def get(self, key, default=None):
+        return self._mapping.get(key, default)
+
     def keys(self):
         return self._keys
 
@@ -39,7 +42,11 @@ class PGRow:
         return len(self._row_data)
 
     def __iter__(self):
-        return iter(self._row_data)
+        # Yield (key, value) tuples so that dict(row) works correctly
+        return iter(self._mapping.items())
+
+    def __contains__(self, key):
+        return key in self._mapping
 
     def __repr__(self):
         return f"PGRow({self._mapping})"
