@@ -5313,7 +5313,6 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                     try:
                         ref_candidate_id = int(match_ref.group(1))
                         conn = sqlite3.connect(STATS_DB, timeout=30.0)
-// Removed cursor.row_factory assignment (no effect)
                         cur = conn.cursor()
                         cur.execute("SELECT * FROM candidate_metadata WHERE id = ?", (ref_candidate_id,))
                         matched_candidate_row = cur.fetchone()
@@ -5324,7 +5323,6 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                 if not matched_candidate_row and sender_email:
                     try:
                         conn = sqlite3.connect(STATS_DB, timeout=30.0)
-// Removed cursor.row_factory assignment (no effect)
                         cur = conn.cursor()
                         cur.execute("SELECT * FROM candidate_metadata WHERE LOWER(sender_email) = ? OR LOWER(email) = ? ORDER BY id DESC LIMIT 1", (sender_email.lower(), sender_email.lower()))
                         matched_candidate_row = cur.fetchone()
@@ -5518,7 +5516,6 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                     # Recheck missing fields on updated profile
                     try:
                         conn = sqlite3.connect(STATS_DB, timeout=30.0)
-// Removed cursor.row_factory assignment (no effect)
                         cur = conn.cursor()
                         cur.execute("SELECT * FROM candidate_metadata WHERE id=?", (existing_candidate['id'],))
                         updated_candidate = dict(cur.fetchone())
@@ -5698,7 +5695,6 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                                 candidate = None
                                 try:
                                     conn = sqlite3.connect(STATS_DB, timeout=30.0)
-// Removed cursor.row_factory assignment (no effect)
                                     cur = conn.cursor()
                                     cur.execute("SELECT * FROM candidate_metadata WHERE filename = ? ORDER BY id DESC LIMIT 1", (safe_name,))
                                     candidate_row = cur.fetchone()
