@@ -123,7 +123,8 @@ class PGCursor:
             return None
         if self.connection.row_factory:
             return self.connection.row_factory(self, row)
-        return row
+        # Default: always wrap in PGRow so dict(row) works
+        return PGRow(self, row)
 
     def fetchall(self):
         try:
@@ -135,7 +136,9 @@ class PGCursor:
             return []
         if self.connection.row_factory:
             return [self.connection.row_factory(self, r) for r in rows]
-        return rows
+        # Default: always wrap in PGRow so dict(row) works
+        return [PGRow(self, r) for r in rows]
+
 
     @property
     def description(self):
@@ -269,11 +272,16 @@ class PGConnection:
 
     @row_factory.setter
     def row_factory(self, value):
-        # Maps sqlite3.Row requests to custom PGRow
-        if value is sqlite3.Row or value is not None:
+        # Maps sqlite3.Row requests to custom PGRow; allows other callables through
+        if value is sqlite3.Row:
             self._row_factory = PGRow
-        else:
+        elif callable(value):
+            # Support custom row factories like dict_row_factory
+            self._row_factory = value
+        elif value is None:
             self._row_factory = None
+        else:
+            self._row_factory = PGRow
 
     def cursor(self):
         return PGCursor(self.pg_conn.cursor(), self)

@@ -635,7 +635,7 @@ def init_db():
 
 def get_candidates_list(username: Optional[str] = None, role: str = "user") -> list:
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
-    conn.row_factory = dict_row_factory
+    conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     try:
         is_hr_or_admin = False
@@ -653,11 +653,26 @@ def get_candidates_list(username: Optional[str] = None, role: str = "user") -> l
             cur.execute(f"SELECT {cols_to_select} FROM candidate_metadata ORDER BY timestamp DESC")
         else:
             cur.execute(f"SELECT {cols_to_select} FROM candidate_metadata WHERE LOWER(created_by) = LOWER(?) ORDER BY timestamp DESC", (username,))
-        rows = [dict(r) for r in cur.fetchall()]
-    except Exception:
+        raw_rows = cur.fetchall()
+        rows = []
+        for r in raw_rows:
+            try:
+                rows.append(dict(r))
+            except Exception as row_err:
+                # If dict(r) fails, build dict manually from cursor description
+                if cur.description:
+                    col_names = [desc[0] for desc in cur.description]
+                    rows.append(dict(zip(col_names, r)))
+                else:
+                    print(f"WARNING: Could not convert row to dict: {row_err}")
+    except Exception as e:
+        import traceback
+        print(f"ERROR in get_candidates_list: {e}")
+        traceback.print_exc()
         rows = []
     conn.close()
     return rows
+
 
 def get_masked_keywords() -> list:
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
