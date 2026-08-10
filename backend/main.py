@@ -1471,6 +1471,101 @@ JSON:"""
 
     return data
 
+@app.get("/api/candidates/{candidate_id}/export-docx")
+def export_candidate_docx(candidate_id: int, request: Request):
+    from fastapi.responses import StreamingResponse
+    import io
+    
+    # Try importing docx locally so server doesn't crash on boot if package is installing
+    try:
+        from docx import Document
+        from docx.shared import Pt
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+    except ImportError:
+        raise HTTPException(status_code=500, detail="python-docx library not installed. Please try again in a few seconds.")
+
+    username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
+    
+    conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    conn.row_factory = dict_row_factory
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM candidate_metadata WHERE id = ?", (candidate_id,))
+    row = cur.fetchone()
+    conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+        
+    candidate = dict(row)
+    created_by = candidate.get("created_by")
+    if not is_admin_or_hr(username):
+        if created_by and created_by.lower() != username.lower():
+            raise HTTPException(status_code=403, detail="Forbidden")
+            
+    doc = Document()
+    
+    # Alamaticz Styling
+    title = doc.add_heading(candidate.get('full_name', 'Candidate Resume') or 'Candidate Resume', 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    # Contact Info
+    contact_p = doc.add_paragraph()
+    contact_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    contact_info = []
+    if candidate.get('email'): contact_info.append(str(candidate.get('email')))
+    if candidate.get('phone'): contact_info.append(str(candidate.get('phone')))
+    if candidate.get('linkedin'): contact_info.append(str(candidate.get('linkedin')))
+    if candidate.get('current_location'): contact_info.append(str(candidate.get('current_location')))
+    
+    if contact_info:
+        run = contact_p.add_run(" | ".join(contact_info))
+        run.font.size = Pt(10)
+    
+    doc.add_heading('Summary', level=1)
+    exp = str(candidate.get('total_experience') or 'N/A')
+    doc.add_paragraph(f"Total Experience: {exp}")
+    if candidate.get('pega_experience'):
+        doc.add_paragraph(f"Pega Experience: {candidate.get('pega_experience')}")
+        
+    if candidate.get('skills'):
+        doc.add_heading('Skills', level=1)
+        doc.add_paragraph(str(candidate.get('skills')))
+        
+    if candidate.get('certifications'):
+        doc.add_heading('Certifications', level=1)
+        doc.add_paragraph(str(candidate.get('certifications')))
+        
+    # Additional Details
+    doc.add_heading('Additional Details', level=1)
+    if candidate.get('current_organization'):
+        doc.add_paragraph(f"Current Organization: {candidate.get('current_organization')}")
+    if candidate.get('ctc'):
+        doc.add_paragraph(f"Current CTC: {candidate.get('ctc')}")
+    if candidate.get('expected_ctc'):
+        doc.add_paragraph(f"Expected CTC: {candidate.get('expected_ctc')}")
+    if candidate.get('notice_period'):
+        doc.add_paragraph(f"Notice Period: {candidate.get('notice_period')}")
+    
+    # Save to memory
+    file_stream = io.BytesIO()
+    doc.save(file_stream)
+    file_stream.seek(0)
+    
+    safe_name = str(candidate.get("full_name") or "Candidate").replace(" ", "_")
+    headers = {
+        'Content-Disposition': f'attachment; filename="Alamaticz_Resume_{safe_name}.docx"',
+        'Access-Control-Expose-Headers': 'Content-Disposition'
+    }
+    
+    return StreamingResponse(
+        file_stream, 
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
+        headers=headers
+    )
+
+
 @app.put("/api/candidates/{candidate_id}/formatted-resume")
 async def update_formatted_resume_data(candidate_id: int, request: Request):
     username = request.headers.get("x-user-username")

@@ -19,3 +19,4 @@ pgvector
 boto3
 requests
 google-auth
+python-docx

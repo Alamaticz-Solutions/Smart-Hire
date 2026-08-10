@@ -80,6 +80,33 @@ function CandidateDetailsModal({ candidate, onClose, onViewPdf }) {
                             </div>
                         </div>
                         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                            <button 
+                                onClick={async () => {
+                                    try {
+                                        const res = await axios.get(`${import.meta.env.VITE_API_URL || ''}/api/candidates/${candidate.id}/export-docx`, { responseType: 'blob' });
+                                        const url = window.URL.createObjectURL(new Blob([res.data]));
+                                        const link = document.createElement('a');
+                                        link.href = url;
+                                        link.setAttribute('download', `Alamaticz_Resume_${(candidate.full_name || 'Candidate').replace(/ /g, '_')}.docx`);
+                                        document.body.appendChild(link);
+                                        link.click();
+                                        link.parentNode.removeChild(link);
+                                    } catch (err) {
+                                        alert('Failed to download Alamaticz resume.');
+                                    }
+                                }}
+                                style={{
+                                    background: 'linear-gradient(135deg, var(--gold) 0%, #D4AF37 100%)', border: 'none',
+                                    color: 'var(--navy-dark)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
+                                    fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 800,
+                                    display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s',
+                                    boxShadow: '0 4px 10px rgba(var(--gold-rgb), 0.2)'
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
+                                onMouseLeave={e => e.currentTarget.style.transform = 'none'}
+                            >
+                                <Download size={14} /> Alamaticz Format
+                            </button>
                             {candidate.filename && !candidate.filename.toLowerCase().endsWith('.xlsx') && !candidate.filename.toLowerCase().endsWith('.xls') && !candidate.filename.toLowerCase().endsWith('.csv') && (
                                 isPdf ? (
                                     <button 
