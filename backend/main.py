@@ -1841,24 +1841,22 @@ def process_resume_logic(safe_name: str, path: str, is_approved: int = 1, userna
     except Exception as e:
         import traceback
         traceback.print_exc()
-        error_msg = str(e)[:100]
+        error_msg = str(e)[:200]
         print(f"Error processing resume {safe_name}: {error_msg}")
+        # Instead of deleting the placeholder (which makes the candidate disappear),
+        # update it with a failed status so the user can see it failed and retry.
         try:
             conn = sqlite3.connect(STATS_DB, timeout=30.0)
             cur = conn.cursor()
             if placeholder_id:
-                cur.execute("DELETE FROM candidate_metadata WHERE id = ?", (placeholder_id,))
-            conn.commit()
+                cur.execute(
+                    "UPDATE candidate_metadata SET full_name = ?, candidate_status = ? WHERE id = ?",
+                    (f"❌ Processing Failed: {safe_name}", "Error", placeholder_id)
+                )
+                conn.commit()
             conn.close()
         except Exception as db_err:
-            print(f"Error deleting placeholder from DB: {db_err}")
-            
-        if os.path.exists(path):
-            try:
-                os.remove(path)
-                print(f"Cleaned up failed resume file: {path}")
-            except Exception as file_err:
-                print(f"Error cleaning up failed resume file {path}: {file_err}")
+            print(f"Error updating placeholder status in DB: {db_err}")
         return
 
     # Add to PGVector
