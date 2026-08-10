@@ -1,4 +1,15 @@
-import os
+# Helper row factory that works for both SQLite and PostgreSQL adapters
+def dict_row_factory(cursor, row):
+    """Return a dict for a DB row.
+    For SQLite, the default Row object can be cast to dict.
+    For PostgreSQL (PGCursor), the row is already a mapping; we attempt dict conversion.
+    """
+    try:
+        return dict(row)
+    except Exception:
+        # Fallback: return the row as is (may be a tuple for SQLite without row_factory)
+        return row
+
 import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import json
@@ -357,6 +368,25 @@ def init_db():
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    # Migration: fix activity_logs if it was created with old schema (user_id instead of username)
+    try:
+        cur.execute("PRAGMA table_info(activity_logs)")
+        al_cols = [c[1] for c in cur.fetchall()]
+        if 'username' not in al_cols:
+            print("INFO: Migrating activity_logs table (adding username column)...")
+            cur.execute("DROP TABLE IF EXISTS activity_logs")
+            cur.execute('''
+                CREATE TABLE activity_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            print("INFO: activity_logs table migrated successfully.")
+    except Exception as e_al:
+        print(f"WARNING: activity_logs migration check failed: {e_al}")
+
     cur.execute('''
         CREATE TABLE IF NOT EXISTS team_members (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -603,7 +633,7 @@ def init_db():
 
 def get_candidates_list(username: Optional[str] = None, role: str = "user") -> list:
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = dict_row_factory
     cur = conn.cursor()
     try:
         is_hr_or_admin = False
@@ -732,7 +762,7 @@ class ActivityCreate(BaseModel):
 def get_activity_logs():
     try:
         conn = sqlite3.connect(STATS_DB, timeout=30.0)
-        conn.row_factory = sqlite3.Row
+        conn.row_factory = dict_row_factory
         cur = conn.cursor()
         cur.execute("SELECT * FROM activity_logs ORDER BY timestamp DESC")
         logs = [dict(row) for row in cur.fetchall()]
@@ -767,7 +797,7 @@ class TeamMemberCreate(BaseModel):
 def list_team_members():
     try:
         conn = sqlite3.connect(STATS_DB, timeout=30.0)
-        conn.row_factory = sqlite3.Row
+        conn.row_factory = dict_row_factory
         cur = conn.cursor()
         cur.execute("SELECT * FROM team_members ORDER BY name ASC")
         members = [dict(row) for row in cur.fetchall()]
@@ -1169,7 +1199,7 @@ def get_candidate_jobs(candidate_id: int, request: Request):
     role = get_user_role(username)
 
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = dict_row_factory
     cur = conn.cursor()
     
     # Check candidate existence and permission
@@ -1203,7 +1233,7 @@ def get_formatted_resume_data(candidate_id: int, request: Request):
     role = get_user_role(username)
 
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = dict_row_factory
     cur = conn.cursor()
     cur.execute("SELECT * FROM candidate_metadata WHERE id = ?", (candidate_id,))
     row = cur.fetchone()
@@ -1897,7 +1927,7 @@ def match_candidate_to_all_jobs(candidate_id: int):
     try:
         # Query candidate details
         conn = sqlite3.connect(STATS_DB, timeout=30.0)
-        conn.row_factory = sqlite3.Row
+        conn.row_factory = dict_row_factory
         cur = conn.cursor()
         cur.execute("SELECT * FROM candidate_metadata WHERE id = ?", (candidate_id,))
         row = cur.fetchone()
@@ -2531,7 +2561,7 @@ Respond ONLY with the JSON object. Do not include any explanation or markdown fo
 
 def query_candidates_by_filters(filters: dict, username: str, role: str) -> list:
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = dict_row_factory
     cur = conn.cursor()
     
     cols_to_select = (
@@ -2865,7 +2895,7 @@ def match_jd(req: JDMatchRequest):
         return {"matches": []}
 
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = dict_row_factory
     cur = conn.cursor()
     placeholders = ",".join("?" * len(matched_sources))
     # Use tuple for psycopg2 compatibility with IN clauses
@@ -3001,7 +3031,7 @@ def list_jobs(request: Request):
         return []
         
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = dict_row_factory
     cur = conn.cursor()
     
     # Check if requesting user is external
@@ -3070,7 +3100,7 @@ def create_job(job: JobCreate, request: Request):
         print(f"Error matching candidates for job {job_id}: {e}")
         
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = dict_row_factory
     cur = conn.cursor()
     cur.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
     updated_job = dict(cur.fetchone())
@@ -3132,7 +3162,7 @@ def update_job(job_id: int, job: JobCreate, request: Request):
         print(f"Error matching candidates for job {job_id}: {e}")
         
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = dict_row_factory
     cur = conn.cursor()
     cur.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
     updated_job = dict(cur.fetchone())
@@ -3185,7 +3215,7 @@ def get_job_candidates(job_id: int, request: Request):
         raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
     
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = dict_row_factory
     cur = conn.cursor()
 
     # Get job creator
@@ -3273,7 +3303,7 @@ def get_unmatched_candidates(job_id: int, request: Request):
         raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
         
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = dict_row_factory
     cur = conn.cursor()
 
     # Get job creator
@@ -3468,7 +3498,7 @@ def delete_job_candidate(job_id: int, candidate_id: int, request: Request):
 def match_candidates_for_job(job_id: int):
     # This endpoint finds matching candidates for a job and saves them to job_candidates
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = dict_row_factory
     cur = conn.cursor()
     cur.execute("SELECT description, created_by FROM jobs WHERE id = ?", (job_id,))
     job = cur.fetchone()
@@ -3688,7 +3718,7 @@ def register(req: RegisterRequest):
 @app.post("/api/auth/login")
 def login(req: LoginRequest):
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = dict_row_factory
     cur = conn.cursor()
     cur.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?) AND password_hash = ?", (req.username, hashlib.sha256(req.password.encode()).hexdigest()))
     user = cur.fetchone()
@@ -3718,7 +3748,7 @@ class FirebaseSyncRequest(BaseModel):
 @app.post("/api/auth/firebase-sync")
 def firebase_sync(req: FirebaseSyncRequest):
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = dict_row_factory
     cur = conn.cursor()
     
     cur.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (req.username,))
@@ -3823,7 +3853,7 @@ def get_user_status(request: Request):
     if not username:
         raise HTTPException(status_code=401, detail="Not authenticated")
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = dict_row_factory
     cur = conn.cursor()
     cur.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (username,))
     row = cur.fetchone()
@@ -4103,7 +4133,7 @@ def list_change_requests(request: Request):
         raise HTTPException(status_code=403, detail="Forbidden")
         
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = dict_row_factory
     cur = conn.cursor()
     cur.execute("SELECT * FROM change_requests ORDER BY created_at DESC")
     rows = [dict(r) for r in cur.fetchall()]
@@ -4118,7 +4148,7 @@ def list_users(request: Request):
         
         
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = dict_row_factory
     cur = conn.cursor()
     cur.execute("SELECT id, full_name, username, role, is_hr, is_admin, is_external, hidden_fields, is_approved, email FROM users")
     rows = [dict(r) for r in cur.fetchall()]
@@ -4408,7 +4438,7 @@ def approve_change_request(request_id: int, request: Request, background_tasks: 
         raise HTTPException(status_code=403, detail="Forbidden")
         
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = dict_row_factory
     cur = conn.cursor()
     cur.execute("SELECT * FROM change_requests WHERE id = ?", (request_id,))
     req_row = cur.fetchone()
@@ -5283,7 +5313,7 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                     try:
                         ref_candidate_id = int(match_ref.group(1))
                         conn = sqlite3.connect(STATS_DB, timeout=30.0)
-                        conn.row_factory = sqlite3.Row
+// Removed cursor.row_factory assignment (no effect)
                         cur = conn.cursor()
                         cur.execute("SELECT * FROM candidate_metadata WHERE id = ?", (ref_candidate_id,))
                         matched_candidate_row = cur.fetchone()
@@ -5294,7 +5324,7 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                 if not matched_candidate_row and sender_email:
                     try:
                         conn = sqlite3.connect(STATS_DB, timeout=30.0)
-                        conn.row_factory = sqlite3.Row
+// Removed cursor.row_factory assignment (no effect)
                         cur = conn.cursor()
                         cur.execute("SELECT * FROM candidate_metadata WHERE LOWER(sender_email) = ? OR LOWER(email) = ? ORDER BY id DESC LIMIT 1", (sender_email.lower(), sender_email.lower()))
                         matched_candidate_row = cur.fetchone()
@@ -5488,7 +5518,7 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                     # Recheck missing fields on updated profile
                     try:
                         conn = sqlite3.connect(STATS_DB, timeout=30.0)
-                        conn.row_factory = sqlite3.Row
+// Removed cursor.row_factory assignment (no effect)
                         cur = conn.cursor()
                         cur.execute("SELECT * FROM candidate_metadata WHERE id=?", (existing_candidate['id'],))
                         updated_candidate = dict(cur.fetchone())
@@ -5668,7 +5698,7 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                                 candidate = None
                                 try:
                                     conn = sqlite3.connect(STATS_DB, timeout=30.0)
-                                    conn.row_factory = sqlite3.Row
+// Removed cursor.row_factory assignment (no effect)
                                     cur = conn.cursor()
                                     cur.execute("SELECT * FROM candidate_metadata WHERE filename = ? ORDER BY id DESC LIMIT 1", (safe_name,))
                                     candidate_row = cur.fetchone()

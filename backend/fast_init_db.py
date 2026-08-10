@@ -107,12 +107,12 @@ def init_db():
     cur.execute('''
         CREATE TABLE IF NOT EXISTS activity_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            action TEXT,
-            details TEXT,
+            username TEXT NOT NULL,
+            action TEXT NOT NULL,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
     cur.execute('''
         CREATE TABLE IF NOT EXISTS team_members (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
