@@ -4861,7 +4861,7 @@ def save_integrations_settings(settings: IntegrationSettingsRequest, request: Re
               settings.reply_theme, settings.reply_subject,
               settings.reply_body_missing, settings.reply_body_complete,
               settings.gdrive_client_id, final_gdrive_secret,
-              settings.gdrive_refresh_token, settings.gdrive_folder_id,
+              final_gdrive_refresh, settings.gdrive_folder_id,
               settings.gdrive_email, settings.ms_client_id, final_ms_secret, 
               final_ms_tenant, final_additional_emails, final_theme_usage, row[0]))
     else:
@@ -4872,7 +4872,7 @@ def save_integrations_settings(settings: IntegrationSettingsRequest, request: Re
             gdrive_client_id, gdrive_client_secret, gdrive_refresh_token, gdrive_folder_id, gdrive_email, 
             ms_client_id, ms_client_secret, ms_tenant_id, additional_emails,
             theme_usage_counts
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (settings.email_enabled, settings.imap_host, settings.imap_port,
               settings.smtp_host, settings.smtp_port, settings.email_user,
               final_pass, settings.keywords, settings.drive_enabled,
