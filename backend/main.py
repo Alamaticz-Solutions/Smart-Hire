@@ -1,15 +1,4 @@
-# Helper row factory that works for both SQLite and PostgreSQL adapters
-def dict_row_factory(cursor, row):
-    """Return a dict for a DB row.
-    For SQLite, the default Row object can be cast to dict.
-    For PostgreSQL (PGCursor), the row is already a mapping; we attempt dict conversion.
-    """
-    try:
-        return dict(row)
-    except Exception:
-        # Fallback: return the row as is (may be a tuple for SQLite without row_factory)
-        return row
-
+import os
 import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import json
@@ -22,6 +11,19 @@ import threading
 from typing import Optional
 from datetime import datetime
 import openpyxl
+
+# Helper row factory that works for both SQLite and PostgreSQL adapters
+def dict_row_factory(cursor, row):
+    """Return a dict for a DB row.
+    For SQLite, the default Row object can be cast to dict.
+    For PostgreSQL (PGCursor), the row is already a mapping; we attempt dict conversion.
+    """
+    try:
+        return dict(row)
+    except Exception:
+        # Fallback: return the row as is (may be a tuple for SQLite without row_factory)
+        return row
+
 
 def normalize_phone(phone) -> str:
     if not phone:
