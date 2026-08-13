@@ -26,11 +26,11 @@ COPY . .
 WORKDIR /app/frontend
 RUN npm run build
 
-# Set working directory back to root
-WORKDIR /app
+# Set working directory to backend so Python module imports resolve correctly
+WORKDIR /app/backend
 
 # Expose the port
 EXPOSE 8000
 
 # Command to run the application dynamically respecting the PORT environment variable set by Render
-CMD ["sh", "-c", "uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
