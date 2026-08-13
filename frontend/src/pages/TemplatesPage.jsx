@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import axios from 'axios'
-import { FileText, Eye, Sparkles, Check, Info, Copy, Save, AlertCircle } from 'lucide-react'
+import { FileText, Eye, Sparkles, Check, Info, Copy, Save, AlertCircle, Send, Loader } from 'lucide-react'
 
 const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
@@ -104,6 +104,8 @@ export default function TemplatesPage() {
     const [saving, setSaving] = useState(false)
     const [editorTab, setEditorTab] = useState('missing') // 'missing' | 'complete'
     const [previewType, setPreviewType] = useState('missing') // 'missing' | 'complete'
+    const [testEmail, setTestEmail] = useState('')
+    const [isTestingEmail, setIsTestingEmail] = useState(false)
     
     const [integrationsSettings, setIntegrationsSettings] = useState({
         email_enabled: 0, imap_host: 'imap.gmail.com', imap_port: 993,
@@ -172,6 +174,35 @@ export default function TemplatesPage() {
             alert(err.response?.data?.detail || "Failed to save template settings")
         } finally {
             setSaving(false)
+        }
+    }
+
+    const handleTestEmail = async () => {
+        if (!testEmail) {
+            showToast("Please enter an email address for testing", "error");
+            return;
+        }
+        
+        setIsTestingEmail(true);
+        try {
+            const res = await axios.post(`${BACKEND_URL}/api/settings/test-email-template`, {
+                recipient_email: testEmail,
+                preview_type: previewType,
+                subject_template: integrationsSettings.reply_subject,
+                body_template: previewType === 'missing' ? integrationsSettings.reply_body_missing : integrationsSettings.reply_body_complete
+            }, {
+                headers: { 'x-user-username': user?.username }
+            });
+            
+            if (res.data.status === "success") {
+                showToast(res.data.message, "success");
+            } else {
+                showToast(res.data.message || "Failed to send test email", "error");
+            }
+        } catch (err) {
+            showToast(err.response?.data?.detail || err.response?.data?.message || "Failed to send test email", "error");
+        } finally {
+            setIsTestingEmail(false);
         }
     }
 
@@ -576,6 +607,36 @@ export default function TemplatesPage() {
                                     No template content. Start editing to see preview.
                                 </div>
                             )}
+                        </div>
+                    </div>
+
+                    {/* Test Email Section */}
+                    <div style={{
+                        marginTop: 4, background: 'rgba(var(--sky-rgb), 0.05)', borderRadius: 12, padding: 16, border: '1px solid rgba(var(--sky-rgb), 0.15)',
+                        display: 'flex', flexDirection: 'column', gap: 12
+                    }}>
+                        <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text)' }}>Send Test Template</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginBottom: 4 }}>
+                            Test how this template will look in a real inbox. Make sure to save your changes first!
+                        </div>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                            <input 
+                                type="email" 
+                                placeholder="Enter email address..."
+                                value={testEmail}
+                                onChange={e => setTestEmail(e.target.value)}
+                                style={{ flex: 1, padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', fontSize: '0.8rem' }}
+                            />
+                            <button 
+                                type="button" 
+                                className="btn"
+                                onClick={handleTestEmail}
+                                disabled={isTestingEmail}
+                                style={{ background: 'var(--sky)', color: '#fff', border: 'none', padding: '8px 16px', fontSize: '0.8rem', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, cursor: isTestingEmail ? 'not-allowed' : 'pointer', opacity: isTestingEmail ? 0.7 : 1 }}
+                            >
+                                {isTestingEmail ? <Loader size={14} className="spin" /> : <Send size={14} />}
+                                {isTestingEmail ? 'Sending...' : 'Send Test'}
+                            </button>
                         </div>
                     </div>
                 </div>

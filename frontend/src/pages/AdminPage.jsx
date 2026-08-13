@@ -214,7 +214,7 @@ export default function AdminPage() {
         if (!window.confirm(`Are you sure you want to remove "${kw}" from masked keywords?`)) return
         setError(null)
         try {
-            await axios.delete(`/api/admin/masked-keywords/${encodeURIComponent(kw)}`)
+            await axios.delete(`/api/admin/masked-keywords/${encodeURIComponent(kw)}`, { headers: { 'x-user-username': user?.username } })
             fetchKeywords()
         } catch (err) {
             setError(err.response?.data?.detail || 'Failed to delete masked keyword.')
@@ -271,7 +271,7 @@ export default function AdminPage() {
         if (!window.confirm(`Are you sure you want to remove "${name}" from the recruiter persona matrix?`)) return
         setError(null)
         try {
-            await axios.delete(`/api/team-members/${id}`)
+            await axios.delete(`/api/team-members/${id}`, { headers: { 'x-user-username': user?.username } })
             if (user?.active_persona === name) {
                 onUpdateUser({ ...user, active_persona: null })
             }

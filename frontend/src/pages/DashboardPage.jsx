@@ -12,6 +12,9 @@ function CandidateDetailsModal({ candidate, onClose, onViewPdf }) {
     const [activeTab, setActiveTab] = useState('profile');
     const [jobs, setJobs] = useState([]);
     const [loadingJobs, setLoadingJobs] = useState(false);
+    const [showAlamaticz, setShowAlamaticz] = useState(false);
+    const [alamaticzData, setAlamaticzData] = useState(null);
+    const [loadingAlamaticz, setLoadingAlamaticz] = useState(false);
 
     useEffect(() => {
         if (candidate?.id) {
@@ -35,6 +38,8 @@ function CandidateDetailsModal({ candidate, onClose, onViewPdf }) {
         !candidate.filename.toLowerCase().endsWith('.xls') && 
         !candidate.filename.toLowerCase().endsWith('.csv');
 
+    const showRightPanel = hasViewableResume || showAlamaticz;
+
     return (
         <div style={{
             position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -44,8 +49,8 @@ function CandidateDetailsModal({ candidate, onClose, onViewPdf }) {
         }} onClick={onClose}>
             <div className="card" onClick={e => e.stopPropagation()} style={{
                 width: '95%', 
-                maxWidth: hasViewableResume ? '1400px' : '800px', 
-                height: hasViewableResume ? '90vh' : 'auto',
+                maxWidth: showRightPanel ? '1400px' : '800px', 
+                height: showRightPanel ? '90vh' : 'auto',
                 maxHeight: '90vh',
                 display: 'flex', 
                 flexDirection: 'row', 
@@ -57,12 +62,12 @@ function CandidateDetailsModal({ candidate, onClose, onViewPdf }) {
             }}>
                 {/* Left Panel: Candidate details */}
                 <div style={{
-                    flex: hasViewableResume ? '1 1 50%' : '1 1 100%',
+                    flex: showRightPanel ? '1 1 50%' : '1 1 100%',
                     display: 'flex',
                     flexDirection: 'column',
                     height: '100%',
                     overflow: 'hidden',
-                    borderRight: hasViewableResume ? '1px solid var(--border)' : 'none'
+                    borderRight: showRightPanel ? '1px solid var(--border)' : 'none'
                 }}>
                     {/* Header */}
                     <div style={{
@@ -82,30 +87,34 @@ function CandidateDetailsModal({ candidate, onClose, onViewPdf }) {
                         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                             <button 
                                 onClick={async () => {
-                                    try {
-                                        const res = await axios.get(`${import.meta.env.VITE_API_URL || ''}/api/candidates/${candidate.id}/export-docx`, { responseType: 'blob' });
-                                        const url = window.URL.createObjectURL(new Blob([res.data]));
-                                        const link = document.createElement('a');
-                                        link.href = url;
-                                        link.setAttribute('download', `Alamaticz_Resume_${(candidate.full_name || 'Candidate').replace(/ /g, '_')}.docx`);
-                                        document.body.appendChild(link);
-                                        link.click();
-                                        link.parentNode.removeChild(link);
-                                    } catch (err) {
-                                        alert('Failed to download Alamaticz resume.');
+                                    if (showAlamaticz) {
+                                        setShowAlamaticz(false);
+                                        return;
+                                    }
+                                    setShowAlamaticz(true);
+                                    if (!alamaticzData) {
+                                        setLoadingAlamaticz(true);
+                                        try {
+                                            const res = await axios.get(`${import.meta.env.VITE_API_URL || API_URL || ''}/api/candidates/${candidate.id}/formatted-resume`);
+                                            setAlamaticzData(res.data);
+                                        } catch (e) {
+                                            console.error(e);
+                                            alert("Failed to load Alamaticz format data");
+                                            setShowAlamaticz(false);
+                                        } finally {
+                                            setLoadingAlamaticz(false);
+                                        }
                                     }
                                 }}
                                 style={{
-                                    background: 'linear-gradient(135deg, var(--gold) 0%, #D4AF37 100%)', border: 'none',
-                                    color: 'var(--navy-dark)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
+                                    background: showAlamaticz ? 'rgba(var(--gold-rgb), 0.2)' : 'linear-gradient(135deg, var(--gold) 0%, #D4AF37 100%)', border: showAlamaticz ? '1px solid var(--gold)' : 'none',
+                                    color: showAlamaticz ? 'var(--gold)' : 'var(--navy-dark)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
                                     fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 800,
                                     display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s',
-                                    boxShadow: '0 4px 10px rgba(var(--gold-rgb), 0.2)'
+                                    boxShadow: showAlamaticz ? 'none' : '0 4px 10px rgba(var(--gold-rgb), 0.2)'
                                 }}
-                                onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
-                                onMouseLeave={e => e.currentTarget.style.transform = 'none'}
                             >
-                                <Download size={14} /> Alamaticz Format
+                                <Eye size={14} /> {showAlamaticz ? 'Hide Alamaticz Format' : 'View Alamaticz Format'}
                             </button>
                             {candidate.filename && !candidate.filename.toLowerCase().endsWith('.xlsx') && !candidate.filename.toLowerCase().endsWith('.xls') && !candidate.filename.toLowerCase().endsWith('.csv') && (
                                 isPdf ? (
@@ -613,7 +622,9 @@ export default function DashboardPage() {
     const handleDeleteCandidate = async (id, name) => {
         if (!window.confirm(`Are you sure you want to delete ${name || 'this candidate'}?`)) return;
         try {
-            await axios.delete(`${import.meta.env.VITE_API_URL || ''}/api/candidates/${id}`);
+            await axios.delete(`${import.meta.env.VITE_API_URL || ''}/api/candidates/${id}`, {
+                headers: { 'x-user-username': user?.username }
+            });
             setCandidates(prev => prev.filter(c => c.id !== id));
         } catch (e) {
             alert('Failed to delete candidate: ' + (e.response?.data?.detail || e.message));

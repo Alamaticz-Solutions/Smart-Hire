@@ -4,7 +4,6 @@ torch
 langchain
 langchain-community
 langchain-huggingface
-langchain-chroma
 langchain-groq
 python-dotenv
 docx2txt

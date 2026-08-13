@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { useOutletContext } from 'react-router-dom'
 import axios from 'axios'
-import { UploadCloud, Trash2, CheckCircle, FileText, Search, Plus, Filter, Loader, RefreshCw, Download, Upload, X, Check, Eye } from 'lucide-react'
+import { UploadCloud, Trash2, CheckCircle, FileText, Search, Plus, Filter, Loader, RefreshCw, Download, Upload, X, Check, Eye, CheckSquare, Square } from 'lucide-react'
 import { exportToExcel, formatCandidatesForExcel } from '../utils/excelUtils'
 
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -178,6 +178,7 @@ export default function UploadPage() {
     const [draggedColKey, setDraggedColKey] = useState(null)
     const [dragOverColKey, setDragOverColKey] = useState(null)
     const [loadingCandidates, setLoadingCandidates] = useState(false)
+    const [selectedIds, setSelectedIds] = useState(new Set())
 
     const toggleColumnVisibility = (key) => {
         setHiddenColumnKeys(prev => 
@@ -302,8 +303,8 @@ export default function UploadPage() {
     });
 
     const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500) }
-    const load = () => {
-        setLoadingCandidates(true);
+    const load = (silent = false) => {
+        if (!silent) setLoadingCandidates(true);
         return axios.get(`${API_URL}/api/candidates`)
             .then(r => {
                 setCandidates(r.data);
@@ -311,9 +312,11 @@ export default function UploadPage() {
             })
             .catch(err => {
                 console.error("Failed to load candidates", err);
-                showToast("Failed to load candidates", "error");
+                if (!silent) showToast("Failed to load candidates", "error");
             })
-            .finally(() => setLoadingCandidates(false));
+            .finally(() => {
+                if (!silent) setLoadingCandidates(false);
+            });
     }
     const handleAddCandidateSubmit = async () => {
         if (!newCandidateForm.full_name || !newCandidateForm.full_name.trim()) {
@@ -366,10 +369,10 @@ export default function UploadPage() {
         load();
         loadCols();
         
-        // Poll for new candidates automatically every 20 seconds
+        // Poll for new candidates automatically every 5 seconds (silent refresh)
         const interval = setInterval(() => {
-            load();
-        }, 20000);
+            load(true);
+        }, 5000);
         
         return () => clearInterval(interval);
     }, [])
@@ -379,7 +382,7 @@ export default function UploadPage() {
         const hasProcessing = candidates.some(c => c.full_name && c.full_name.includes('Processing'));
         if (hasProcessing) {
             const timer = setInterval(() => {
-                load();
+                load(true);
             }, 3000);
             return () => clearInterval(timer);
         }
@@ -390,7 +393,7 @@ export default function UploadPage() {
         const anyDone = progress.some(p => p.status === 'done');
         if (anyDone) {
             const timer = setInterval(() => {
-                load();
+                load(true);
             }, 3000);
             const timeout = setTimeout(() => {
                 clearInterval(timer);
@@ -406,7 +409,7 @@ export default function UploadPage() {
         const label = col_label || col_key;
         if (!window.confirm(`Are you sure you want to delete the "${label}" column?`)) return
         try {
-            await axios.delete(`${API_URL}/api/columns/${col_key}`)
+            await axios.delete(`${API_URL}/api/columns/${col_key}`, { headers: { 'x-user-username': user?.username } })
             showToast('Column deleted')
             loadCols()
         } catch (e) { showToast(e.response?.data?.detail || 'Delete failed', 'error') }
@@ -499,15 +502,45 @@ export default function UploadPage() {
     const del = async (id) => {
         if (!window.confirm('Delete this candidate?')) return
         try { 
-            await axios.delete(`${API_URL}/api/candidates/${id}`); 
+            await axios.delete(`${API_URL}/api/candidates/${id}`, {
+                headers: { 'x-user-username': user?.username }
+            }); 
             setCandidates(p => p.filter(c => c.id !== id)); 
             setSelectedCandidateForDetails(null);
             showToast('Deleted') 
         } catch { showToast('Delete failed', 'error') }
     }
 
+    const toggleSelectCandidate = (id) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev)
+            if (next.has(id)) next.delete(id)
+            else next.add(id)
+            return next
+        })
+    }
+    const toggleSelectAll = () => {
+        if (selectedIds.size === filteredCandidates.length) {
+            setSelectedIds(new Set())
+        } else {
+            setSelectedIds(new Set(filteredCandidates.map(c => c.id)))
+        }
+    }
+    const bulkDelete = async () => {
+        if (selectedIds.size === 0) return
+        if (!window.confirm(`Are you sure you want to delete ${selectedIds.size} selected candidate(s)?`)) return
+        try {
+            await axios.post(`${API_URL}/api/candidates/bulk-delete`, { ids: [...selectedIds] }, {
+                headers: { 'x-user-username': user?.username }
+            })
+            setCandidates(prev => prev.filter(c => !selectedIds.has(c.id)))
+            setSelectedIds(new Set())
+            showToast(`Deleted ${selectedIds.size} candidate(s)`)
+        } catch { showToast('Bulk delete failed', 'error') }
+    }
+
     const getTableWidth = () => {
-        let total = 60 // Width for S.No column
+        let total = 60 + 45 // Width for S.No column + checkbox column
         activeCols.forEach(c => {
             const w = c.pct
             if (w && typeof w === 'string' && w.endsWith('px')) {
@@ -685,14 +718,69 @@ export default function UploadPage() {
                     </div>
                 ) : (
                     <>
+                        {selectedIds.size > 0 && (
+                            <div style={{
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                padding: '10px 18px', borderRadius: 10,
+                                background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(239, 68, 68, 0.06))',
+                                border: '1px solid rgba(239, 68, 68, 0.35)',
+                                marginBottom: 4,
+                                animation: 'fadeIn 0.2s ease'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                    <CheckSquare size={18} style={{ color: 'var(--gold)' }} />
+                                    <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text)' }}>
+                                        {selectedIds.size} candidate{selectedIds.size !== 1 ? 's' : ''} selected
+                                    </span>
+                                    <button
+                                        onClick={() => setSelectedIds(new Set())}
+                                        style={{
+                                            background: 'none', border: 'none', color: 'var(--text-dim)',
+                                            cursor: 'pointer', fontSize: '0.8rem', textDecoration: 'underline'
+                                        }}
+                                    >Clear</button>
+                                </div>
+                                <button
+                                    onClick={bulkDelete}
+                                    className="btn btn-danger"
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: 6,
+                                        padding: '8px 18px', fontSize: '0.85rem', fontWeight: 700,
+                                        borderRadius: 8
+                                    }}
+                                >
+                                    <Trash2 size={16} /> Delete Selected ({selectedIds.size})
+                                </button>
+                            </div>
+                        )}
                         <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', borderRadius: 10, border: '1px solid var(--border)', width: '100%' }}>
                             <table style={{ width: getTableWidth(), tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
                                 <colgroup>
+                                    <col style={{ width: '45px' }} />
                                     <col style={{ width: '60px' }} />
                                     {activeCols.map(c => <col key={c.key} style={{ width: c.pct }} />)}
                                 </colgroup>
                                 <thead>
                                     <tr>
+                                        <th style={{
+                                            ...TH,
+                                            position: 'sticky',
+                                            top: 0,
+                                            zIndex: 12,
+                                            width: '45px',
+                                            textAlign: 'center',
+                                            cursor: 'pointer',
+                                            userSelect: 'none'
+                                        }} onClick={toggleSelectAll} title={selectedIds.size === filteredCandidates.length ? 'Deselect all' : 'Select all'}>
+                                            <input
+                                                type="checkbox"
+                                                checked={filteredCandidates.length > 0 && selectedIds.size === filteredCandidates.length}
+                                                onChange={toggleSelectAll}
+                                                ref={el => { if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < filteredCandidates.length }}
+                                                style={{ cursor: 'pointer', accentColor: 'var(--gold)', width: 15, height: 15 }}
+                                                onClick={e => e.stopPropagation()}
+                                            />
+                                        </th>
                                         <th style={{
                                             ...TH,
                                             position: 'sticky',
@@ -803,6 +891,19 @@ export default function UploadPage() {
                                         })}
                                     </tr>
                                     <tr style={{ background: 'rgba(var(--navy-dark-rgb), 0.5)' }}>
+                                        <th
+                                            key="filter-checkbox"
+                                            style={{
+                                                padding: '6px 10px',
+                                                borderBottom: '2px solid var(--border)',
+                                                background: 'rgba(var(--navy-rgb), 0.97)',
+                                                position: 'sticky',
+                                                top: '38px',
+                                                zIndex: 11,
+                                                textAlign: 'center',
+                                            }}
+                                        >
+                                        </th>
                                         <th
                                             key="filter-s_no"
                                             style={{
@@ -915,7 +1016,7 @@ export default function UploadPage() {
                                 <tbody>
                                     {filteredCandidates.length === 0 ? (
                                         <tr>
-                                            <td colSpan={activeCols.length + 1} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-dim)' }}>
+                                            <td colSpan={activeCols.length + 2} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-dim)' }}>
                                                 <div style={{ fontSize: '2rem', marginBottom: 8 }}>🔍</div>
                                                 <p style={{ margin: 0 }}>No candidates match the applied filters.</p>
                                             </td>
@@ -927,6 +1028,18 @@ export default function UploadPage() {
                                             onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.07)'}
                                             onMouseLeave={e => e.currentTarget.style.background = ri % 2 === 0 ? 'rgba(var(--navy-rgb), 0.25)' : 'transparent'}
                                         >
+                                            <td style={{
+                                                ...TD_BASE,
+                                                textAlign: 'center',
+                                                padding: '10px 6px'
+                                            }}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedIds.has(row.id)}
+                                                    onChange={() => toggleSelectCandidate(row.id)}
+                                                    style={{ cursor: 'pointer', accentColor: 'var(--gold)', width: 15, height: 15 }}
+                                                />
+                                            </td>
                                             <td style={{
                                                 ...TD_BASE,
                                                 textAlign: 'center',
@@ -1403,6 +1516,9 @@ function CandidateDetailsModal({ candidate, onClose, onViewPdf, onDeleteCandidat
     const [activeTab, setActiveTab] = useState('profile');
     const [jobs, setJobs] = useState([]);
     const [loadingJobs, setLoadingJobs] = useState(false);
+    const [showAlamaticz, setShowAlamaticz] = useState(false);
+    const [alamaticzData, setAlamaticzData] = useState(null);
+    const [loadingAlamaticz, setLoadingAlamaticz] = useState(false);
 
     useEffect(() => {
         if (candidate?.id) {
@@ -1426,6 +1542,8 @@ function CandidateDetailsModal({ candidate, onClose, onViewPdf, onDeleteCandidat
         !candidate.filename.toLowerCase().endsWith('.xls') && 
         !candidate.filename.toLowerCase().endsWith('.csv');
 
+    const showRightPanel = hasViewableResume || showAlamaticz;
+
     return (
         <div style={{
             position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -1435,8 +1553,8 @@ function CandidateDetailsModal({ candidate, onClose, onViewPdf, onDeleteCandidat
         }} onClick={onClose}>
             <div className="card" onClick={e => e.stopPropagation()} style={{
                 width: '95%', 
-                maxWidth: hasViewableResume ? '1400px' : '800px', 
-                height: hasViewableResume ? '90vh' : 'auto',
+                maxWidth: showRightPanel ? '1400px' : '800px', 
+                height: showRightPanel ? '90vh' : 'auto',
                 maxHeight: '90vh',
                 display: 'flex', 
                 flexDirection: 'row', 
@@ -1448,12 +1566,12 @@ function CandidateDetailsModal({ candidate, onClose, onViewPdf, onDeleteCandidat
             }}>
                 {/* Left Panel: Candidate details */}
                 <div style={{
-                    flex: hasViewableResume ? '1 1 50%' : '1 1 100%',
+                    flex: showRightPanel ? '1 1 50%' : '1 1 100%',
                     display: 'flex',
                     flexDirection: 'column',
                     height: '100%',
                     overflow: 'hidden',
-                    borderRight: hasViewableResume ? '1px solid var(--border)' : 'none'
+                    borderRight: showRightPanel ? '1px solid var(--border)' : 'none'
                 }}>
                     {/* Header */}
                     <div style={{
@@ -1473,30 +1591,34 @@ function CandidateDetailsModal({ candidate, onClose, onViewPdf, onDeleteCandidat
                         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                             <button 
                                 onClick={async () => {
-                                    try {
-                                        const res = await axios.get(`${API_URL}/api/candidates/${candidate.id}/export-docx`, { responseType: 'blob' });
-                                        const url = window.URL.createObjectURL(new Blob([res.data]));
-                                        const link = document.createElement('a');
-                                        link.href = url;
-                                        link.setAttribute('download', `Alamaticz_Resume_${(candidate.full_name || 'Candidate').replace(/ /g, '_')}.docx`);
-                                        document.body.appendChild(link);
-                                        link.click();
-                                        link.parentNode.removeChild(link);
-                                    } catch (err) {
-                                        alert('Failed to download Alamaticz resume.');
+                                    if (showAlamaticz) {
+                                        setShowAlamaticz(false);
+                                        return;
+                                    }
+                                    setShowAlamaticz(true);
+                                    if (!alamaticzData) {
+                                        setLoadingAlamaticz(true);
+                                        try {
+                                            const res = await axios.get(`${import.meta.env.VITE_API_URL || API_URL || ''}/api/candidates/${candidate.id}/formatted-resume`);
+                                            setAlamaticzData(res.data);
+                                        } catch (e) {
+                                            console.error(e);
+                                            alert("Failed to load Alamaticz format data");
+                                            setShowAlamaticz(false);
+                                        } finally {
+                                            setLoadingAlamaticz(false);
+                                        }
                                     }
                                 }}
                                 style={{
-                                    background: 'linear-gradient(135deg, var(--gold) 0%, #D4AF37 100%)', border: 'none',
-                                    color: 'var(--navy-dark)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
+                                    background: showAlamaticz ? 'rgba(var(--gold-rgb), 0.2)' : 'linear-gradient(135deg, var(--gold) 0%, #D4AF37 100%)', border: showAlamaticz ? '1px solid var(--gold)' : 'none',
+                                    color: showAlamaticz ? 'var(--gold)' : 'var(--navy-dark)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
                                     fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 800,
                                     display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s',
-                                    boxShadow: '0 4px 10px rgba(var(--gold-rgb), 0.2)'
+                                    boxShadow: showAlamaticz ? 'none' : '0 4px 10px rgba(var(--gold-rgb), 0.2)'
                                 }}
-                                onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
-                                onMouseLeave={e => e.currentTarget.style.transform = 'none'}
                             >
-                                <Download size={14} /> Alamaticz Format
+                                <Eye size={14} /> {showAlamaticz ? 'Hide Alamaticz Format' : 'View Alamaticz Format'}
                             </button>
                             {candidate.filename && !candidate.filename.toLowerCase().endsWith('.xlsx') && !candidate.filename.toLowerCase().endsWith('.xls') && !candidate.filename.toLowerCase().endsWith('.csv') && (
                                 isPdf ? (

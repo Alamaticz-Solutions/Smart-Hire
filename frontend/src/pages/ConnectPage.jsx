@@ -394,98 +394,117 @@ export default function ConnectPage() {
                         </div>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 20, opacity: integrationsSettings.email_enabled === 1 ? 1 : 0.5, pointerEvents: integrationsSettings.email_enabled === 1 ? 'auto' : 'none' }}>
-                            {/* Primary Mailbox Credentials */}
+                            {/* Gmail Integration Credentials */}
                             <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 16, background: 'rgba(0,0,0,0.1)' }}>
-                                <h3 style={{ margin: '0 0 16px 0', color: 'var(--gold)', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    📧 Primary Admin Mailbox Sync
-                                </h3>
-                                <div style={{ marginBottom: 16 }}>
-                                    <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Email Provider</label>
-                                    <div style={{ display: 'flex', gap: 8 }}>
-                                        {['Gmail', 'Outlook', 'Custom'].map(provider => {
-                                            let isActive = false;
-                                            if (provider === 'Gmail' && integrationsSettings.imap_host?.includes('gmail')) isActive = true;
-                                            else if (provider === 'Outlook' && integrationsSettings.imap_host?.includes('office365')) isActive = true;
-                                            else if (provider === 'Custom' && !integrationsSettings.imap_host?.includes('gmail') && !integrationsSettings.imap_host?.includes('office365')) isActive = true;
-                                            
-                                            return (
-                                                <button
-                                                    key={provider}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        if (provider === 'Gmail') {
-                                                            setIntegrationsSettings(prev => ({ ...prev, imap_host: 'imap.gmail.com', smtp_host: 'smtp.gmail.com', imap_port: 993, smtp_port: 587 }))
-                                                        } else if (provider === 'Outlook') {
-                                                            setIntegrationsSettings(prev => ({ ...prev, imap_host: 'outlook.office365.com', smtp_host: 'smtp.office365.com', imap_port: 993, smtp_port: 587 }))
-                                                        }
-                                                    }}
-                                                    style={{
-                                                        padding: '6px 16px', borderRadius: 20, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
-                                                        border: isActive ? '1px solid var(--gold)' : '1px solid var(--border)',
-                                                        background: isActive ? 'rgba(var(--sky-rgb), 0.15)' : 'rgba(0,0,0,0.2)',
-                                                        color: isActive ? 'var(--gold)' : 'var(--text-dim)'
-                                                    }}
-                                                >
-                                                    {provider}
-                                                </button>
-                                            )
-                                        })}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                                    <h3 style={{ margin: 0, color: 'var(--gold)', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        📧 Gmail Integration
+                                    </h3>
+                                    <label style={{ position: 'relative', display: 'inline-block', width: 40, height: 20, cursor: 'pointer' }}>
+                                        <input 
+                                            type="checkbox" 
+                                            checked={integrationsSettings.gmail_enabled === 1}
+                                            onChange={e => setIntegrationsSettings(prev => ({ ...prev, gmail_enabled: e.target.checked ? 1 : 0 }))}
+                                            style={{ opacity: 0, width: 0, height: 0 }}
+                                        />
+                                        <span style={{
+                                            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                                            backgroundColor: integrationsSettings.gmail_enabled === 1 ? 'var(--gold)' : '#334155',
+                                            transition: '0.3s', borderRadius: 20, display: 'block'
+                                        }} />
+                                        <span style={{
+                                            position: 'absolute', content: '""', height: 14, width: 14, left: integrationsSettings.gmail_enabled === 1 ? 22 : 3, bottom: 3,
+                                            backgroundColor: '#000', transition: '0.3s', borderRadius: '50%'
+                                        }} />
+                                    </label>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, opacity: integrationsSettings.gmail_enabled === 1 ? 1 : 0.5, pointerEvents: integrationsSettings.gmail_enabled === 1 ? 'auto' : 'none' }}>
+                                    <div>
+                                        <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Gmail Address</label>
+                                        <input 
+                                            value={integrationsSettings.gmail_email || ''}
+                                            onChange={e => setIntegrationsSettings(prev => ({ ...prev, gmail_email: e.target.value }))}
+                                            placeholder="hr@gmail.com"
+                                            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>App Password</label>
+                                        <input 
+                                            type="password"
+                                            value={integrationsSettings.gmail_pass || ''}
+                                            onChange={e => setIntegrationsSettings(prev => ({ ...prev, gmail_pass: e.target.value }))}
+                                            placeholder={integrationsSettings.gmail_pass === '****' ? '                ' : '16-character app password'}
+                                            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                                        />
                                     </div>
                                 </div>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-                                    <div>
-                                        <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Email Address</label>
+                            </div>
+
+                            {/* Outlook Integration Credentials */}
+                            <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 16, background: 'rgba(0,0,0,0.1)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                                    <h3 style={{ margin: 0, color: 'var(--gold)', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        📧 Outlook Integration
+                                    </h3>
+                                    <label style={{ position: 'relative', display: 'inline-block', width: 40, height: 20, cursor: 'pointer' }}>
                                         <input 
-                                            value={integrationsSettings.email_user || ''}
-                                            onChange={e => handlePrimaryEmailChange(e.target.value)}
+                                            type="checkbox" 
+                                            checked={integrationsSettings.outlook_enabled === 1}
+                                            onChange={e => setIntegrationsSettings(prev => ({ ...prev, outlook_enabled: e.target.checked ? 1 : 0 }))}
+                                            style={{ opacity: 0, width: 0, height: 0 }}
+                                        />
+                                        <span style={{
+                                            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                                            backgroundColor: integrationsSettings.outlook_enabled === 1 ? 'var(--gold)' : '#334155',
+                                            transition: '0.3s', borderRadius: 20, display: 'block'
+                                        }} />
+                                        <span style={{
+                                            position: 'absolute', content: '""', height: 14, width: 14, left: integrationsSettings.outlook_enabled === 1 ? 22 : 3, bottom: 3,
+                                            backgroundColor: '#000', transition: '0.3s', borderRadius: '50%'
+                                        }} />
+                                    </label>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, opacity: integrationsSettings.outlook_enabled === 1 ? 1 : 0.5, pointerEvents: integrationsSettings.outlook_enabled === 1 ? 'auto' : 'none' }}>
+                                    <div>
+                                        <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Outlook Email Address</label>
+                                        <input 
+                                            value={integrationsSettings.outlook_email || ''}
+                                            onChange={e => setIntegrationsSettings(prev => ({ ...prev, outlook_email: e.target.value }))}
                                             placeholder="hr@alamaticz.com"
                                             style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
                                         />
                                     </div>
-                                    {integrationsSettings.imap_host?.includes('office365') ? (
-                                        <>
-                                            <div>
-                                                <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Application ID (Client ID)</label>
-                                                <input 
-                                                    value={integrationsSettings.ms_client_id || ''}
-                                                    onChange={e => setIntegrationsSettings(prev => ({ ...prev, ms_client_id: e.target.value }))}
-                                                    placeholder="00000000-0000-0000-0000-000000000000"
-                                                    style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Tenant ID</label>
-                                                <input 
-                                                    value={integrationsSettings.ms_tenant_id || ''}
-                                                    onChange={e => setIntegrationsSettings(prev => ({ ...prev, ms_tenant_id: e.target.value }))}
-                                                    placeholder="common or tenant id"
-                                                    style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Client Secret</label>
-                                                <input 
-                                                    type="password"
-                                                    value={integrationsSettings.ms_client_secret || ''}
-                                                    onChange={e => setIntegrationsSettings(prev => ({ ...prev, ms_client_secret: e.target.value }))}
-                                                    placeholder={integrationsSettings.ms_client_secret === '****' ? '                ' : 'Client Secret Value'}
-                                                    style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
-                                                />
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <div>
-                                            <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>App Password</label>
-                                            <input 
-                                                type="password"
-                                                value={integrationsSettings.email_pass || ''}
-                                                onChange={e => setIntegrationsSettings(prev => ({ ...prev, email_pass: e.target.value }))}
-                                                placeholder={integrationsSettings.email_pass === '****' ? '                ' : '16-character app password'}
-                                                style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
-                                            />
-                                        </div>
-                                    )}
+                                    <div>
+                                        <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Application ID (Client ID)</label>
+                                        <input 
+                                            value={integrationsSettings.ms_client_id || ''}
+                                            onChange={e => setIntegrationsSettings(prev => ({ ...prev, ms_client_id: e.target.value }))}
+                                            placeholder="00000000-0000-0000-0000-000000000000"
+                                            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Tenant ID</label>
+                                        <input 
+                                            value={integrationsSettings.ms_tenant_id || ''}
+                                            onChange={e => setIntegrationsSettings(prev => ({ ...prev, ms_tenant_id: e.target.value }))}
+                                            placeholder="common or tenant id"
+                                            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Client Secret</label>
+                                        <input 
+                                            type="password"
+                                            value={integrationsSettings.ms_client_secret || ''}
+                                            onChange={e => setIntegrationsSettings(prev => ({ ...prev, ms_client_secret: e.target.value }))}
+                                            placeholder={integrationsSettings.ms_client_secret === '****' ? '                ' : 'Client Secret Value'}
+                                            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                                        />
+                                    </div>
                                 </div>
+                            </div>
 
                                 {/* Keywords List */}
                                 <div style={{ marginBottom: 16 }}>
@@ -608,7 +627,6 @@ export default function ConnectPage() {
                                         {testingConnection ? 'Testing...' : 'Test Connection'}
                                     </button>
                                 </div>
-                            </div>
 
                             {/* Additional Mailboxes List */}
                             <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 16, background: 'rgba(0,0,0,0.1)' }}>
