@@ -6295,7 +6295,7 @@ def poll_emails_and_process():
                 time.sleep(30)
                 continue
 
-            settings = dict(row)
+            settings = row_to_dict(row)
             email_enabled = settings.get("email_enabled", 0)
             imap_host = settings.get("imap_host", "")
             imap_port = settings.get("imap_port", 993)

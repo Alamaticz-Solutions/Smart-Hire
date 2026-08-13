@@ -33,4 +33,4 @@ WORKDIR /app
 EXPOSE 8000
 
 # Command to run the application dynamically respecting the PORT environment variable set by Render
-CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
