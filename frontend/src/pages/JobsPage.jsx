@@ -663,7 +663,7 @@ function CandidateDetailsModal({ candidate, onClose, onViewPdf, onToggleStatus, 
         if (!formattedData) return;
         const printWindow = window.open('', '_blank');
         if (printWindow) {
-            printWindow.document.write(getResumeHtml(formattedData, candidate, alamaticzLogo));
+            printWindow.document.write(getResumeHtml(formattedData, candidate, alamaticzLogo, resumeTemplate));
             printWindow.document.close();
         } else {
             alert('Please allow popups to print/export PDF.');
@@ -1095,6 +1095,13 @@ function CandidateDetailsModal({ candidate, onClose, onViewPdf, onToggleStatus, 
                                     <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text)' }}>
                                         {isEditingFormatted ? '✏️ Edit Alamaticz Resume' : '📄 Company Formatted Resume'}
                                     </span>
+                                    {!isEditingFormatted && (
+                                        <div style={{ display: 'flex', gap: '8px', marginRight: 'auto', marginLeft: '20px' }}>
+                                            <button onClick={() => setResumeTemplate('alamaticz')} style={{ background: resumeTemplate === 'alamaticz' ? 'var(--gold)' : 'transparent', color: resumeTemplate === 'alamaticz' ? '#000' : 'var(--gold)', border: '1px solid var(--gold)', borderRadius: '4px', padding: '4px 8px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}>Alamaticz</button>
+                                            <button onClick={() => setResumeTemplate('modern')} style={{ background: resumeTemplate === 'modern' ? 'var(--gold)' : 'transparent', color: resumeTemplate === 'modern' ? '#000' : 'var(--gold)', border: '1px solid var(--gold)', borderRadius: '4px', padding: '4px 8px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}>Modern</button>
+                                            <button onClick={() => setResumeTemplate('classic')} style={{ background: resumeTemplate === 'classic' ? 'var(--gold)' : 'transparent', color: resumeTemplate === 'classic' ? '#000' : 'var(--gold)', border: '1px solid var(--gold)', borderRadius: '4px', padding: '4px 8px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}>Classic</button>
+                                        </div>
+                                    )}
                                     {isEditingFormatted ? (
                                         <div style={{ display: 'flex', gap: '8px' }}>
                                             <button 
@@ -1190,7 +1197,7 @@ function CandidateDetailsModal({ candidate, onClose, onViewPdf, onToggleStatus, 
                                 ) : isEditingFormatted ? (
                                     <ResumeEditor formData={editedFormState} setFormData={setEditedFormState} />
                                 ) : (
-                                    <ResumePreview data={formattedData} candidate={candidate} logoUrl={alamaticzLogo} />
+                                    <ResumePreview data={formattedData} candidate={candidate} logoUrl={alamaticzLogo} templateId={resumeTemplate} />
                                 )}
                             </>
                         ) : (
@@ -1358,6 +1365,20 @@ const TD_BASE = {
 }
 
 export default function JobsPage() {
+    const [resumeTemplate, setResumeTemplate] = useState('alamaticz');
+
+    useEffect(() => {
+        if (user?.username) {
+            axios.get(`${BACKEND_URL}/api/integrations`, { headers: { 'x-user-username': user.username } })
+                .then(res => {
+                    if (res.data && res.data.default_resume_template) {
+                        setResumeTemplate(res.data.default_resume_template);
+                    }
+                })
+                .catch(err => console.error('Error fetching default template', err));
+        }
+    }, [user?.username]);
+
     const { user } = useOutletContext();
     const isExternal = user?.is_external === 1;
     const isAdmin = user?.role === 'admin' || user?.is_admin === 1 || user?.is_hr === 1;

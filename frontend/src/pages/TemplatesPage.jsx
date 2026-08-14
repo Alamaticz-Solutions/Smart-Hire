@@ -121,7 +121,8 @@ export default function TemplatesPage() {
         gdrive_folder_id: '',
         gdrive_email: '',
         additional_emails: '[]',
-        theme_usage_counts: '{}'
+        theme_usage_counts: '{}',
+        default_resume_template: 'alamaticz'
     })
 
     const showToast = (msg, type = 'success') => {
@@ -322,6 +323,30 @@ export default function TemplatesPage() {
                 {/* LEFT EDIT PANEL */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     
+
+                    {/* Resume Template Preset Card */}
+                    <div className="card" style={{ padding: '20px', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px' }}>
+                        <label className="modern-label" style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gold)', marginBottom: '8px', display: 'block' }}>
+                            Default Resume Template
+                        </label>
+                        <select 
+                            value={integrationsSettings.default_resume_template || 'alamaticz'}
+                            onChange={e => setIntegrationsSettings({...integrationsSettings, default_resume_template: e.target.value})}
+                            style={{ 
+                                width: '100%', padding: '12px', borderRadius: 8, 
+                                border: '1px solid var(--border)', background: 'var(--input-bg)', 
+                                color: 'var(--text)', outline: 'none', fontWeight: 600, fontSize: '0.88rem' 
+                            }}
+                        >
+                            <option value="alamaticz">📄 Alamaticz Format (Standard Layout)</option>
+                            <option value="modern">🎨 Modern Format (Sleek & Colorful)</option>
+                            <option value="classic">🏛️ Classic Format (Traditional Black & White)</option>
+                        </select>
+                        <p style={{ margin: '8px 0 0 0', fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+                            This template will be selected by default when viewing or exporting candidate resumes.
+                        </p>
+                    </div>
+
                     {/* Theme Preset Card */}
                     <div className="card" style={{ padding: '20px', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px' }}>
                         <label className="modern-label" style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gold)', marginBottom: '8px', display: 'block' }}>

@@ -638,6 +638,8 @@ def init_db():
         cur.execute("ALTER TABLE integrations_settings ADD COLUMN outlook_enabled INTEGER DEFAULT 0")
     if 'outlook_email' not in existing_settings_cols:
         cur.execute("ALTER TABLE integrations_settings ADD COLUMN outlook_email TEXT")
+    if 'default_resume_template' not in existing_settings_cols:
+        cur.execute("ALTER TABLE integrations_settings ADD COLUMN default_resume_template TEXT DEFAULT 'alamaticz'")
 
     # Seed integrations_settings if empty, loading from environment variables if present
     cur.execute("SELECT COUNT(*) FROM integrations_settings")
@@ -4856,6 +4858,7 @@ class IntegrationSettingsRequest(BaseModel):
     outlook_email: Optional[str] = None
     additional_emails: Optional[str] = "[]"
     theme_usage_counts: Optional[str] = "{}"
+    default_resume_template: Optional[str] = "alamaticz"
 
 @app.get("/api/integrations")
 def get_integrations_settings(request: Request):
@@ -4873,7 +4876,7 @@ def get_integrations_settings(request: Request):
                gdrive_client_id, gdrive_client_secret, gdrive_refresh_token, gdrive_folder_id, gdrive_email,
                ms_client_id, ms_client_secret, ms_tenant_id,
                additional_emails, theme_usage_counts,
-               gmail_enabled, gmail_email, gmail_pass, outlook_enabled, outlook_email
+               gmail_enabled, gmail_email, gmail_pass, outlook_enabled, outlook_email, default_resume_template
         FROM integrations_settings LIMIT 1
     """)
     row = cur.fetchone()
@@ -4901,6 +4904,7 @@ def get_integrations_settings(request: Request):
             "gmail_pass": "",
             "outlook_enabled": 0,
             "outlook_email": "",
+            "default_resume_template": "alamaticz",
             "additional_emails": "[]",
             "theme_usage_counts": "{}"
         }
@@ -5076,7 +5080,8 @@ def save_integrations_settings(settings: IntegrationSettingsRequest, request: Re
             ms_tenant_id = ?, additional_emails = ?,
             theme_usage_counts = ?,
             gmail_enabled = ?, gmail_email = ?, gmail_pass = ?,
-            outlook_enabled = ?, outlook_email = ?
+            outlook_enabled = ?, outlook_email = ?,
+            default_resume_template = ?
         WHERE id = ?
         """, (settings.email_enabled, settings.imap_host, settings.imap_port,
               settings.smtp_host, settings.smtp_port, settings.email_user,
@@ -5088,7 +5093,7 @@ def save_integrations_settings(settings: IntegrationSettingsRequest, request: Re
               settings.gdrive_email, settings.ms_client_id, final_ms_secret, 
               final_ms_tenant, final_additional_emails, final_theme_usage,
               settings.gmail_enabled, settings.gmail_email, final_gmail_pass,
-              settings.outlook_enabled, settings.outlook_email, row[0]))
+              settings.outlook_enabled, settings.outlook_email, settings.default_resume_template, row[0]))
     else:
         cur.execute("""
         INSERT INTO integrations_settings (
@@ -5096,8 +5101,8 @@ def save_integrations_settings(settings: IntegrationSettingsRequest, request: Re
             reply_theme, reply_subject, reply_body_missing, reply_body_complete,
             gdrive_client_id, gdrive_client_secret, gdrive_refresh_token, gdrive_folder_id, gdrive_email, 
             ms_client_id, ms_client_secret, ms_tenant_id, additional_emails,
-            theme_usage_counts, gmail_enabled, gmail_email, gmail_pass, outlook_enabled, outlook_email
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            theme_usage_counts, gmail_enabled, gmail_email, gmail_pass, outlook_enabled, outlook_email, default_resume_template
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (settings.email_enabled, settings.imap_host, settings.imap_port,
               settings.smtp_host, settings.smtp_port, settings.email_user,
               final_pass, settings.keywords, settings.drive_enabled,

@@ -209,7 +209,7 @@ export const getDynamicWorkExpChunks = (jobs, profile_summary, domain_skills, is
 };
 
 /* ─── Resume Preview component (Alamaticz Solutions Template) ────────────── */
-export default function ResumePreview({ data, logoUrl }) {
+export default function ResumePreview({ data, logoUrl, templateId = 'alamaticz' }) {
     React.useEffect(() => {
         const link = document.createElement('link');
         link.href = 'https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap';
@@ -219,6 +219,14 @@ export default function ResumePreview({ data, logoUrl }) {
             document.head.removeChild(link);
         };
     }, []);
+
+    
+    if (templateId === 'modern') {
+        return <ModernResumePreview data={data} />;
+    }
+    if (templateId === 'classic') {
+        return <ClassicResumePreview data={data} />;
+    }
 
     if (!data) {
         return (
@@ -544,7 +552,7 @@ export default function ResumePreview({ data, logoUrl }) {
     );
 }
 
-export function getResumeHtml(data, candidate, logoUrl) {
+export function getResumeHtml(data, candidate, logoUrl, templateId = 'alamaticz') {
     const {
         full_name = '',
         job_title = '',
@@ -556,6 +564,14 @@ export function getResumeHtml(data, candidate, logoUrl) {
         work_experience = [],
         recognitions = []
     } = data;
+
+    
+    if (templateId === 'modern') {
+        return getModernResumeHtml(data, candidate);
+    }
+    if (templateId === 'classic') {
+        return getClassicResumeHtml(data, candidate);
+    }
 
     const fullLogoUrl = logoUrl && (logoUrl.startsWith('data:') || logoUrl.startsWith('http') ? logoUrl : window.location.origin + logoUrl);
 
@@ -925,3 +941,251 @@ export function getResumeHtml(data, candidate, logoUrl) {
 </html>`;
 }
 
+
+
+// --- MODERN TEMPLATE ---
+function ModernResumePreview({ data }) {
+    if (!data) return null;
+    const {
+        full_name = '', job_title = '', profile_summary = '', domain_skills = [],
+        technical_skills = {}, education = [], certifications = [], work_experience = [], recognitions = []
+    } = data;
+
+    return (
+        <div style={{ flex: 1, overflowY: 'auto', background: '#525659', padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <div style={{ width: '100%', maxWidth: '800px', background: '#fff', padding: '40px 50px', boxShadow: '0 4px 20px rgba(0,0,0,0.2)', fontFamily: '\'Segoe UI\', Roboto, sans-serif', color: '#333', fontSize: '13px', lineHeight: '1.6' }}>
+                <div style={{ borderBottom: '3px solid #00bcd4', paddingBottom: '20px', marginBottom: '20px' }}>
+                    <h1 style={{ margin: 0, fontSize: '2.2rem', color: '#2c3e50', letterSpacing: '1px' }}>{full_name}</h1>
+                    <div style={{ fontSize: '1.1rem', color: '#00bcd4', fontWeight: 600, marginTop: '5px' }}>{job_title}</div>
+                </div>
+                
+                {profile_summary && (
+                    <div style={{ marginBottom: '25px' }}>
+                        <h3 style={{ color: '#2c3e50', borderBottom: '1px solid #eee', paddingBottom: '5px', marginBottom: '10px' }}>PROFILE</h3>
+                        <p style={{ margin: 0, textAlign: 'justify' }}>{profile_summary}</p>
+                    </div>
+                )}
+
+                {(domain_skills.length > 0 || Object.keys(technical_skills).length > 0) && (
+                    <div style={{ marginBottom: '25px' }}>
+                        <h3 style={{ color: '#2c3e50', borderBottom: '1px solid #eee', paddingBottom: '5px', marginBottom: '10px' }}>SKILLS</h3>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                            {domain_skills.map((s, i) => <span key={'d'+i} style={{ background: '#f0f4f8', padding: '4px 10px', borderRadius: '15px', fontSize: '12px' }}>{s}</span>)}
+                            {Object.values(technical_skills).filter(Boolean).map((s, i) => String(s).split(',').map((item, j) => <span key={'t'+i+'_'+j} style={{ background: '#e0f7fa', padding: '4px 10px', borderRadius: '15px', fontSize: '12px' }}>{item.trim()}</span>))}
+                        </div>
+                    </div>
+                )}
+
+                {work_experience && work_experience.length > 0 && (
+                    <div style={{ marginBottom: '25px' }}>
+                        <h3 style={{ color: '#2c3e50', borderBottom: '1px solid #eee', paddingBottom: '5px', marginBottom: '15px' }}>EXPERIENCE</h3>
+                        {work_experience.map((exp, idx) => (
+                            <div key={idx} style={{ marginBottom: '15px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+                                    <span style={{ fontSize: '14px' }}>{exp.company}</span>
+                                    <span style={{ color: '#00bcd4', fontSize: '12px' }}>{exp.dates}</span>
+                                </div>
+                                <div style={{ fontStyle: 'italic', color: '#555', marginBottom: '5px' }}>{exp.role}</div>
+                                {exp.bullets && exp.bullets.length > 0 && (
+                                    <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                                        {exp.bullets.map((b, i) => <li key={i} style={{ marginBottom: '3px', textAlign: 'justify' }}>{b}</li>)}
+                                    </ul>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {education && education.length > 0 && (
+                    <div style={{ marginBottom: '25px' }}>
+                        <h3 style={{ color: '#2c3e50', borderBottom: '1px solid #eee', paddingBottom: '5px', marginBottom: '10px' }}>EDUCATION</h3>
+                        {education.map((edu, idx) => (
+                            <div key={idx} style={{ marginBottom: '10px' }}>
+                                <div style={{ fontWeight: 'bold' }}>{edu.degree}{edu.field ? ` - ${edu.field}` : ''}</div>
+                                <div>{edu.school} {edu.years ? `| ${edu.years}` : ''}</div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {certifications && certifications.length > 0 && (
+                    <div style={{ marginBottom: '25px' }}>
+                        <h3 style={{ color: '#2c3e50', borderBottom: '1px solid #eee', paddingBottom: '5px', marginBottom: '10px' }}>CERTIFICATIONS</h3>
+                        <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                            {certifications.map((cert, idx) => <li key={idx}>{cert}</li>)}
+                        </ul>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function getModernResumeHtml(data, candidate) {
+    // Basic HTML string builder for modern template
+    return `<!DOCTYPE html><html><head><title>Resume - ${data.full_name || ''}</title>
+    <style>
+        body { font-family: 'Segoe UI', Roboto, sans-serif; color: #333; font-size: 13px; line-height: 1.6; margin: 0; padding: 40px 50px; }
+        h1 { margin: 0; font-size: 2.2rem; color: #2c3e50; letter-spacing: 1px; }
+        .title { font-size: 1.1rem; color: #00bcd4; font-weight: 600; margin-top: 5px; }
+        .header { border-bottom: 3px solid #00bcd4; padding-bottom: 20px; margin-bottom: 20px; }
+        h3 { color: #2c3e50; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 10px; font-size: 14px; text-transform: uppercase; }
+        .badge { display: inline-block; background: #f0f4f8; padding: 4px 10px; border-radius: 15px; font-size: 12px; margin: 2px 4px 2px 0; }
+        .badge-tech { background: #e0f7fa; }
+        .exp-head { display: flex; justify-content: space-between; font-weight: bold; font-size: 14px; }
+        .exp-dates { color: #00bcd4; font-size: 12px; }
+        .exp-role { font-style: italic; color: #555; margin-bottom: 5px; }
+        ul { margin: 0; padding-left: 20px; }
+        li { margin-bottom: 3px; text-align: justify; }
+        .section { margin-bottom: 25px; page-break-inside: avoid; }
+    </style></head><body>
+        <div class='header'>
+            <h1>${data.full_name || ''}</h1>
+            <div class='title'>${data.job_title || ''}</div>
+        </div>
+        ${data.profile_summary ? `<div class='section'><h3>Profile</h3><p style='margin:0; text-align:justify;'>${data.profile_summary}</p></div>` : ''}
+        ${(data.domain_skills?.length > 0 || Object.keys(data.technical_skills || {}).length > 0) ? `<div class='section'><h3>Skills</h3><div>
+            ${(data.domain_skills||[]).map(s => `<span class='badge'>${s}</span>`).join('')}
+            ${Object.values(data.technical_skills||{}).filter(Boolean).map(s => String(s).split(',').map(item => `<span class='badge badge-tech'>${item.trim()}</span>`).join('')).join('')}
+        </div></div>` : ''}
+        ${data.work_experience?.length > 0 ? `<div class='section'><h3>Experience</h3>
+            ${data.work_experience.map(exp => `
+                <div style='margin-bottom: 15px; page-break-inside: avoid;'>
+                    <div class='exp-head'><span>${exp.company}</span><span class='exp-dates'>${exp.dates || ''}</span></div>
+                    <div class='exp-role'>${exp.role || ''}</div>
+                    ${exp.bullets?.length > 0 ? `<ul>${exp.bullets.map(b => `<li>${b}</li>`).join('')}</ul>` : ''}
+                </div>
+            `).join('')}
+        </div>` : ''}
+        ${data.education?.length > 0 ? `<div class='section'><h3>Education</h3>
+            ${data.education.map(edu => `<div style='margin-bottom: 10px;'><b>${edu.degree}${edu.field ? ` - ${edu.field}` : ''}</b><br>${edu.school} ${edu.years ? `| ${edu.years}` : ''}</div>`).join('')}
+        </div>` : ''}
+        ${data.certifications?.length > 0 ? `<div class='section'><h3>Certifications</h3><ul>
+            ${data.certifications.map(c => `<li>${c}</li>`).join('')}
+        </ul></div>` : ''}
+        <script>window.onload = function() { setTimeout(function() { window.print(); }, 300); };</script>
+    </body></html>`;
+}
+
+// --- CLASSIC TEMPLATE ---
+function ClassicResumePreview({ data }) {
+    if (!data) return null;
+    const {
+        full_name = '', job_title = '', profile_summary = '', domain_skills = [],
+        technical_skills = {}, education = [], certifications = [], work_experience = [], recognitions = []
+    } = data;
+
+    return (
+        <div style={{ flex: 1, overflowY: 'auto', background: '#525659', padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <div style={{ width: '100%', maxWidth: '800px', background: '#fff', padding: '50px 60px', boxShadow: '0 4px 20px rgba(0,0,0,0.2)', fontFamily: '\'Times New Roman\', Times, serif', color: '#000', fontSize: '14px', lineHeight: '1.5' }}>
+                <div style={{ textAlign: 'center', marginBottom: '30px' }}>
+                    <h1 style={{ margin: 0, fontSize: '2.5rem', textTransform: 'uppercase', letterSpacing: '2px' }}>{full_name}</h1>
+                    <div style={{ fontSize: '1.2rem', marginTop: '8px', fontStyle: 'italic' }}>{job_title}</div>
+                </div>
+                
+                {profile_summary && (
+                    <div style={{ marginBottom: '20px' }}>
+                        <h3 style={{ textTransform: 'uppercase', borderBottom: '2px solid #000', paddingBottom: '3px', marginBottom: '10px' }}>Professional Summary</h3>
+                        <p style={{ margin: 0, textAlign: 'justify' }}>{profile_summary}</p>
+                    </div>
+                )}
+
+                {(domain_skills.length > 0 || Object.keys(technical_skills).length > 0) && (
+                    <div style={{ marginBottom: '20px' }}>
+                        <h3 style={{ textTransform: 'uppercase', borderBottom: '2px solid #000', paddingBottom: '3px', marginBottom: '10px' }}>Core Competencies</h3>
+                        <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+                            {[...domain_skills, ...Object.values(technical_skills).filter(Boolean).flatMap(s => String(s).split(',').map(x=>x.trim()))].map((s, i, arr) => (
+                                <span key={i} style={{ display: 'inline-block' }}>{s}{i < arr.length - 1 ? '\u00A0\u2022\u00A0' : ''}</span>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {work_experience && work_experience.length > 0 && (
+                    <div style={{ marginBottom: '20px' }}>
+                        <h3 style={{ textTransform: 'uppercase', borderBottom: '2px solid #000', paddingBottom: '3px', marginBottom: '10px' }}>Professional Experience</h3>
+                        {work_experience.map((exp, idx) => (
+                            <div key={idx} style={{ marginBottom: '15px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+                                    <span>{exp.company}</span>
+                                    <span>{exp.dates}</span>
+                                </div>
+                                <div style={{ fontStyle: 'italic', marginBottom: '5px' }}>{exp.role}</div>
+                                {exp.bullets && exp.bullets.length > 0 && (
+                                    <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                                        {exp.bullets.map((b, i) => <li key={i} style={{ marginBottom: '4px', textAlign: 'justify' }}>{b}</li>)}
+                                    </ul>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {education && education.length > 0 && (
+                    <div style={{ marginBottom: '20px' }}>
+                        <h3 style={{ textTransform: 'uppercase', borderBottom: '2px solid #000', paddingBottom: '3px', marginBottom: '10px' }}>Education</h3>
+                        {education.map((edu, idx) => (
+                            <div key={idx} style={{ marginBottom: '10px', display: 'flex', justifyContent: 'space-between' }}>
+                                <div>
+                                    <span style={{ fontWeight: 'bold' }}>{edu.degree}{edu.field ? ` in ${edu.field}` : ''}</span>
+                                    <br />{edu.school}
+                                </div>
+                                <div>{edu.years}</div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {certifications && certifications.length > 0 && (
+                    <div style={{ marginBottom: '20px' }}>
+                        <h3 style={{ textTransform: 'uppercase', borderBottom: '2px solid #000', paddingBottom: '3px', marginBottom: '10px' }}>Certifications</h3>
+                        <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                            {certifications.map((cert, idx) => <li key={idx}>{cert}</li>)}
+                        </ul>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function getClassicResumeHtml(data, candidate) {
+    return `<!DOCTYPE html><html><head><title>Resume - ${data.full_name || ''}</title>
+    <style>
+        body { font-family: 'Times New Roman', Times, serif; color: #000; font-size: 14px; line-height: 1.5; margin: 0; padding: 50px 60px; }
+        h1 { margin: 0; font-size: 2.5rem; text-transform: uppercase; letter-spacing: 2px; text-align: center; }
+        .title { font-size: 1.2rem; margin-top: 8px; font-style: italic; text-align: center; margin-bottom: 30px; }
+        h3 { text-transform: uppercase; border-bottom: 2px solid #000; padding-bottom: 3px; margin-bottom: 10px; font-size: 16px; }
+        .exp-head { display: flex; justify-content: space-between; font-weight: bold; }
+        .exp-role { font-style: italic; margin-bottom: 5px; }
+        ul { margin: 0; padding-left: 20px; }
+        li { margin-bottom: 4px; text-align: justify; }
+        .section { margin-bottom: 20px; page-break-inside: avoid; }
+    </style></head><body>
+        <h1>${data.full_name || ''}</h1>
+        <div class='title'>${data.job_title || ''}</div>
+        ${data.profile_summary ? `<div class='section'><h3>Professional Summary</h3><p style='margin:0; text-align:justify;'>${data.profile_summary}</p></div>` : ''}
+        ${(data.domain_skills?.length > 0 || Object.keys(data.technical_skills || {}).length > 0) ? `<div class='section'><h3>Core Competencies</h3><div>
+            ${[...(data.domain_skills||[]), ...Object.values(data.technical_skills||{}).filter(Boolean).flatMap(s => String(s).split(',').map(x=>x.trim()))].join('&nbsp;&bull;&nbsp;')}
+        </div></div>` : ''}
+        ${data.work_experience?.length > 0 ? `<div class='section'><h3>Professional Experience</h3>
+            ${data.work_experience.map(exp => `
+                <div style='margin-bottom: 15px; page-break-inside: avoid;'>
+                    <div class='exp-head'><span>${exp.company}</span><span>${exp.dates || ''}</span></div>
+                    <div class='exp-role'>${exp.role || ''}</div>
+                    ${exp.bullets?.length > 0 ? `<ul>${exp.bullets.map(b => `<li>${b}</li>`).join('')}</ul>` : ''}
+                </div>
+            `).join('')}
+        </div>` : ''}
+        ${data.education?.length > 0 ? `<div class='section'><h3>Education</h3>
+            ${data.education.map(edu => `<div style='margin-bottom: 10px; display: flex; justify-content: space-between;'>
+                <div><b>${edu.degree}${edu.field ? ` in ${edu.field}` : ''}</b><br>${edu.school}</div>
+                <div>${edu.years || ''}</div>
+            </div>`).join('')}
+        </div>` : ''}
+        ${data.certifications?.length > 0 ? `<div class='section'><h3>Certifications</h3><ul>
+            ${data.certifications.map(c => `<li>${c}</li>`).join('')}
+        </ul></div>` : ''}
+        <script>window.onload = function() { setTimeout(function() { window.print(); }, 300); };</script>
+    </body></html>`;
+}
