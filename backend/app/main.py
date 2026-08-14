@@ -4995,7 +4995,8 @@ def get_integrations_settings(request: Request):
         "outlook_enabled": outlook_enabled,
         "outlook_email": outlook_email,
         "additional_emails": masked_additional_emails,
-        "theme_usage_counts": theme_usage_counts
+        "theme_usage_counts": theme_usage_counts,
+        "default_resume_template": row[28] if len(row) > 28 and row[28] else "alamaticz"
     }
 
 @app.post("/api/integrations")
@@ -5113,7 +5114,7 @@ def save_integrations_settings(settings: IntegrationSettingsRequest, request: Re
               settings.gdrive_email, settings.ms_client_id, final_ms_secret, 
               final_ms_tenant, final_additional_emails, final_theme_usage,
               settings.gmail_enabled, settings.gmail_email, final_gmail_pass,
-              settings.outlook_enabled, settings.outlook_email))
+              settings.outlook_enabled, settings.outlook_email, settings.default_resume_template))
 
     if settings.email_enabled == 0:
         try:
