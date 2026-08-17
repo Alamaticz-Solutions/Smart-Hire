@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
-import { Briefcase, Plus, Trash2, Search, UserCheck, Loader, ChevronRight, Edit, Calendar, User, Building, DollarSign, Award, Target, X, Phone, Eye, Filter, Check, FileText, Download, MoreVertical, Share2, UploadCloud } from 'lucide-react';
+import { Briefcase, Plus, Trash2, Search, UserCheck, Loader, ChevronRight, Edit, Calendar, User, Building, DollarSign, Award, Target, X, Phone, Eye, Filter, Check, FileText, Download, MoreVertical, Share2, UploadCloud, ArrowLeft } from 'lucide-react';
 import { useOutletContext } from 'react-router-dom';
 import alamaticzLogo from '../assets/alamaticz-logo.jpg';
 import ReactMarkdown from 'react-markdown';
@@ -2430,6 +2430,13 @@ export default function JobsPage() {
                         <div style={{ padding: '2rem', borderBottom: '1px solid var(--border)', background: 'rgba(var(--navy-rgb), 0.15)' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
                                 <div>
+                                    <button 
+                                        className="btn btn-secondary" 
+                                        style={{ padding: '6px 12px', fontSize: '0.8rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '6px' }} 
+                                        onClick={() => setSelectedJob(null)}
+                                    >
+                                        <ArrowLeft size={14} /> Back to Jobs
+                                    </button>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
                                         <h2 style={{ fontFamily: 'var(--fh)', color: 'var(--gold)', margin: 0 }}>{selectedJob.title}</h2>
                                         

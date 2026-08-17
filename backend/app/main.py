@@ -380,8 +380,9 @@ def init_db():
     ''')
     try:
         cur.execute("ALTER TABLE users ADD COLUMN mobile TEXT")
+        conn.commit()
     except Exception:
-        pass
+        conn.rollback()
 
     cur.execute('''
         CREATE TABLE IF NOT EXISTS activity_logs (
