@@ -362,6 +362,7 @@ def init_db():
             is_external INTEGER DEFAULT 0,
             hidden_fields TEXT DEFAULT '',
             email TEXT,
+            mobile TEXT,
             is_approved INTEGER DEFAULT 0
         )
     ''')
@@ -377,6 +378,11 @@ def init_db():
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN mobile TEXT")
+    except Exception:
+        pass
+
     cur.execute('''
         CREATE TABLE IF NOT EXISTS activity_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3911,6 +3917,7 @@ class FirebaseSyncRequest(BaseModel):
     email: str
     full_name: str
     username: str
+    mobile: Optional[str] = None
 
 @app.post("/api/auth/firebase-sync")
 def firebase_sync(req: FirebaseSyncRequest):
@@ -3933,8 +3940,8 @@ def firebase_sync(req: FirebaseSyncRequest):
             
         try:
             is_approved_val = 1 if req.username.lower() in ("admin", "user", "boopathi", "praveen", "harish", "sabari") else 0
-            cur.execute("INSERT INTO users (full_name, username, password_hash, email, role, is_approved) VALUES (?, ?, ?, ?, 'user', ?)",
-                        (req.full_name, req.username, hashlib.sha256("firebase_auth_managed".encode()).hexdigest(), req.email, is_approved_val))
+            cur.execute("INSERT INTO users (full_name, username, password_hash, email, mobile, role, is_approved) VALUES (?, ?, ?, ?, ?, 'user', ?)",
+                        (req.full_name, req.username, hashlib.sha256("firebase_auth_managed".encode()).hexdigest(), req.email, req.mobile, is_approved_val))
             if is_approved_val == 0:
                 cur.execute("""
                     INSERT INTO change_requests (username, action_type, target_id, payload, description, status)
@@ -4041,10 +4048,10 @@ def get_user_status(request: Request):
     }
 
 class ForgotPasswordRequest(BaseModel):
-    email: str
+    mobile: str
 
 class ResetPasswordRequest(BaseModel):
-    email: str
+    mobile: str
     otp: str
     new_password: str
 
@@ -4122,123 +4129,64 @@ def send_otp_email(to_email: str, otp: str, raise_on_error: bool = False) -> boo
 def request_otp(req: ForgotPasswordRequest):
     import random
     import time
-    email = req.email.strip().lower()
-    base_email = get_base_email(email)
+    mobile = req.mobile.strip()
     
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
-    cur.execute("SELECT email, username FROM users")
+    cur.execute("SELECT mobile, username FROM users")
     users = cur.fetchall()
-    matching_users = [u for u in users if u[0] and get_base_email(u[0]) == base_email]
-    
-    if not matching_users:
-        # If no user matches the email directly, attempt heuristic match on username using the local part of email.
-        # This helps seeded/default or manually created users whose email is NULL or empty in SQLite.
-        if "@" in email:
-            local_part = email.split("@")[0].split("+")[0].strip().lower()
-            # Try to find a user where the username matches or starts/ends with the local part
-            matching_username = None
-            for u_email, u_name in users:
-                u_name_lower = u_name.strip().lower()
-                if u_name_lower == local_part or u_name_lower.startswith(local_part) or local_part.startswith(u_name_lower):
-                    matching_username = u_name
-                    break
-            
-            if matching_username:
-                try:
-                    cur.execute("UPDATE users SET email = ? WHERE LOWER(username) = LOWER(?)", (email, matching_username))
-                    conn.commit()
-                    matching_users = [(email, matching_username)]
-                    print(f"[AUTH] Updated user {matching_username} email to {email} via heuristic match")
-                except Exception as e:
-                    print(f"[AUTH] Failed to update user email during heuristic match: {e}")
+    matching_users = [u for u in users if u[0] and str(u[0]).strip() == mobile]
     conn.close()
     
     if not matching_users:
-        raise HTTPException(status_code=404, detail="No registered account found with this email address.")
+        raise HTTPException(status_code=404, detail="No registered account found with this mobile number.")
         
+    username = matching_users[0][1]
+    
     otp = f"{random.randint(100000, 999999)}"
-    OTP_STORE[email] = {
+    OTP_STORE[mobile] = {
         "otp": otp,
-        "expires_at": time.time() + 300.0
+        "expires_at": time.time() + 300.0,
+        "username": username
     }
     
     print(f"========================================")
-    print(f"[OTP SIMULATION] Password reset OTP for {email}: {otp}")
+    print(f"[OTP SIMULATION] Password reset OTP for mobile {mobile}: {otp}")
     print(f"========================================")
     
-    require_real = os.getenv("REQUIRE_REAL_EMAIL", "true").lower() == "true"
-    
-    sent = False
-    try:
-        sent = send_otp_email(email, otp, raise_on_error=require_real)
-    except Exception as e:
-        # If we require real email and it fails, check if credentials are set (DB or Env)
-        # to decide if we throw a 500 error or fail back to simulated OTP.
-        has_creds = False
-        try:
-            conn = sqlite3.connect(STATS_DB, timeout=30.0)
-            cur = conn.cursor()
-            cur.execute("SELECT email_user, email_pass, email_enabled FROM integrations_settings LIMIT 1")
-            row = cur.fetchone()
-            conn.close()
-            if row and row[2] and row[0] and row[1]:
-                has_creds = True
-        except Exception:
-            pass
-            
-        if not has_creds:
-            has_creds = bool(os.getenv("SMTP_SENDER") and os.getenv("SMTP_PASSWORD"))
-            
-        if require_real and has_creds:
-            # Only raise 500 if the credentials are set but the actual mail delivery fails
-            if email in OTP_STORE:
-                del OTP_STORE[email]
-            raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
-        else:
-            # Fall back to simulated OTP display
-            sent = False
-            
-    return {
-        "status": "success",
-        "otp": otp if not sent else None,
-        "sent_real_email": sent,
-        "message": "OTP has been sent to your email." if sent else "OTP has been simulated. Please use the demo code shown."
-    }
+    msg = "Simulated OTP code returned for demonstration."
+    res_data = {"message": msg, "otp": otp}
+        
+    return res_data
 
 @app.post("/api/auth/forgot-password/reset")
 def reset_password(req: ResetPasswordRequest):
     import time
-    email = req.email.strip().lower()
+    mobile = req.mobile.strip()
     otp_code = req.otp.strip()
     new_pass = req.new_password
     
     if not has_digit(new_pass):
         raise HTTPException(status_code=400, detail="Password must contain at least one digit")
         
-    if email not in OTP_STORE:
-        raise HTTPException(status_code=400, detail="No active password reset request found for this email.")
+    if mobile not in OTP_STORE:
+        raise HTTPException(status_code=400, detail="No active password reset request found for this mobile number.")
         
-    stored = OTP_STORE[email]
+    stored = OTP_STORE[mobile]
     if time.time() > stored["expires_at"]:
-        del OTP_STORE[email]
+        del OTP_STORE[mobile]
         raise HTTPException(status_code=400, detail="OTP has expired. Please request a new one.")
         
     if stored["otp"] != otp_code:
         raise HTTPException(status_code=400, detail="Invalid OTP code. Please try again.")
         
-    del OTP_STORE[email]
+    username = stored["username"]
+    del OTP_STORE[mobile]
     
-    base_email = get_base_email(email)
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
-    cur.execute("SELECT email, username FROM users")
-    users = cur.fetchall()
-    matching_users = [u for u in users if get_base_email(u[0]) == base_email]
-    
-    for mu in matching_users:
-        cur.execute("UPDATE users SET password_hash = ? WHERE LOWER(email) = LOWER(?)", (hashlib.sha256(new_pass.encode()).hexdigest(), mu[0].lower()))
-        
+    new_hash = hashlib.sha256(new_pass.encode()).hexdigest()
+    cur.execute("UPDATE users SET password_hash = ? WHERE username = ?", (new_hash, username))
     conn.commit()
     conn.close()
     

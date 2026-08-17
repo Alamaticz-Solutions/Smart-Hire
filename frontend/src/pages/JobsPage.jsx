@@ -1365,6 +1365,10 @@ const TD_BASE = {
 }
 
 export default function JobsPage() {
+    const { user } = useOutletContext();
+    const isExternal = user?.is_external === 1;
+    const isAdmin = user?.role === 'admin' || user?.is_admin === 1 || user?.is_hr === 1;
+
     const [resumeTemplate, setResumeTemplate] = useState('alamaticz');
 
     useEffect(() => {
@@ -1378,10 +1382,6 @@ export default function JobsPage() {
                 .catch(err => console.error('Error fetching default template', err));
         }
     }, [user?.username]);
-
-    const { user } = useOutletContext();
-    const isExternal = user?.is_external === 1;
-    const isAdmin = user?.role === 'admin' || user?.is_admin === 1 || user?.is_hr === 1;
 
     const [jobs, setJobs] = useState(() => {
         try {

@@ -156,7 +156,8 @@ export default function LoginPage({ onLogin }) {
                 await axios.post('/api/auth/firebase-sync', {
                     email: firebaseEmail,
                     full_name: name,
-                    username: usernameLower
+                    username: usernameLower,
+                    mobile: mobile.trim()
                 });
             } catch (syncErr) {
                 if (syncErr.response?.status === 403) {
@@ -199,10 +200,10 @@ export default function LoginPage({ onLogin }) {
     const handleForgotRequest = async (e) => {
         e.preventDefault()
         setError(''); setInfo('')
-        if (!email) { setError('Please enter your registered Email Address.'); return }
+        if (!mobile) { setError('Please enter your registered Mobile Number.'); return }
         
         try {
-            const res = await axios.post('/api/auth/forgot-password/request', { email: email.trim() })
+            const res = await axios.post('/api/auth/forgot-password/request', { mobile: mobile.trim() })
             setInfo(res.data.message)
             if (res.data.otp) {
                 setSimulatedOtp(res.data.otp)
@@ -223,7 +224,7 @@ export default function LoginPage({ onLogin }) {
         
         try {
             const res = await axios.post('/api/auth/forgot-password/reset', {
-                email: email.trim(),
+                mobile: mobile.trim(),
                 otp: fpOtp.trim(),
                 new_password: fpNewPass
             })
@@ -345,19 +346,19 @@ export default function LoginPage({ onLogin }) {
                         {forgotStep === 1 ? (
                             <form onSubmit={handleForgotRequest}>
                                 <p style={{ color: 'var(--text-dim)', fontSize: '0.88rem', marginBottom: '1.2rem', textAlign: 'center' }}>
-                                    Enter your registered Gmail address. We will send you a 6-digit OTP code to reset your password.
+                                    Enter your registered Mobile Number. We will send you a 6-digit OTP code to reset your password.
                                 </p>
                                 <div className="form-group">
-                                    <label className="form-label">Gmail Address</label>
-                                    <input className="form-input" type="email" placeholder="enter your gmail address"
-                                        value={email} onChange={e => setEmail(e.target.value)} required />
+                                    <label className="form-label">Mobile Number</label>
+                                    <input className="form-input" type="text" placeholder="enter your mobile number"
+                                        value={mobile} onChange={e => setMobile(e.target.value)} required />
                                 </div>
                                 <button type="submit" className="btn btn-primary btn-full">📨 REQUEST RESET OTP</button>
                             </form>
                         ) : (
                             <form onSubmit={handleForgotReset}>
                                 <p style={{ color: 'var(--text-dim)', fontSize: '0.88rem', marginBottom: '1.2rem', textAlign: 'center' }}>
-                                    We sent an OTP to <strong>{email}</strong>. Please enter the OTP and create your new password below.
+                                    We sent an OTP to <strong>{mobile}</strong>. Please enter the OTP and create your new password below.
                                 </p>
                                 {simulatedOtp && (
                                     <div style={{
