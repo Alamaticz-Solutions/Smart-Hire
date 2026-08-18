@@ -221,13 +221,6 @@ export default function ResumePreview({ data, logoUrl, templateId = 'alamaticz' 
     }, []);
 
     
-    if (templateId === 'modern') {
-        return <ModernResumePreview data={data} />;
-    }
-    if (templateId === 'classic') {
-        return <ClassicResumePreview data={data} />;
-    }
-
     if (!data) {
         return (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-dim)', gap: '12px', padding: '40px' }}>
@@ -235,6 +228,13 @@ export default function ResumePreview({ data, logoUrl, templateId = 'alamaticz' 
                 <span>Loading formatted resume...</span>
             </div>
         );
+    }
+
+    if (templateId === 'modern') {
+        return <ModernResumePreview data={data} />;
+    }
+    if (templateId === 'classic') {
+        return <ClassicResumePreview data={data} />;
     }
 
     const {
@@ -553,6 +553,7 @@ export default function ResumePreview({ data, logoUrl, templateId = 'alamaticz' 
 }
 
 export function getResumeHtml(data, candidate, logoUrl, templateId = 'alamaticz') {
+    if (!data) return '';
     const {
         full_name = '',
         job_title = '',
