@@ -1914,20 +1914,62 @@ function CandidateDetailsModal({ candidate, onClose, onViewPdf, onDeleteCandidat
                     </div>
                 </div>
 
-                {/* Right Panel: Resume PDF embedded directly or Download Placeholder */}
-                {hasViewableResume && (
+                {/* Right Panel: Resume PDF embedded directly, or Alamaticz Format */}
+                {showRightPanel && (
                     <div style={{
                         flex: '1 1 50%',
                         height: '100%',
                         display: 'flex',
                         flexDirection: 'column',
-                        background: '#525659'
+                        background: showAlamaticz ? 'var(--navy-dark)' : '#525659',
+                        borderLeft: '1px solid var(--border)',
+                        overflow: 'hidden'
                     }}>
-                        <iframe 
-                            src={`${API_URL}/static/${candidate.filename}#view=FitH`} 
-                            style={{ width: '100%', height: '100%', border: 'none', background: '#525659' }} 
-                            title="Candidate Resume"
-                        />
+                        {showAlamaticz ? (
+                            loadingAlamaticz ? (
+                                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                                    <Loader className="spin" size={32} style={{ color: 'var(--gold)' }} />
+                                </div>
+                            ) : alamaticzData ? (
+                                <div style={{ padding: '24px', color: 'var(--text)', flex: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+                                    <h3 style={{ color: 'var(--gold)', marginBottom: '16px', fontFamily: 'var(--fh)', fontSize: '1.2rem', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>Alamaticz Format Resume</h3>
+                                    <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', flex: 1, overflowY: 'auto' }}>
+                                        {alamaticzData.formatted_html ? (
+                                            <div dangerouslySetInnerHTML={{ __html: alamaticzData.formatted_html }} style={{ fontSize: '0.9rem', lineHeight: '1.5' }} />
+                                        ) : (
+                                            <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '0.85rem', color: 'var(--text-dim)', margin: 0 }}>
+                                                {JSON.stringify(alamaticzData, null, 2)}
+                                            </pre>
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: 'var(--text-dim)' }}>
+                                    Failed to load Alamaticz Format.
+                                </div>
+                            )
+                        ) : hasViewableResume ? (
+                            isPdf ? (
+                                <iframe 
+                                    src={`${API_URL}/static/${candidate.filename}#view=FitH`} 
+                                    style={{ width: '100%', height: '100%', border: 'none', background: '#525659' }} 
+                                    title="Candidate Resume"
+                                />
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100%', color: '#fff', gap: '16px', padding: '24px', textAlign: 'center', background: 'var(--navy-dark)' }}>
+                                    <FileText size={64} style={{ color: 'var(--sky)' }} />
+                                    <p style={{ color: 'var(--text-dim)', fontSize: '1.1rem' }}>Preview is not available for this file type (DOCX/Non-PDF).</p>
+                                    <a 
+                                        href={`${API_URL}/static/${candidate.filename}`}
+                                        download={candidate.filename}
+                                        className="btn"
+                                        style={{ background: 'rgba(var(--sky-rgb), 0.15)', border: '1px solid var(--sky)', color: 'var(--sky)', padding: '10px 20px', borderRadius: '8px', textDecoration: 'none', fontWeight: 600 }}
+                                    >
+                                        Download Resume Instead
+                                    </a>
+                                </div>
+                            )
+                        ) : null}
                     </div>
                 )}
             </div>

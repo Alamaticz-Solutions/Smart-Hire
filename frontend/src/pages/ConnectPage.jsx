@@ -49,6 +49,7 @@ export default function ConnectPage() {
     }
 
     const fetchIntegrationsSettings = useCallback(async () => {
+        setLoadingSettings(true)
         try {
             const res = await axios.get(`${BACKEND_URL}/api/integrations`, {
                 headers: { 'x-user-username': user?.username }
@@ -57,6 +58,8 @@ export default function ConnectPage() {
         } catch (err) {
             console.error('Error fetching integrations settings:', err)
             showToast('Failed to load integration settings', 'error')
+        } finally {
+            setLoadingSettings(false)
         }
     }, [user?.username])
 
@@ -76,7 +79,16 @@ export default function ConnectPage() {
                 showToast("Integration settings saved successfully!", "success")
             }
         } catch (err) {
-            alert(err.response?.data?.detail || "Failed to save integration settings")
+            console.error("Save error:", err);
+            let errMsg = "Failed to save integration settings";
+            if (err.response?.data?.detail) {
+                errMsg = typeof err.response.data.detail === 'string' 
+                    ? err.response.data.detail 
+                    : JSON.stringify(err.response.data.detail);
+            } else if (err.message) {
+                errMsg = err.message;
+            }
+            alert(errMsg);
         } finally {
             setSaving(false)
         }
