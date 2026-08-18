@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import axios from 'axios'
 import { FileText, Eye, Sparkles, Check, Info, Copy, Save, AlertCircle, Send, Loader } from 'lucide-react'
 
-const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const BACKEND_URL = import.meta.env.VITE_API_URL || '';
 
 const THEME_PRESETS = {
   professional: {

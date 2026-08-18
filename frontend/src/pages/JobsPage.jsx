@@ -8,7 +8,7 @@ import { exportToExcel, formatCandidatesForExcel } from '../utils/excelUtils';
 import { useDropzone } from 'react-dropzone';
 import ResumePreview, { getResumeHtml } from '../components/ResumePreview';
 const API_URL = import.meta.env.VITE_API_URL || '';
-const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const BACKEND_URL = import.meta.env.VITE_API_URL || '';
 
 /* ─── Single chip ─────────────────────────────────────────────────────────── */
 function Chip({ text }) {

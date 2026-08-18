@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import axios from 'axios'
 import { Mail, Shield, Check, X, Plus, Trash2, Key, Folder, RefreshCw, Loader, ExternalLink } from 'lucide-react'
 
-const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const BACKEND_URL = import.meta.env.VITE_API_URL || '';
 
 export default function ConnectPage() {
     const { user } = useOutletContext()
