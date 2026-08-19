@@ -6341,7 +6341,8 @@ def poll_emails_and_process():
         except Exception as conn_err:
             print(f"ERROR: Email background loop connection error: {conn_err}")
         
-        time.sleep(5)
+        # Poll every 1 minute as requested
+        time.sleep(60)
 
 # ── Serve React Frontend ───────────────────────────────────────────────────────
 FRONTEND_DIST = os.path.join(PROJECT_ROOT, "frontend", "dist")

@@ -14,6 +14,7 @@ export default function ConnectPage() {
     const [testStatus, setTestStatus] = useState({ status: 'idle', message: '' })
     const [gdriveAuthCode, setGdriveAuthCode] = useState('')
     const [exchangingGdriveCode, setExchangingGdriveCode] = useState(false)
+    const [loadingSettings, setLoadingSettings] = useState(false)
     
     const [integrationsSettings, setIntegrationsSettings] = useState({
         email_enabled: 0, imap_host: 'imap.gmail.com', imap_port: 993,
@@ -28,6 +29,14 @@ export default function ConnectPage() {
         gdrive_refresh_token: '',
         gdrive_folder_id: '',
         gdrive_email: '',
+        ms_client_id: '',
+        ms_client_secret: '',
+        ms_tenant_id: 'common',
+        gmail_enabled: 0,
+        gmail_email: '',
+        gmail_pass: '',
+        outlook_enabled: 0,
+        outlook_email: '',
         additional_emails: '[]'
     })
 
