@@ -5530,20 +5530,26 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
     # Connect IMAP or Graph API
     raw_emails_to_process = []
     
+    use_graph = False
     if 'office365' in imap_host.lower() or 'outlook' in imap_host.lower():
         conn = sqlite3.connect(STATS_DB, timeout=30.0)
         cur = conn.cursor()
         cur.execute("SELECT ms_client_id, ms_client_secret, ms_tenant_id FROM integrations_settings LIMIT 1")
         ms_row = cur.fetchone()
         conn.close()
-        if ms_row and ms_row[0] and ms_row[1] and ms_row[2]:
-            ms_client_id, ms_client_secret, ms_tenant_id = ms_row
+        
+        effective_ms_client_id = ms_client_id or (ms_row[0] if ms_row else None)
+        effective_ms_client_secret = ms_client_secret or (ms_row[1] if ms_row else None)
+        effective_ms_tenant_id = ms_tenant_id or (ms_row[2] if ms_row else None)
+        
+        if effective_ms_client_id and effective_ms_client_secret and effective_ms_tenant_id:
+            use_graph = True
             try:
                 import requests
-                token_url = f"https://login.microsoftonline.com/{ms_tenant_id}/oauth2/v2.0/token"
+                token_url = f"https://login.microsoftonline.com/{effective_ms_tenant_id}/oauth2/v2.0/token"
                 data = {
-                    "client_id": ms_client_id,
-                    "client_secret": ms_client_secret,
+                    "client_id": effective_ms_client_id,
+                    "client_secret": effective_ms_client_secret,
                     "scope": "https://graph.microsoft.com/.default",
                     "grant_type": "client_credentials"
                 }
@@ -5583,7 +5589,8 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                         conn.close()
             except Exception as e:
                 print(f"Graph API Error: {e}")
-    else:
+
+    if not use_graph:
         mail = None
         try:
             mail = imaplib.IMAP4_SSL(imap_host, imap_port or 993, timeout=15)
