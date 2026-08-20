@@ -5266,28 +5266,35 @@ def test_integrations_connection(request: Request):
         raise HTTPException(status_code=403, detail="Forbidden")
         
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
+    conn.row_factory = sqlite3.Row
     cur = conn.cursor()
-    cur.execute("SELECT email_enabled, imap_host, imap_port, email_user, email_pass, ms_client_id, ms_client_secret, ms_tenant_id FROM integrations_settings LIMIT 1")
+    cur.execute("SELECT * FROM integrations_settings LIMIT 1")
     row = cur.fetchone()
     conn.close()
     
-    if not row or not row[0]:
+    if not row:
         return {"status": "disabled", "message": "Email integration is disabled."}
         
-    imap_host = row[1]
-    imap_port = row[2] or 993
-    email_user = row[3]
-    email_pass = row[4]
-    ms_client_id = row[5]
-    ms_client_secret = row[6]
-    ms_tenant_id = row[7]
-    
-    if not imap_host or not email_user:
-        return {"status": "unconfigured", "message": "Credentials are not fully configured."}
+    settings = dict(row)
+    if not settings.get("email_enabled"):
+        return {"status": "disabled", "message": "Email integration is disabled."}
         
-    if 'office365' in imap_host.lower() or 'outlook' in imap_host.lower():
+    outlook_enabled = settings.get("outlook_enabled", 0)
+    outlook_email = settings.get("outlook_email", "")
+    gmail_enabled = settings.get("gmail_enabled", 0)
+    gmail_email = settings.get("gmail_email", "")
+    gmail_pass = settings.get("gmail_pass", "")
+    ms_client_id = settings.get("ms_client_id", "")
+    ms_client_secret = settings.get("ms_client_secret", "")
+    ms_tenant_id = settings.get("ms_tenant_id", "common")
+    imap_host = settings.get("imap_host", "")
+    imap_port = settings.get("imap_port", 993)
+    email_user = settings.get("email_user", "")
+    email_pass = settings.get("email_pass", "")
+    
+    if outlook_enabled and outlook_email:
         if not ms_client_id or not ms_client_secret or not ms_tenant_id:
-            return {"status": "error", "message": "Microsoft Graph credentials are not configured in Primary Mailbox."}
+            return {"status": "error", "message": "Microsoft Graph credentials are not fully configured."}
         
         try:
             import requests
@@ -5305,30 +5312,80 @@ def test_integrations_connection(request: Request):
                 
             access_token = token_data["access_token"]
             headers = {"Authorization": f"Bearer {access_token}"}
-            msg_url = f"https://graph.microsoft.com/v1.0/users/{email_user}/mailFolders/Inbox/messages?$top=1"
+            msg_url = f"https://graph.microsoft.com/v1.0/users/{outlook_email}/mailFolders/Inbox/messages?$top=1"
             msg_res = requests.get(msg_url, headers=headers)
             
             if msg_res.status_code == 200:
-                return {"status": "connected", "message": f"Successfully connected to {email_user} via Microsoft Graph API!"}
+                return {"status": "connected", "message": f"Successfully connected to {outlook_email} via Microsoft Graph API!"}
             else:
                 err = msg_res.json().get('error', {})
                 return {"status": "error", "message": f"Graph API Error: {err.get('message', 'Unknown')}"}
         except Exception as e:
             return {"status": "error", "message": f"Graph API Connection failed: {str(e)}"}
-    else:
-        if not email_pass:
-            return {"status": "error", "message": "Password is not configured."}
+            
+    elif gmail_enabled and gmail_email:
+        if not gmail_pass:
+            return {"status": "error", "message": "Gmail app password is not configured."}
         import imaplib
         try:
-            mail = imaplib.IMAP4_SSL(imap_host, imap_port, timeout=10)
-            mail.login(email_user, email_pass)
+            mail = imaplib.IMAP4_SSL("imap.gmail.com", 993, timeout=10)
+            mail.login(gmail_email, gmail_pass)
             mail.logout()
-            return {"status": "connected", "message": "Successfully connected to Mailbox!"}
+            return {"status": "connected", "message": f"Successfully connected to {gmail_email}!"}
         except Exception as e:
             err_msg = str(e)
             if "Application-specific password required" in err_msg:
                 return {"status": "error", "message": "Authentication failed: Application-specific password required."}
             return {"status": "error", "message": f"Connection failed: {err_msg}"}
+            
+    else:
+        if not imap_host or not email_user:
+            return {"status": "unconfigured", "message": "Credentials are not fully configured. Enable an integration."}
+            
+        if 'office365' in imap_host.lower() or 'outlook' in imap_host.lower():
+            if not ms_client_id or not ms_client_secret or not ms_tenant_id:
+                return {"status": "error", "message": "Microsoft Graph credentials are not configured in Primary Mailbox."}
+            
+            try:
+                import requests
+                token_url = f"https://login.microsoftonline.com/{ms_tenant_id}/oauth2/v2.0/token"
+                data = {
+                    "client_id": ms_client_id,
+                    "client_secret": ms_client_secret,
+                    "scope": "https://graph.microsoft.com/.default",
+                    "grant_type": "client_credentials"
+                }
+                token_res = requests.post(token_url, data=data)
+                token_data = token_res.json()
+                if "access_token" not in token_data:
+                    return {"status": "error", "message": f"Failed to get Microsoft token: {token_data.get('error_description', 'Unknown error')}"}
+                    
+                access_token = token_data["access_token"]
+                headers = {"Authorization": f"Bearer {access_token}"}
+                msg_url = f"https://graph.microsoft.com/v1.0/users/{email_user}/mailFolders/Inbox/messages?$top=1"
+                msg_res = requests.get(msg_url, headers=headers)
+                
+                if msg_res.status_code == 200:
+                    return {"status": "connected", "message": f"Successfully connected to {email_user} via Microsoft Graph API!"}
+                else:
+                    err = msg_res.json().get('error', {})
+                    return {"status": "error", "message": f"Graph API Error: {err.get('message', 'Unknown')}"}
+            except Exception as e:
+                return {"status": "error", "message": f"Graph API Connection failed: {str(e)}"}
+        else:
+            if not email_pass:
+                return {"status": "error", "message": "Password is not configured."}
+            import imaplib
+            try:
+                mail = imaplib.IMAP4_SSL(imap_host, imap_port, timeout=10)
+                mail.login(email_user, email_pass)
+                mail.logout()
+                return {"status": "connected", "message": "Successfully connected to Mailbox!"}
+            except Exception as e:
+                err_msg = str(e)
+                if "Application-specific password required" in err_msg:
+                    return {"status": "error", "message": "Authentication failed: Application-specific password required."}
+                return {"status": "error", "message": f"Connection failed: {err_msg}"}
 
 def send_email_via_graph(ms_client_id, ms_client_secret, ms_tenant_id, email_user, recipient_email, subject, body):
     import requests
@@ -6044,7 +6101,8 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
             # Always match if there is a resume attachment, otherwise fall back to keyword match
             match_found = has_resume_attachment
             if not match_found:
-                search_content = f"{decoded_subject} {body_text}".lower()
+                attachment_names = " ".join([fname for fname, _ in attachments if fname]) if attachments else ""
+                search_content = f"{decoded_subject} {body_text} {attachment_names}".lower()
                 for kw in keywords:
                     if kw in search_content:
                         match_found = True
