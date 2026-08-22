@@ -5203,19 +5203,20 @@ def test_mailbox_connection(settings: TestMailboxRequest, request: Request):
                 except Exception:
                     pass
                     
+    use_graph = False
     if 'office365' in imap_host.lower() or 'outlook' in imap_host.lower():
-        # Use Microsoft Graph API
+        # Check Microsoft Graph API credentials
         conn = sqlite3.connect(STATS_DB, timeout=30.0)
         cur = conn.cursor()
         cur.execute("SELECT ms_client_id, ms_client_secret, ms_tenant_id FROM integrations_settings LIMIT 1")
         ms_row = cur.fetchone()
         conn.close()
         
-        if not ms_row or not ms_row[0] or not ms_row[1] or not ms_row[2]:
-            return {"status": "error", "message": "Microsoft Graph credentials are not configured in Primary Mailbox."}
+        if ms_row and ms_row[0] and ms_row[1] and ms_row[2]:
+            use_graph = True
+            ms_client_id, ms_client_secret, ms_tenant_id = ms_row
             
-        ms_client_id, ms_client_secret, ms_tenant_id = ms_row
-        
+    if use_graph:
         try:
             import requests
             token_url = f"https://login.microsoftonline.com/{ms_tenant_id}/oauth2/v2.0/token"
