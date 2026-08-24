@@ -260,9 +260,17 @@ def get_models():
         _models_loading = True
         if _embeddings is None:
             try:
-                _embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+                hf_token = os.getenv("HF_TOKEN")
+                if hf_token:
+                    from langchain_community.embeddings import HuggingFaceInferenceAPIEmbeddings
+                    _embeddings = HuggingFaceInferenceAPIEmbeddings(
+                        api_key=hf_token, model_name="sentence-transformers/all-MiniLM-L6-v2"
+                    )
+                else:
+                    print("Warning: HF_TOKEN not set. Embeddings disabled to prevent OOM on Render Free Tier.")
+                    _embeddings = None
             except Exception as e:
-                print(f"Warning: Failed to load HuggingFaceEmbeddings: {e}")
+                print(f"Warning: Failed to load Embeddings: {e}")
                 _embeddings = None
         
         # Load env variables dynamically in case the key has changed in the file
