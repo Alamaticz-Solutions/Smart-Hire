@@ -274,7 +274,7 @@ def get_models():
         current_key = os.getenv("GROQ_API_KEY", "")
         
         if _llm is None or _active_groq_key != current_key:
-            _llm = ChatGroq(temperature=0.1, model_name="llama3-8b-8192", groq_api_key=current_key)
+            _llm = ChatGroq(temperature=0.1, model_name="openai/gpt-oss-20b", groq_api_key=current_key)
             _active_groq_key = current_key
             
         _models_loading = False
