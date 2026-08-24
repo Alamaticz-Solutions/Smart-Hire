@@ -5532,6 +5532,7 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
     raw_emails_to_process = []
     
     use_graph = False
+    headers = None
     if 'office365' in imap_host.lower() or 'outlook' in imap_host.lower():
         conn = sqlite3.connect(STATS_DB, timeout=30.0)
         cur = conn.cursor()
@@ -5585,7 +5586,7 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                             mime_url = f"https://graph.microsoft.com/v1.0/users/{email_user}/messages/{m_id}/$value"
                             mime_res = requests.get(mime_url, headers=headers)
                             if mime_res.status_code == 200:
-                                raw_emails_to_process.append((mime_res.content, effective_msg_id))
+                                raw_emails_to_process.append((mime_res.content, effective_msg_id, m_id))
                                 
                         conn.close()
             except Exception as e:
@@ -5658,10 +5659,15 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
     for item in raw_emails_to_process:
         try:
             if isinstance(item, tuple):
-                raw_email, effective_msg_id = item
+                if len(item) == 3:
+                    raw_email, effective_msg_id, graph_m_id = item
+                else:
+                    raw_email, effective_msg_id = item
+                    graph_m_id = None
             else:
                 raw_email = item
                 effective_msg_id = None
+                graph_m_id = None
                 
             msg = email.message_from_bytes(raw_email)
             
@@ -5757,6 +5763,27 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                 if payload:
                     body_text = payload.decode(msg.get_content_charset() or "utf-8", errors="ignore")
             
+            # Fetch attachments explicitly from Graph API if they were stripped from the MIME $value
+            if graph_m_id and headers:
+                try:
+                    import base64
+                    import requests
+                    attach_url = f"https://graph.microsoft.com/v1.0/users/{email_user}/messages/{graph_m_id}/attachments"
+                    attach_res = requests.get(attach_url, headers=headers)
+                    if attach_res.status_code == 200:
+                        graph_attachments = attach_res.json().get('value', [])
+                        for att in graph_attachments:
+                            if att.get('@odata.type') == '#microsoft.graph.fileAttachment':
+                                att_name = att.get('name')
+                                content_bytes_b64 = att.get('contentBytes', '')
+                                if content_bytes_b64 and att_name:
+                                    att_content_bytes = base64.b64decode(content_bytes_b64)
+                                    # Prevent duplicates if MIME already had it
+                                    if not any(a[0] == att_name for a in attachments):
+                                        attachments.append((att_name, att_content_bytes))
+                except Exception as g_err:
+                    print(f"Error fetching explicit Graph API attachments for {graph_m_id}: {g_err}")
+
             # Check if this email is from an existing candidate (via Ref tag in Subject, or matching sender email)
             import email.utils
             sender_name, sender_email = email.utils.parseaddr(decoded_from)
