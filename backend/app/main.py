@@ -6173,7 +6173,15 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                                 f_out.write(content)
                         
                             try:
-                                process_resume(safe_name, fpath, is_approved=1, username="email_worker", email_message=body_text, sender_email=sender_email)
+                                placeholder_id = log_candidate({
+                                    "filename": safe_name, 
+                                    "full_name": f"⏳ Processing: {safe_name}", 
+                                    "is_approved": 1, 
+                                    "created_by": "email_worker", 
+                                    "file_bytes": content,
+                                    "file_url": None
+                                })
+                                process_resume(safe_name, fpath, is_approved=1, username="email_worker", email_message=body_text, sender_email=sender_email, file_url=None, placeholder_id=placeholder_id)
                                 processed_attachment = True
                             except Exception as e_proc:
                                 print(f"ERROR: Failed processing resume {safe_name} from email: {e_proc}")
