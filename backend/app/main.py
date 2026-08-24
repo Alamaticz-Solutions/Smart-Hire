@@ -274,7 +274,7 @@ def get_models():
         current_key = os.getenv("GROQ_API_KEY", "")
         
         if _llm is None or _active_groq_key != current_key:
-            _llm = ChatGroq(temperature=0.1, model_name="llama-3.1-8b-instant", groq_api_key=current_key)
+            _llm = ChatGroq(temperature=0.1, model_name="llama3-8b-8192", groq_api_key=current_key)
             _active_groq_key = current_key
             
         _models_loading = False
@@ -5533,6 +5533,7 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
     
     use_graph = False
     headers = None
+    mail = None
     if 'office365' in imap_host.lower() or 'outlook' in imap_host.lower():
         conn = sqlite3.connect(STATS_DB, timeout=30.0)
         cur = conn.cursor()
