@@ -5568,10 +5568,17 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                 access_token = token_res.json().get("access_token")
                 if access_token:
                     headers = {"Authorization": f"Bearer {access_token}"}
-                    msg_url = f"https://graph.microsoft.com/v1.0/users/{email_user}/mailFolders/Inbox/messages?$top=50&$select=id,internetMessageId"
-                    msg_res = requests.get(msg_url, headers=headers)
-                    if msg_res.status_code == 200:
-                        messages = msg_res.json().get('value', [])
+                    msg_url = f"https://graph.microsoft.com/v1.0/users/{email_user}/mailFolders/Inbox/messages?$top=100&$select=id,internetMessageId"
+                    messages = []
+                    while msg_url:
+                        msg_res = requests.get(msg_url, headers=headers)
+                        if msg_res.status_code == 200:
+                            data = msg_res.json()
+                            messages.extend(data.get('value', []))
+                            msg_url = data.get('@odata.nextLink')
+                        else:
+                            break
+                    if messages:
                         messages.reverse() # chronological
                         
                         conn = sqlite3.connect(STATS_DB, timeout=30.0)
@@ -5617,7 +5624,8 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
             
             recent_nums = []
             if total_msgs > 0:
-                recent_nums = [str(i).encode() for i in range(max(1, total_msgs - 49), total_msgs + 1)]
+                # Fetch all messages instead of just the last 50
+                recent_nums = [str(i).encode() for i in range(1, total_msgs + 1)]
 
             msg_nums_set = set(unseen_nums + recent_nums)
             msg_nums = sorted(list(msg_nums_set), key=lambda x: int(x))
