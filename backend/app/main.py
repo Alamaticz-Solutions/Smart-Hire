@@ -3838,6 +3838,7 @@ def reset_all(request: Request):
     conn.execute("DELETE FROM candidate_metadata")
     conn.execute("DELETE FROM change_requests")
     conn.execute("DELETE FROM activity_logs")
+    conn.execute("DELETE FROM processed_emails")
     conn.commit()
     conn.close()
     try:
