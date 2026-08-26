@@ -5572,12 +5572,17 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                     msg_url = f"https://graph.microsoft.com/v1.0/users/{email_user}/mailFolders/Inbox/messages?$top=100&$select=id,internetMessageId"
                     messages = []
                     while msg_url:
-                        msg_res = requests.get(msg_url, headers=headers)
-                        if msg_res.status_code == 200:
-                            data = msg_res.json()
-                            messages.extend(data.get('value', []))
-                            msg_url = data.get('@odata.nextLink')
-                        else:
+                        try:
+                            msg_res = requests.get(msg_url, headers=headers, timeout=30)
+                            if msg_res.status_code == 200:
+                                data = msg_res.json()
+                                messages.extend(data.get('value', []))
+                                msg_url = data.get('@odata.nextLink')
+                            else:
+                                print(f"Graph API returned status {msg_res.status_code} while fetching messages.")
+                                break
+                        except Exception as req_err:
+                            print(f"Error fetching page of messages: {req_err}")
                             break
                     if messages:
                         messages.reverse() # chronological
@@ -5601,9 +5606,23 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                                 continue
                                     
                             mime_url = f"https://graph.microsoft.com/v1.0/users/{email_user}/messages/{m_id}/$value"
-                            mime_res = requests.get(mime_url, headers=headers)
-                            if mime_res.status_code == 200:
-                                raw_emails_to_process.append((mime_res.content, effective_msg_id, m_id))
+                            try:
+                                # Add retry logic for rate limits and intermittent failures
+                                max_retries = 3
+                                for attempt in range(max_retries):
+                                    mime_res = requests.get(mime_url, headers=headers, timeout=30)
+                                    if mime_res.status_code == 200:
+                                        raw_emails_to_process.append((mime_res.content, effective_msg_id, m_id))
+                                        break
+                                    elif mime_res.status_code == 429:
+                                        import time
+                                        time.sleep(5)
+                                        continue
+                                    else:
+                                        print(f"Failed to fetch MIME for {m_id}, status: {mime_res.status_code}")
+                                        break
+                            except Exception as mime_err:
+                                print(f"Exception fetching MIME for {m_id}: {mime_err}")
                                 
                         conn.close()
             except Exception as e:
