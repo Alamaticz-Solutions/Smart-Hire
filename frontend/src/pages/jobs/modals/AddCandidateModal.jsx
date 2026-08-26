@@ -12,6 +12,7 @@ export default function AddCandidateModal({
     loadingUnmatched,
     unmatchedCandidates,
     handleAddCandidateManually,
+    addingCandidateId,
 }) {
     if (!showAddCandidateModal) return null;
 
@@ -100,9 +101,10 @@ export default function AddCandidateModal({
                                 <button
                                     onClick={() => handleAddCandidateManually(c.id)}
                                     className="btn btn-primary"
-                                    style={{ padding: '6px 12px', fontSize: '0.78rem', whiteSpace: 'nowrap' }}
+                                    disabled={Boolean(addingCandidateId)}
+                                    style={{ padding: '6px 12px', fontSize: '0.78rem', whiteSpace: 'nowrap', opacity: addingCandidateId ? 0.6 : 1, cursor: addingCandidateId ? 'not-allowed' : 'pointer' }}
                                 >
-                                    Match
+                                    {addingCandidateId === c.id ? 'Matching…' : 'Match'}
                                 </button>
                             </div>
                         ));

@@ -101,6 +101,7 @@ export default function JobsPage() {
     const [unmatchedCandidates, setUnmatchedCandidates] = useState([]);
     const [loadingUnmatched, setLoadingUnmatched] = useState(false);
     const [unmatchedSearchQuery, setUnmatchedSearchQuery] = useState('');
+    const [addingCandidateId, setAddingCandidateId] = useState(null);
 
     const [editingJob, setEditingJob] = useState(null);
     const [editJobForm, setEditJobForm] = useState({
@@ -287,11 +288,19 @@ export default function JobsPage() {
         }
     }
 
+    // Guards against a race condition when the user switches jobs quickly:
+    // if an older loadCandidates(jobId) request resolves AFTER a newer one
+    // (out-of-order network responses), it must not clobber the candidates
+    // list with stale data for a job that's no longer selected.
+    const latestCandidatesJobIdRef = useRef(null);
     const loadCandidates = async (jobId) => {
+        latestCandidatesJobIdRef.current = jobId;
         try {
             const r = await apiClient.get(`/api/jobs/${jobId}/candidates`);
-            setCandidates(r.data);
             sessionStorage.setItem(`cached_job_candidates_${jobId}`, JSON.stringify(r.data));
+            if (latestCandidatesJobIdRef.current === jobId) {
+                setCandidates(r.data);
+            }
         } catch (e) {
             console.error(e);
         }
@@ -442,6 +451,10 @@ export default function JobsPage() {
 
     const handleAddCandidateManually = async (candidateId) => {
         if (!selectedJob || !candidateId) return;
+        // Guard against a double-click firing two duplicate "add candidate to
+        // job" requests before the first one resolves and closes the modal.
+        if (addingCandidateId) return;
+        setAddingCandidateId(candidateId);
         try {
             await apiClient.post(`/api/jobs/${selectedJob.id}/candidates/${candidateId}`);
             showToast('Candidate manually matched to job!');
@@ -450,6 +463,8 @@ export default function JobsPage() {
             setShowAddCandidateModal(false);
         } catch (e) {
             showToast(e.response?.data?.detail || 'Failed to match candidate manually', 'error');
+        } finally {
+            setAddingCandidateId(null);
         }
     }
 
@@ -899,6 +914,7 @@ export default function JobsPage() {
                 loadingUnmatched={loadingUnmatched}
                 unmatchedCandidates={unmatchedCandidates}
                 handleAddCandidateManually={handleAddCandidateManually}
+                addingCandidateId={addingCandidateId}
             />
 
             <ShareModal

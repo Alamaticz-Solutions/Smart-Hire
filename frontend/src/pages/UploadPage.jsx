@@ -41,6 +41,7 @@ export default function UploadPage() {
     const [showColVisibility, setShowColVisibility] = useState(false)
     const [loadingCandidates, setLoadingCandidates] = useState(false)
     const [selectedIds, setSelectedIds] = useState(new Set())
+    const [isAddingCandidate, setIsAddingCandidate] = useState(false)
 
     // Column width map: shared base widths plus UploadPage's own `sender_email` column
     // (the email a resume was received from), per useColumnConfig's docstring.
@@ -152,6 +153,10 @@ export default function UploadPage() {
             alert("Candidate Name is required!");
             return;
         }
+        // Guard against a double-click firing two duplicate candidate
+        // creations before the first request resolves and closes the modal.
+        if (isAddingCandidate) return;
+        setIsAddingCandidate(true);
         try {
             await apiClient.post(`/api/candidates`, newCandidateForm);
             showToast("Candidate added successfully!");
@@ -159,6 +164,8 @@ export default function UploadPage() {
             load();
         } catch (err) {
             alert(err.response?.data?.detail || "Failed to add candidate");
+        } finally {
+            setIsAddingCandidate(false);
         }
     };
     const loadCols = () => apiClient.get(`/api/columns`).then(r => {
@@ -422,6 +429,7 @@ export default function UploadPage() {
                 newCandidateForm={newCandidateForm}
                 setNewCandidateForm={setNewCandidateForm}
                 handleAddCandidateSubmit={handleAddCandidateSubmit}
+                isAddingCandidate={isAddingCandidate}
                 showAddCol={showAddCol}
                 setShowAddCol={setShowAddCol}
                 newColForm={newColForm}

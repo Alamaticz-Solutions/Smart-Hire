@@ -202,14 +202,34 @@ def _get_missing_fields(candidate: dict) -> list[str]:
     """
     missing_fields = []
 
+    # BUG FIX: these fields are normally coerced to float by
+    # `process_resume_logic`/`process_single_mailbox` before being written,
+    # but `POST /api/candidates` (routers/candidates.py's
+    # `add_candidate_manually`) inserts whatever the client sent for these
+    # columns with no numeric coercion, so a manually-created candidate can
+    # have e.g. total_experience="5+" in the DB. The old bare `float(...)`
+    # call raised ValueError for that row, which the caller's enclosing
+    # try/except swallowed as "ERROR sending follow-up email reply" -
+    # silently skipping the candidate's acknowledgement email entirely.
+    # Fall back to treating an unparseable value as present-but-unknown
+    # (i.e. not "missing") rather than crashing the whole reply.
+    def _to_float(val):
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            return None
+
     total_exp = candidate.get('total_experience')
-    if total_exp is None or str(total_exp).strip() == "" or float(total_exp) == 0.0:
+    total_exp_f = _to_float(total_exp)
+    if total_exp is None or str(total_exp).strip() == "" or (total_exp_f is not None and total_exp_f == 0.0):
         missing_fields.append("Total years of experience")
 
     pega_exp = candidate.get('pega_experience')
     cdh_exp = candidate.get('cdh_exp')
-    has_pega = pega_exp is not None and str(pega_exp).strip() != "" and float(pega_exp) > 0.0
-    has_cdh = cdh_exp is not None and str(cdh_exp).strip() != "" and float(cdh_exp) > 0.0
+    pega_exp_f = _to_float(pega_exp)
+    cdh_exp_f = _to_float(cdh_exp)
+    has_pega = pega_exp is not None and str(pega_exp).strip() != "" and (pega_exp_f is None or pega_exp_f > 0.0)
+    has_cdh = cdh_exp is not None and str(cdh_exp).strip() != "" and (cdh_exp_f is None or cdh_exp_f > 0.0)
     if not has_pega and not has_cdh:
         missing_fields.append("Relevant experience for this role")
 

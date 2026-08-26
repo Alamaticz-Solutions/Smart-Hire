@@ -33,7 +33,23 @@ if os.path.exists(_backend_env_path):
 DATA_DIR = "/data" if os.path.exists("/data") and os.access("/data", os.W_OK) else BASE_DIR
 
 UPLOAD_DIR = os.path.join(DATA_DIR, "static")
-STATS_DB = os.getenv("STATS_DB_PATH", os.path.join(DATA_DIR, "stats.db"))
+
+# STATS_DB_PATH (set in backend/.env as "backend/stats.db") is written as a
+# path from the repository root, but the app is always actually launched
+# with the working directory already inside `backend/` (see the Dockerfile's
+# WORKDIR and README's `cd backend` step). A bare `os.getenv(...)` here
+# would resolve that relative string against the process's CWD instead,
+# silently creating a bogus nested `backend/backend/stats.db` (and the
+# empty `backend/backend/` directory as a side effect of the `os.makedirs`
+# call below) instead of the intended `backend/stats.db`. Resolving
+# relative values against PROJECT_ROOT (the repo root) instead makes this
+# correct regardless of the process's working directory, without requiring
+# any deployed STATS_DB_PATH value to change.
+_stats_db_env = os.getenv("STATS_DB_PATH")
+if _stats_db_env:
+    STATS_DB = _stats_db_env if os.path.isabs(_stats_db_env) else os.path.join(PROJECT_ROOT, _stats_db_env)
+else:
+    STATS_DB = os.path.join(DATA_DIR, "stats.db")
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(os.path.dirname(STATS_DB), exist_ok=True)

@@ -398,11 +398,23 @@ def init_db():
         env_pass = os.getenv("SMTP_PASSWORD", "")
         env_imap = os.getenv("IMAP_HOST", "imap.gmail.com")
         env_smtp = os.getenv("SMTP_HOST", "smtp.gmail.com")
+        # IMAP_PORT/SMTP_PORT are documented in backend/.env.example (defaults
+        # 993/587) but were previously ignored here in favor of hardcoded
+        # literals, so setting them in the environment had no effect on the
+        # seeded row. Read them the same way env_imap/env_smtp are read above.
+        try:
+            env_imap_port = int(os.getenv("IMAP_PORT", "993"))
+        except ValueError:
+            env_imap_port = 993
+        try:
+            env_smtp_port = int(os.getenv("SMTP_PORT", "587"))
+        except ValueError:
+            env_smtp_port = 587
         email_enabled = 1 if env_user and env_pass else 0
         cur.execute("""
         INSERT INTO integrations_settings (email_enabled, imap_host, imap_port, smtp_host, smtp_port, email_user, email_pass, keywords, drive_enabled)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (email_enabled, env_imap, 993, env_smtp, 587, env_user, env_pass, "resume,alamaticz,solution,job", 0))
+        """, (email_enabled, env_imap, env_imap_port, env_smtp, env_smtp_port, env_user, env_pass, "resume,alamaticz,solution,job", 0))
 
     # Create processed_emails table
     cur.execute('''

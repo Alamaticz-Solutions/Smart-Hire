@@ -34,6 +34,7 @@ the code was already set up for.
 from __future__ import annotations
 
 import os
+import re
 from typing import Optional
 
 import openpyxl
@@ -230,7 +231,21 @@ def process_excel_file_logic(safe_name: str, path: str, username: str):
                             is_row_empty = False
                         if (col_idx - 1) in mapped_cols:
                             db_col = mapped_cols[col_idx - 1]
-                            row_data[db_col] = str(val).strip() if val is not None else ""
+                            cell_str = str(val).strip() if val is not None else ""
+                            # BUG FIX: two differently-worded headers (e.g.
+                            # "Experience" and "Total Exp", or "Location" and
+                            # "Current Location") can both map to the same
+                            # db_col (see column_mappings above). Iterating
+                            # columns left-to-right and unconditionally
+                            # overwriting row_data[db_col] meant a later,
+                            # empty duplicate-header column silently blanked
+                            # out a value a real header already set for this
+                            # row. Don't let a later blank duplicate-header
+                            # column clobber a value an earlier column
+                            # already set for this db_col (a later *non-empty*
+                            # duplicate still wins, unchanged from before).
+                            if cell_str or db_col not in row_data:
+                                row_data[db_col] = cell_str
 
                     if is_row_empty:
                         continue
@@ -252,21 +267,38 @@ def process_excel_file_logic(safe_name: str, path: str, username: str):
                     match_id = _find_existing_match(existing_candidates, norm_email, norm_phone)
 
                     # Normalize numeric/experience fields.
-                    if "total_experience" in row_data and row_data["total_experience"] != "":
-                        try:
-                            row_data["total_experience"] = float(row_data["total_experience"])
-                        except ValueError:
-                            row_data["total_experience"] = 0.0
-                    if "pega_experience" in row_data and row_data["pega_experience"] != "":
-                        try:
-                            row_data["pega_experience"] = float(row_data["pega_experience"])
-                        except ValueError:
-                            row_data["pega_experience"] = 0.0
-                    if "cdh_exp" in row_data and row_data["cdh_exp"] != "":
-                        try:
-                            row_data["cdh_exp"] = float(row_data["cdh_exp"])
-                        except ValueError:
-                            row_data["cdh_exp"] = 0.0
+                    # BUG FIX: a plain `float(...)` cast on anything the sheet
+                    # author typed as free text (e.g. "5+ years", "5-7 yrs",
+                    # a stray "Yrs" suffix) raised ValueError and silently
+                    # zeroed out real experience data. `resume_processing.py`
+                    # and `email_worker.py` handle the identical
+                    # LLM-extracted-value problem by regex-extracting the
+                    # first number instead of hard-failing to 0.0; do the
+                    # same here for consistency so a messy-but-legible cell
+                    # like "5+" still imports as 5.0 instead of losing the
+                    # candidate's experience data.
+                    for exp_field in ("total_experience", "pega_experience", "cdh_exp"):
+                        if exp_field in row_data and row_data[exp_field] != "":
+                            raw = row_data[exp_field]
+                            try:
+                                # Clean numeric cells (including "5" or ".5")
+                                # take this fast, exact path unchanged.
+                                row_data[exp_field] = float(raw)
+                            except ValueError:
+                                # Only fall back to regex-extracting the
+                                # first number for genuinely messy text like
+                                # "5+ years" or "5-7 yrs". Skip the fallback
+                                # for date-like strings (e.g. an Excel date
+                                # cell such as "2019-07-01 00:00:00") so a
+                                # mismapped date column doesn't get read as
+                                # "2019.0 years of experience" - 0.0 (which
+                                # correctly surfaces as "missing experience"
+                                # downstream) is the safer failure mode here.
+                                if re.search(r"\d{4}-\d{2}-\d{2}", str(raw)) or "/" in str(raw):
+                                    row_data[exp_field] = 0.0
+                                else:
+                                    match = re.search(r"\d+(\.\d+)?", str(raw))
+                                    row_data[exp_field] = float(match.group()) if match else 0.0
                     if "notice_period" in row_data and row_data["notice_period"] != "":
                         try:
                             digits = "".join(c for c in row_data["notice_period"] if c.isdigit())

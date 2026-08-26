@@ -300,12 +300,21 @@ def get_columns():
 
 @router.delete("/api/columns/{col_key}")
 def delete_column(col_key: str, request: Request):
+    # SECURITY FIX: `col_key` is a raw path parameter and was being
+    # interpolated directly into `ALTER TABLE ... DROP COLUMN {col_key}`
+    # below with no sanitization, unlike `add_column` (above) which cleans
+    # its equivalent input via the same regex before using it in SQL. That
+    # made this endpoint a SQL-injection vector (e.g. a crafted col_key
+    # containing extra SQL). Apply the identical whitelist sanitization
+    # used by `add_column` so only safe identifier characters ever reach
+    # the raw SQL string.
+    clean_key = re.sub(r"[^a-zA-Z0-9_]", "", col_key.replace(" ", "_")).lower()
     with get_db_connection() as conn:
         cur = conn.cursor()
         try:
-            cur.execute("DELETE FROM custom_columns WHERE col_key=?", (col_key,))
+            cur.execute("DELETE FROM custom_columns WHERE col_key=?", (clean_key,))
             try:
-                cur.execute(f"ALTER TABLE candidate_metadata DROP COLUMN {col_key}")
+                cur.execute(f"ALTER TABLE candidate_metadata DROP COLUMN {clean_key}")
             except Exception:
                 pass  # older sqlite versions might not support drop column
             conn.commit()
@@ -661,6 +670,26 @@ def add_candidate_manually(body: dict, username: str = Depends(require_approved_
 
         if not insert_data.get("full_name"):
             raise HTTPException(status_code=400, detail="Candidate Name is required")
+
+        # Same numeric coercion PUT /api/candidates/{id} (update_candidate,
+        # above) already applies -- this insert path had none, so a manually
+        # entered non-numeric value (e.g. "5+" years) would sit in the DB as
+        # a raw string and later crash any code that does float(...) on it
+        # (e.g. email_worker._get_missing_fields when this candidate gets a
+        # follow-up email). Reject bad input up front instead.
+        for int_col in ["notice_period", "availability_in_days"]:
+            if int_col in insert_data and insert_data[int_col] != "":
+                try:
+                    insert_data[int_col] = int(float(insert_data[int_col]))
+                except (ValueError, TypeError):
+                    raise HTTPException(status_code=400, detail=f"{int_col} must be an integer")
+
+        for exp_col in ["total_experience", "pega_experience", "cdh_exp"]:
+            if exp_col in insert_data and insert_data[exp_col] != "":
+                try:
+                    insert_data[exp_col] = float(insert_data[exp_col])
+                except (ValueError, TypeError):
+                    raise HTTPException(status_code=400, detail=f"{exp_col} must be a number")
 
         cols_str = ", ".join(insert_data.keys())
         placeholders = ", ".join(["?"] * len(insert_data))

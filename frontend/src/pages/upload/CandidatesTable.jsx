@@ -44,6 +44,7 @@ export default function CandidatesTable({
     newCandidateForm,
     setNewCandidateForm,
     handleAddCandidateSubmit,
+    isAddingCandidate,
     showAddCol,
     setShowAddCol,
     newColForm,
@@ -765,8 +766,13 @@ export default function CandidatesTable({
                             <button className="btn btn-secondary" onClick={() => setShowAddCandidate(false)} style={{ flex: 1 }}>
                                 Cancel
                             </button>
-                            <button className="btn" onClick={handleAddCandidateSubmit} style={{ flex: 1, background: 'var(--gradient-gold)', color: '#000', fontWeight: 'bold' }}>
-                                Add Candidate
+                            <button
+                                className="btn"
+                                onClick={handleAddCandidateSubmit}
+                                disabled={isAddingCandidate}
+                                style={{ flex: 1, background: 'var(--gradient-gold)', color: '#000', fontWeight: 'bold', opacity: isAddingCandidate ? 0.6 : 1, cursor: isAddingCandidate ? 'not-allowed' : 'pointer' }}
+                            >
+                                {isAddingCandidate ? 'Adding…' : 'Add Candidate'}
                             </button>
                         </div>
                     </div>

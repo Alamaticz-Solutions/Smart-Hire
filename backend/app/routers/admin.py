@@ -319,8 +319,15 @@ def _approve_add_column(cur, target_id, payload, background_tasks):
 def _approve_delete_column(cur, target_id, payload, background_tasks):
     col_key = target_id
     cur.execute("DELETE FROM custom_columns WHERE col_key=?", (col_key,))
+    # Sanitize before interpolating into DDL -- ALTER TABLE ... DROP COLUMN
+    # can't be parameterized, and target_id is attacker-controllable at
+    # change-request creation time (a non-admin can stage a delete_column
+    # request; an admin's approval click is what actually executes this
+    # SQL). Mirrors the same clean_key sanitization already applied in
+    # _approve_add_column above for the identical reason.
+    clean_key = re.sub(r'[^a-zA-Z0-9_]', '', col_key.replace(' ', '_')).lower()
     try:
-        cur.execute(f"ALTER TABLE candidate_metadata DROP COLUMN {col_key}")
+        cur.execute(f"ALTER TABLE candidate_metadata DROP COLUMN {clean_key}")
     except Exception:
         pass
 
@@ -328,6 +335,20 @@ def _approve_delete_column(cur, target_id, payload, background_tasks):
 def _approve_update_candidate(cur, target_id, payload, background_tasks):
     candidate_id = int(target_id)
     updates = json.loads(payload)
+    # SECURITY FIX: `updates` keys come from a change-request payload that a
+    # non-admin can stage (see `_approve_delete_column` above for the same
+    # class of issue) and were being interpolated directly into
+    # `UPDATE ... SET {k}=?` with no validation, unlike the equivalent
+    # reachable route (`PUT /api/candidates/{id}` in routers/candidates.py,
+    # line ~347) which filters against `PRAGMA table_info(candidate_metadata)`
+    # before building its SET clause. Apply the same whitelist here so a
+    # crafted payload key can't inject arbitrary SQL into the DDL-adjacent
+    # f-string.
+    cur.execute("PRAGMA table_info(candidate_metadata)")
+    allowed_cols = {c[1] for c in cur.fetchall()}
+    updates = {k: v for k, v in updates.items() if k in allowed_cols and k != "id"}
+    if not updates:
+        return
     set_clause = ", ".join(f"{k}=?" for k in updates)
     cur.execute(
         f"UPDATE candidate_metadata SET {set_clause} WHERE id=?",
