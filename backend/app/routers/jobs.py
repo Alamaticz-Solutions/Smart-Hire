@@ -24,7 +24,7 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.core.logging import get_logger
@@ -36,6 +36,16 @@ from app.services.matching import match_candidates_for_job
 
 router = APIRouter()
 logger = get_logger(__name__)
+
+
+def _run_matching_task(job_id: int) -> None:
+    """BackgroundTasks doesn't route an unhandled exception through our
+    logger the way a request-path try/except did - wrap it so a matching
+    failure is still visible in logs instead of only in stderr."""
+    try:
+        match_candidates_for_job(job_id)
+    except Exception as e:
+        logger.error("Error matching candidates for job %s: %s", job_id, e)
 
 
 class JobCreate(BaseModel):
@@ -197,7 +207,7 @@ def list_jobs(request: Request):
 
 
 @router.post("/api/jobs")
-def create_job(job: JobCreate, request: Request):
+def create_job(job: JobCreate, request: Request, background_tasks: BackgroundTasks):
     username = request.headers.get("x-user-username") or "admin"
     if not is_user_approved(username):
         raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
@@ -221,10 +231,13 @@ def create_job(job: JobCreate, request: Request):
         job_id = cur.lastrowid
         conn.commit()
 
-    try:
-        match_candidates_for_job(job_id)
-    except Exception as e:
-        logger.error("Error matching candidates for job %s: %s", job_id, e)
+    # Runs after the response is sent instead of blocking this request on the
+    # full multi-batch LLM matching pass (which can take seconds to minutes
+    # for a large candidate pool) - was holding one pooled DB connection open
+    # the whole time. matched_count/selected_count below will be 0 until this
+    # finishes; the frontend (JobsPage.jsx's pollForJobMatches) polls briefly
+    # afterward to pick up the results once they're ready.
+    background_tasks.add_task(_run_matching_task, job_id)
 
     with get_db_connection() as conn:
         conn.row_factory = dict_row_factory
@@ -245,7 +258,7 @@ def create_job(job: JobCreate, request: Request):
 
 
 @router.put("/api/jobs/{job_id}")
-def update_job(job_id: int, job: JobCreate, username: str = Depends(require_approved_user)):
+def update_job(job_id: int, job: JobCreate, background_tasks: BackgroundTasks, username: str = Depends(require_approved_user)):
     # NOTE: original main.py assigned `role = get_user_role(username)` here
     # but never used it in this function body - dropped as part of this move
     # (task-scoped cleanup of unused role lookups in the jobs vertical).
@@ -280,10 +293,10 @@ def update_job(job_id: int, job: JobCreate, username: str = Depends(require_appr
             raise HTTPException(status_code=404, detail="Job not found")
         conn.commit()
 
-    try:
-        match_candidates_for_job(job_id)
-    except Exception as e:
-        logger.error("Error matching candidates for job %s: %s", job_id, e)
+    # See create_job's comment: runs after the response is sent instead of
+    # holding a pooled DB connection for the whole matching pass. The
+    # frontend polls briefly afterward to pick up the results.
+    background_tasks.add_task(_run_matching_task, job_id)
 
     with get_db_connection() as conn:
         conn.row_factory = dict_row_factory

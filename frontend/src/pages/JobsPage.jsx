@@ -374,6 +374,35 @@ export default function JobsPage() {
         };
     }, [activeDropdownJobId, showDropdown]);
 
+    // Candidate matching now runs as a backend background task (jobs.py) instead
+    // of blocking the create/update request, so matched_count/selected_count are
+    // still 0 in the response that comes back immediately. This polls a few times
+    // so the UI catches up once matching actually finishes, instead of looking
+    // like matching silently broke. Self-contained on purpose (functional
+    // setSelectedJob update, no captured `selectedJob`/`jobs` from the render
+    // that scheduled it) so it can't act on stale state from an earlier render.
+    const pollForJobMatches = (jobId, remainingAttempts = 6) => {
+        if (remainingAttempts <= 0) return;
+        setTimeout(async () => {
+            let updated = null;
+            try {
+                const r = await apiClient.get(`/api/jobs`);
+                setJobs(r.data);
+                sessionStorage.setItem('cached_jobs', JSON.stringify(r.data));
+                updated = r.data.find(j => j.id === jobId) || null;
+                if (updated) {
+                    setSelectedJob(prev => (prev && prev.id === jobId ? updated : prev));
+                    sessionStorage.setItem('cached_selected_job', JSON.stringify(updated));
+                }
+                loadCandidates(jobId);
+            } catch (e) {
+                // ignore, retry on next tick
+            }
+            if (updated && (updated.matched_count > 0 || updated.selected_count > 0)) return;
+            pollForJobMatches(jobId, remainingAttempts - 1);
+        }, 3000);
+    };
+
     const handleCreateJob = async () => {
         if (!newJob.title || !newJob.description) return showToast('Title and Description are required', 'error');
         if (isCreatingJob) return;
@@ -399,7 +428,8 @@ export default function JobsPage() {
                 required_skills: ''
             });
             setSelectedJob(r.data);
-            showToast('Job Created!');
+            showToast('Job Created! Matching candidates...');
+            pollForJobMatches(r.data.id);
         } catch (e) {
             showToast('Failed to create job', 'error');
         } finally {
@@ -558,8 +588,9 @@ export default function JobsPage() {
             const r = await apiClient.put(`/api/jobs/${editingJob.id}`, editJobForm);
             setJobs(jobs.map(j => j.id === editingJob.id ? r.data : j));
             setSelectedJob(r.data);
-            showToast('Job updated and candidates re-matched successfully!');
+            showToast('Job updated! Re-matching candidates...');
             loadCandidates(editingJob.id);
+            pollForJobMatches(editingJob.id);
             setEditingJob(null);
         } catch (e) {
             showToast(e.response?.data?.detail || 'Failed to update job description', 'error');

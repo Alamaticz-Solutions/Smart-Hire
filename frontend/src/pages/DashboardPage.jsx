@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
     ResponsiveContainer, Cell
@@ -95,6 +96,20 @@ export default function DashboardPage() {
     const filteredCandidates = filterType === 'immediate'
         ? candidates.filter(c => isImmediate(c.notice_period))
         : candidates
+
+    // Virtualization, same pattern as pages/jobs/CandidatesTable.jsx and
+    // pages/upload/CandidatesTable.jsx: only mount rows in/near the visible
+    // scroll area instead of every row in filteredCandidates. Unlike those
+    // two tables, this one didn't need a new scroll region added for this -
+    // the maxHeight: '70vh' wrapper below already existed.
+    const tableScrollRef = useRef(null)
+    const rowVirtualizer = useVirtualizer({
+        count: filteredCandidates.length,
+        getScrollElement: () => tableScrollRef.current,
+        estimateSize: () => 44,
+        overscan: 8,
+        measureElement: (el) => el.getBoundingClientRect().height,
+    })
 
     const handleKpiClick = (type) => {
         setFilterType(type)
@@ -234,7 +249,7 @@ export default function DashboardPage() {
                                 </button>
                             </div>
                         </div>
-                        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', borderRadius: 10, border: '1px solid var(--border)', width: '100%' }}>
+                        <div ref={tableScrollRef} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', borderRadius: 10, border: '1px solid var(--border)', width: '100%' }}>
                             <table style={{ minWidth: '2600px', width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                                 <thead>
                                     <tr style={{ background: 'rgba(var(--navy-rgb), 0.9)' }}>
@@ -267,8 +282,16 @@ export default function DashboardPage() {
                                     </tr>
                                 </thead>
                             <tbody>
-                                {filteredCandidates.map((c, i) => (
-                                    <tr key={i} style={{
+                                {rowVirtualizer.getVirtualItems().length > 0 && (
+                                    <tr aria-hidden="true">
+                                        <td colSpan={columns.length + 1} style={{ padding: 0, border: 'none', height: rowVirtualizer.getVirtualItems()[0].start }} />
+                                    </tr>
+                                )}
+                                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                                    const i = virtualRow.index
+                                    const c = filteredCandidates[i]
+                                    return (
+                                    <tr key={c.id || i} data-index={virtualRow.index} ref={rowVirtualizer.measureElement} style={{
                                         borderBottom: '1px solid rgba(var(--sky-rgb), 0.1)',
                                         background: i % 2 === 0 ? 'rgba(var(--navy-rgb), 0.2)' : 'transparent'
                                     }}>
@@ -457,7 +480,15 @@ export default function DashboardPage() {
                                             </button>
                                         </td>
                                     </tr>
-                                ))}
+                                )})}
+                                {rowVirtualizer.getVirtualItems().length > 0 && (
+                                    <tr aria-hidden="true">
+                                        <td colSpan={columns.length + 1} style={{
+                                            padding: 0, border: 'none',
+                                            height: rowVirtualizer.getTotalSize() - rowVirtualizer.getVirtualItems()[rowVirtualizer.getVirtualItems().length - 1].end,
+                                        }} />
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
                     </div>
