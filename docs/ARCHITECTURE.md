@@ -295,9 +295,35 @@ implemented:
   uploading" - are unchanged), and `load()` now skips the state update and `sessionStorage` write
   entirely when the response is byte-identical to what's already loaded.
 
-Still deferred (unchanged from the original investigation): unbounded `/api/candidates` query
-still has no `LIMIT`/pagination or supporting index; `match_candidates_for_job` still evaluates
-candidates in a serial batch loop; no frontend code-splitting or table virtualization.
+**Follow-up performance work** (same investigation, done in a later pass):
+
+- **DB indexes** (`app/db/init_db.py`). None existed anywhere in the original schema. Added
+  expression indexes on `users(LOWER(username))` and `candidate_metadata`/`jobs(LOWER(created_by))`
+  (a plain index on the bare column wouldn't be used by the `WHERE LOWER(x) = LOWER(?)` queries
+  used everywhere in this codebase - the function wrapper defeats a normal B-tree index), a plain
+  index on `candidate_metadata(timestamp)` (every `GET /api/candidates` sorts by it), and one on
+  `job_candidates(candidate_id)` (`job_id` is already the leading column of that table's composite
+  primary key, so only `candidate_id` needed its own). All `CREATE INDEX IF NOT EXISTS`, so
+  idempotent on every restart; verified end-to-end against a real temporary SQLite database.
+- **Parallel batch matching** (`app/services/matching.py`). `match_candidates_for_job` evaluated
+  candidate batches against a job description one at a time, with a `time.sleep(0.5)` between each
+  - a purely sequential loop of independent LLM calls (batch N's prompt/response never depends on
+    batch N-1's). Now runs through a `ThreadPoolExecutor(max_workers=3)`, the same pattern
+  `routers/matching.py`'s `match_jd` already used for the identical shape of problem; a job with
+  e.g. 150 candidates (6 batches) that used to take 6 sequential LLM round-trips plus 3s of pure
+  waiting now takes roughly `ceil(6/3)` round-trips.
+- **Frontend code-splitting** (`App.jsx`). Every page was a static import, so the whole app shipped
+  as one ~2.2MB JS chunk regardless of which route a user opened first. Routes now load via
+  `React.lazy()` + `Suspense`, splitting the build into ~20 independently-fetched chunks.
+
+Still deferred: `/api/candidates` still returns the full unpaginated result set per request (the
+new index makes the sort/filter itself cheap, but the endpoint still transfers every row every
+time - real pagination would need matching changes across every page that consumes it, since
+client-side search/filter currently assumes the full list is already in memory); no table
+virtualization (`CandidatesTable` in both Jobs and Upload still renders every row's DOM node
+directly, unvirtualized) - real drag-reorder/inline-edit interactions with a virtualization
+library are enough additional surface area that this was left as a separate decision rather than
+folded in here.
 
 ## Known issues / deliberately out of scope
 

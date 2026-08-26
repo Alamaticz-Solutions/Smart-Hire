@@ -26,7 +26,7 @@ module that may not exist yet.
 
 from __future__ import annotations
 
-import time
+import concurrent.futures
 
 from langchain_core.messages import HumanMessage
 
@@ -200,10 +200,9 @@ def match_candidates_for_job(job_id: int) -> dict:
 
         # Batch candidates to fit within Groq TPM limit (6000 tokens).
         batch_size = 25
-        reason_map: dict[int, str] = {}
+        batches = [db_rows[i : i + batch_size] for i in range(0, len(db_rows), batch_size)]
 
-        for i in range(0, len(db_rows), batch_size):
-            batch_rows = db_rows[i : i + batch_size]
+        def evaluate_batch(batch_rows: list) -> dict:
             candidate_lines = [
                 f"ID: {r.get('id')} | "
                 f"Name: {r.get('full_name')} | "
@@ -250,18 +249,35 @@ Return ONLY the raw JSON block, no markdown, no other text."""
                 raise_on_exhaustion=False,
             )
 
+            batch_reasons: dict[int, str] = {}
             if resp is not None:
                 try:
                     ai_reasons = parse_llm_json(resp.content, bracket="[")
                     for item in ai_reasons:
                         cid = item.get("id")
                         if cid is not None:
-                            reason_map[int(cid)] = item.get("reason", "")
+                            batch_reasons[int(cid)] = item.get("reason", "")
                 except Exception as parse_err:
                     logger.error("Error parsing batch match response: %s", parse_err)
+            return batch_reasons
 
-            # Small delay between batches to prevent rate limit issues.
-            time.sleep(0.5)
+        # Evaluate batches concurrently instead of one at a time with a
+        # manual 0.5s sleep between each -- this was a purely sequential
+        # loop of N independent LLM calls (each batch's prompt/response is
+        # self-contained, nothing here depends on another batch's result),
+        # so a job with e.g. 150 candidates paid 6 sequential LLM round
+        # trips plus 6 * 0.5s of pure waiting for no reason. Mirrors the
+        # same ThreadPoolExecutor(max_workers=3) pattern routers/matching.py's
+        # match_jd already uses for the identical shape of problem;
+        # max_workers=3 caps concurrent Groq requests, replacing the old
+        # inter-batch sleep as the rate-limit safeguard. Each batch's
+        # retry/error handling is unchanged -- a failed batch still just
+        # contributes an empty dict via reason_map.update(...), same as
+        # before.
+        reason_map: dict[int, str] = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            for batch_reasons in executor.map(evaluate_batch, batches):
+                reason_map.update(batch_reasons)
 
         # Clear old automatic matches for this job that haven't been selected.
         cur.execute("DELETE FROM job_candidates WHERE job_id = ? AND status = 'matched'", (job_id,))

@@ -253,6 +253,36 @@ def init_db():
             except Exception:
                 conn.rollback()
 
+    # ── Indexes ──────────────────────────────────────────────────────────
+    # None existed anywhere in the original schema. `WHERE LOWER(username) =
+    # LOWER(?)` runs on nearly every authenticated request (is_user_approved/
+    # get_user_role/is_admin_or_hr in app/services/auth.py, plus every login),
+    # `WHERE LOWER(created_by) = LOWER(?)` gates most candidate/job rows to
+    # their owner, `candidate_metadata` is sorted by `timestamp DESC` on every
+    # GET /api/candidates, and `job_candidates` is looked up by `candidate_id`
+    # alone (e.g. deleting/re-matching a candidate) as often as by `job_id`
+    # (already the leading column of the table's composite PRIMARY KEY, so
+    # only `candidate_id` needs its own index). A plain index on `username`/
+    # `created_by` wouldn't be used by these queries at all -- the `LOWER(...)`
+    # wrapper defeats a normal B-tree index -- so these are expression
+    # indexes on the lowercased value instead. `CREATE INDEX IF NOT EXISTS`
+    # and expression indexes are both supported by SQLite (3.9+) and
+    # Postgres, and this statement shape doesn't trigger any of
+    # postgres_adapter.py's query-rewriting rules, so no translation quirks
+    # to worry about here.
+    for index_sql in (
+        "CREATE INDEX IF NOT EXISTS idx_users_username_lower ON users (LOWER(username))",
+        "CREATE INDEX IF NOT EXISTS idx_candidate_metadata_created_by_lower ON candidate_metadata (LOWER(created_by))",
+        "CREATE INDEX IF NOT EXISTS idx_candidate_metadata_timestamp ON candidate_metadata (timestamp)",
+        "CREATE INDEX IF NOT EXISTS idx_jobs_created_by_lower ON jobs (LOWER(created_by))",
+        "CREATE INDEX IF NOT EXISTS idx_job_candidates_candidate_id ON job_candidates (candidate_id)",
+    ):
+        try:
+            cur.execute(index_sql)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
     # Seed default users if empty (do NOT wipe the table to preserve registered users!)
     cur.execute("SELECT COUNT(*) FROM users WHERE LOWER(username) = 'admin'")
     if cur.fetchone()[0] == 0:
