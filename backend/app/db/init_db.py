@@ -109,6 +109,30 @@ def init_db():
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    # Migration: some deployments have a pre-existing change_requests table
+    # from an older schema that CREATE TABLE IF NOT EXISTS above is a no-op
+    # against - discovered live when a real Postgres DB's change_requests
+    # table was missing `username` entirely, 500ing every approval-required
+    # action (new user registration included) with "column username of
+    # relation change_requests does not exist". NOT NULL is relaxed to a
+    # DEFAULT here (unlike the fresh-table CREATE above) since ALTER TABLE
+    # ADD COLUMN can't add NOT NULL to a table that may already have rows.
+    cur.execute("PRAGMA table_info(change_requests)")
+    existing_cr_cols = {c[1] for c in cur.fetchall()}
+    cr_migrate_cols = {
+        'username': "TEXT DEFAULT 'unknown'",
+        'action_type': "TEXT DEFAULT ''",
+        'target_id': 'TEXT',
+        'payload': 'TEXT',
+        'description': 'TEXT',
+        'status': "TEXT DEFAULT 'pending'",
+        'created_at': 'DATETIME DEFAULT CURRENT_TIMESTAMP',
+    }
+    for col, dtype in cr_migrate_cols.items():
+        if col not in existing_cr_cols:
+            cur.execute(f"ALTER TABLE change_requests ADD COLUMN {col} {dtype}")
+
     try:
         cur.execute("ALTER TABLE users ADD COLUMN mobile TEXT")
         conn.commit()
