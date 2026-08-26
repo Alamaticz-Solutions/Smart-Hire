@@ -1,4 +1,5 @@
-import React from 'react'
+import React, { useRef } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { Trash2, FileText, Filter, Download, RefreshCw, Eye, X, CheckSquare } from 'lucide-react'
 import { exportToExcel, formatCandidatesForExcel } from '../../utils/excelUtils'
 import apiClient from '../../api/client'
@@ -68,7 +69,31 @@ export default function CandidatesTable({
     loadingCandidates,
     load,
     loadCols,
+    totalCandidates,
+    loadingMore,
+    loadMore,
 }) {
+    // Virtualization: this table used to mount one real <tr> per row in
+    // filteredCandidates, so a table with hundreds/thousands of loaded
+    // candidates paid the DOM/layout cost of rendering every row's cells
+    // even though only ~15-20 are ever visible in the scrollable viewport
+    // at once. rowVirtualizer only mounts the rows currently in (or near)
+    // view; everything else is represented by two spacer <tr>s (the
+    // standard way to virtualize a real HTML <table> without breaking
+    // table layout, since <tr> can't be absolutely positioned the way a
+    // virtualized <div> list normally would). `measureElement` re-measures
+    // each row's actual rendered height rather than trusting a fixed
+    // estimate, since a few columns (full_name/current_organization/email)
+    // allow text wrapping and can be taller than a single line.
+    const tableScrollRef = useRef(null)
+    const rowVirtualizer = useVirtualizer({
+        count: filteredCandidates.length,
+        getScrollElement: () => tableScrollRef.current,
+        estimateSize: () => 44,
+        overscan: 8,
+        measureElement: (el) => el.getBoundingClientRect().height,
+    })
+
     return (
         <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, width: '100%' }}>
             <div className="section-header" style={{ borderBottom: '1px solid rgba(var(--sky-rgb), 0.2)', paddingBottom: '1rem', marginBottom: '1rem' }}>
@@ -236,7 +261,7 @@ export default function CandidatesTable({
                             </button>
                         </div>
                     )}
-                    <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', borderRadius: 10, border: '1px solid var(--border)', width: '100%' }}>
+                    <div ref={tableScrollRef} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', borderRadius: 10, border: '1px solid var(--border)', width: '100%' }}>
                         <table style={{ width: getTableWidth(), tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
                             <colgroup>
                                 <col style={{ width: '45px' }} />
@@ -510,8 +535,19 @@ export default function CandidatesTable({
                                         </td>
                                     </tr>
                                 ) : (
-                                    filteredCandidates.map((row, ri) => (
+                                    <>
+                                    {rowVirtualizer.getVirtualItems().length > 0 && (
+                                        <tr aria-hidden="true">
+                                            <td colSpan={activeCols.length + 2} style={{ padding: 0, border: 'none', height: rowVirtualizer.getVirtualItems()[0].start }} />
+                                        </tr>
+                                    )}
+                                    {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                                    const row = filteredCandidates[virtualRow.index]
+                                    const ri = virtualRow.index
+                                    return (
                                     <tr key={row.id || ri}
+                                        data-index={virtualRow.index}
+                                        ref={rowVirtualizer.measureElement}
                                         style={{ background: ri % 2 === 0 ? 'rgba(var(--navy-rgb), 0.25)' : 'transparent', transition: 'background 0.15s' }}
                                         onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.07)'}
                                         onMouseLeave={e => e.currentTarget.style.background = ri % 2 === 0 ? 'rgba(var(--navy-rgb), 0.25)' : 'transparent'}
@@ -714,10 +750,39 @@ export default function CandidatesTable({
                                             )
                                         })}
                                     </tr>
-                                )))}
+                                    )})}
+                                    {rowVirtualizer.getVirtualItems().length > 0 && (
+                                        <tr aria-hidden="true">
+                                            <td colSpan={activeCols.length + 2} style={{
+                                                padding: 0, border: 'none',
+                                                height: rowVirtualizer.getTotalSize() - rowVirtualizer.getVirtualItems()[rowVirtualizer.getVirtualItems().length - 1].end,
+                                            }} />
+                                        </tr>
+                                    )}
+                                    </>
+                                )}
                             </tbody>
                         </table>
                     </div>
+
+                    {/* Pagination: /api/candidates now returns a bounded page instead of
+                        every candidate. "Load More" fetches the next page and appends it
+                        -- filters/search only apply to what's loaded so far, matching the
+                        page's original "load everything, filter client-side" behavior for
+                        anyone who never has more than one page's worth of candidates. */}
+                    {typeof totalCandidates === 'number' && candidates.length < totalCandidates && (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '14px 0 4px' }}>
+                            <button
+                                className="btn btn-secondary"
+                                onClick={loadMore}
+                                disabled={loadingMore}
+                                style={{ color: 'var(--sky)', borderColor: 'rgba(var(--sky-rgb), 0.3)' }}
+                            >
+                                {loadingMore ? 'Loading…' : `Load More (${candidates.length} of ${totalCandidates})`}
+                            </button>
+                        </div>
+                    )}
+
                     <p style={{ marginTop: '0.6rem', fontSize: '0.75rem', color: 'rgba(var(--sky-dim-rgb), 0.38)' }}>
                         💡 Click <strong style={{ color: 'var(--gold)' }}>+N</strong> to expand Skills / Certs · Double-click any cell to edit
                     </p>

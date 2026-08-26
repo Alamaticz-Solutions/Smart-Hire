@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { Search, UserCheck, ChevronRight, Edit, Trash2, Eye, Download, X, FileText } from 'lucide-react';
 import apiClient from '../../api/client';
 import { exportToExcel, formatCandidatesForExcel } from '../../utils/excelUtils';
@@ -59,6 +60,22 @@ export default function CandidatesTable({
     handleRemoveFromJob,
     handleDeleteCandidate,
 }) {
+    // Virtualization, same rationale/pattern as pages/upload/CandidatesTable.jsx:
+    // only mount the rows currently in (or near) the scrollable viewport instead
+    // of every row in filteredCandidates. This table previously had no internal
+    // scroll region at all (it grew with the page); giving it one here (see the
+    // `overflowY`/`maxHeight` added to the scroll wrapper below) is a deliberate,
+    // approved UX change specifically to make that possible, matching the
+    // `maxHeight: '70vh'` pattern Upload's table already used.
+    const tableScrollRef = useRef(null)
+    const rowVirtualizer = useVirtualizer({
+        count: filteredCandidates.length,
+        getScrollElement: () => tableScrollRef.current,
+        estimateSize: () => 44,
+        overscan: 8,
+        measureElement: (el) => el.getBoundingClientRect().height,
+    })
+
     return (
         <>
             {!isExternal && (
@@ -185,7 +202,7 @@ export default function CandidatesTable({
                     </div>
                 ) : (
                     <>
-                        <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-darker)', width: '100%' }}>
+                        <div ref={tableScrollRef} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-darker)', width: '100%' }}>
                             <table style={{ width: getTableWidth(), tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
                                 <colgroup>
                                     {activeCols.map(c => <col key={c.key} style={{ width: c.pct }} />)}
@@ -360,8 +377,18 @@ export default function CandidatesTable({
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {filteredCandidates.map((row, ri) => (
+                                    {rowVirtualizer.getVirtualItems().length > 0 && (
+                                        <tr aria-hidden="true">
+                                            <td colSpan={activeCols.length} style={{ padding: 0, border: 'none', height: rowVirtualizer.getVirtualItems()[0].start }} />
+                                        </tr>
+                                    )}
+                                    {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                                    const row = filteredCandidates[virtualRow.index]
+                                    const ri = virtualRow.index
+                                    return (
                                         <tr key={row.id || ri}
+                                            data-index={virtualRow.index}
+                                            ref={rowVirtualizer.measureElement}
                                             style={{ background: ri % 2 === 0 ? 'rgba(var(--navy-rgb), 0.25)' : 'transparent', transition: 'background 0.15s' }}
                                             onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.07)'}
                                             onMouseLeave={e => e.currentTarget.style.background = ri % 2 === 0 ? 'rgba(var(--navy-rgb), 0.25)' : 'transparent'}
@@ -623,7 +650,15 @@ export default function CandidatesTable({
                                                 )
                                             })}
                                         </tr>
-                                    ))}
+                                    )})}
+                                    {rowVirtualizer.getVirtualItems().length > 0 && (
+                                        <tr aria-hidden="true">
+                                            <td colSpan={activeCols.length} style={{
+                                                padding: 0, border: 'none',
+                                                height: rowVirtualizer.getTotalSize() - rowVirtualizer.getVirtualItems()[rowVirtualizer.getVirtualItems().length - 1].end,
+                                            }} />
+                                        </tr>
+                                    )}
                                 </tbody>
                             </table>
                         </div>

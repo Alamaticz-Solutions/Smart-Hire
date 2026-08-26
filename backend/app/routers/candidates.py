@@ -150,7 +150,13 @@ def mask_candidate_record(candidate: dict, keywords: list) -> dict:
     return masked
 
 
-def _get_candidates_list(username: Optional[str] = None, role: str = "user", is_hr_or_admin: bool = None) -> list:
+def _get_candidates_list(
+    username: Optional[str] = None,
+    role: str = "user",
+    is_hr_or_admin: bool = None,
+    limit: Optional[int] = None,
+    offset: int = 0,
+) -> list:
     with get_db_connection() as conn:
         conn.row_factory = dict_row_factory
         cur = conn.cursor()
@@ -167,12 +173,25 @@ def _get_candidates_list(username: Optional[str] = None, role: str = "user", is_
                 "current_client, domain, tier, certification_version, "
                 "sender_email, is_qualified, is_approved, file_url"
             )
+            # LIMIT/OFFSET are only ever set to a real value from the paginated
+            # branch of GET /api/candidates below -- every other caller (the
+            # default, unpaginated behavior; email_worker; excel_import, etc.)
+            # passes limit=None, which keeps this exactly the "no LIMIT clause
+            # at all" query it always was, so nothing about the default
+            # behavior changes here.
+            limit_clause = ""
+            params: tuple = ()
+            if limit is not None:
+                limit_clause = " LIMIT ? OFFSET ?"
+                params = (limit, offset)
+
             if role == "admin" or is_hr_or_admin or not username:
-                cur.execute(f"SELECT {cols_to_select} FROM candidate_metadata ORDER BY timestamp DESC")
+                cur.execute(f"SELECT {cols_to_select} FROM candidate_metadata ORDER BY timestamp DESC{limit_clause}", params)
             else:
                 cur.execute(
-                    f"SELECT {cols_to_select} FROM candidate_metadata WHERE LOWER(created_by) = LOWER(?) ORDER BY timestamp DESC",
-                    (username,),
+                    f"SELECT {cols_to_select} FROM candidate_metadata WHERE LOWER(created_by) = LOWER(?) "
+                    f"ORDER BY timestamp DESC{limit_clause}",
+                    (username,) + params,
                 )
             raw_rows = cur.fetchall()
             rows = []
@@ -192,9 +211,36 @@ def _get_candidates_list(username: Optional[str] = None, role: str = "user", is_
     return rows
 
 
+def _count_candidates(username: Optional[str] = None, role: str = "user", is_hr_or_admin: bool = None) -> int:
+    """Row count for the same visibility rule `_get_candidates_list` applies, for pagination totals."""
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        try:
+            if is_hr_or_admin is None:
+                is_hr_or_admin = False
+                if username:
+                    is_hr_or_admin = is_admin_or_hr(username)
+            if role == "admin" or is_hr_or_admin or not username:
+                cur.execute("SELECT COUNT(*) FROM candidate_metadata")
+            else:
+                cur.execute("SELECT COUNT(*) FROM candidate_metadata WHERE LOWER(created_by) = LOWER(?)", (username,))
+            return cur.fetchone()[0]
+        except Exception as e:
+            logger.error(f"ERROR in _count_candidates: {e}", exc_info=True)
+            return 0
+
+
 # ── Candidates ─────────────────────────────────────────────────────────────────
 @router.get("/api/candidates")
-def list_candidates(request: Request):
+def list_candidates(request: Request, limit: Optional[int] = None, offset: int = 0):
+    # `limit`/`offset` are optional and opt-in: omitting them (every existing
+    # caller today) preserves the exact original behavior of returning every
+    # visible candidate as a bare JSON array. Passing them switches to a
+    # paginated response shape (`{"items": [...], "total": N}`) instead --
+    # this endpoint used to run one unbounded `SELECT * FROM candidate_metadata`
+    # per call (no LIMIT anywhere), which got noticeably more expensive as the
+    # table grew and was hit by this app's own polling. A caller that wants a
+    # page can now ask for one without changing behavior for anyone who doesn't.
     username = request.headers.get("x-user-username")
 
     is_user_admin = False
@@ -216,9 +262,12 @@ def list_candidates(request: Request):
                 raise HTTPException(status_code=403, detail="Forbidden")
 
     if not is_user_approved(username):
-        return []
+        return {"items": [], "total": 0} if limit is not None else []
 
-    rows = _get_candidates_list(username, role="admin" if is_user_admin else "user", is_hr_or_admin=is_admin_or_hr_flag)
+    effective_role = "admin" if is_user_admin else "user"
+    rows = _get_candidates_list(
+        username, role=effective_role, is_hr_or_admin=is_admin_or_hr_flag, limit=limit, offset=offset
+    )
 
     # Replace None values with empty string and remove binary file_bytes
     for row in rows:
@@ -235,6 +284,10 @@ def list_candidates(request: Request):
         rows = [mask_candidate_record(row, keywords) for row in rows]
 
     rows = apply_user_hidden_fields(rows, username)
+
+    if limit is not None:
+        total = _count_candidates(username, role=effective_role, is_hr_or_admin=is_admin_or_hr_flag)
+        return {"items": rows, "total": total}
     return rows
 
 

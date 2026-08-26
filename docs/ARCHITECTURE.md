@@ -316,14 +316,37 @@ implemented:
   as one ~2.2MB JS chunk regardless of which route a user opened first. Routes now load via
   `React.lazy()` + `Suspense`, splitting the build into ~20 independently-fetched chunks.
 
-Still deferred: `/api/candidates` still returns the full unpaginated result set per request (the
-new index makes the sort/filter itself cheap, but the endpoint still transfers every row every
-time - real pagination would need matching changes across every page that consumes it, since
-client-side search/filter currently assumes the full list is already in memory); no table
-virtualization (`CandidatesTable` in both Jobs and Upload still renders every row's DOM node
-directly, unvirtualized) - real drag-reorder/inline-edit interactions with a virtualization
-library are enough additional surface area that this was left as a separate decision rather than
-folded in here.
+**Pagination and virtualization** (a later pass, after weighing the product tradeoffs with the
+user rather than guessing):
+
+- **`GET /api/candidates` pagination** (`app/routers/candidates.py`). Added optional `limit`/
+  `offset` query params - omitting them (every caller before this change) preserves the exact
+  original behavior of returning every visible candidate as a bare JSON array; passing them
+  switches to `{"items": [...], "total": N}`. Purely additive, so nothing that doesn't opt in is
+  affected. `frontend/src/pages/UploadPage.jsx` (the heaviest, continuously-polled consumer) now
+  uses this: it fetches 200 candidates at a time with a "Load More" control instead of the full
+  table on every load/poll. Chosen deliberately over classic numbered pages or a full
+  server-side-search rework (both real options, discussed with the user before implementing):
+  filters/search now only apply to whatever pages have been loaded so far, which is unchanged
+  from the original behavior for the common case (fewer than 200 candidates) and a small,
+  intentional UX difference beyond that. `DashboardPage.jsx`/`JobsPage.jsx` do not use pagination
+  yet - they weren't the pages hit by continuous polling, so the unbounded-request cost there is
+  materially lower.
+- **Table virtualization** (`pages/upload/CandidatesTable.jsx`, `pages/jobs/CandidatesTable.jsx`).
+  Both tables previously mounted one real `<tr>` per row in `filteredCandidates` regardless of how
+  many were actually visible in the scrollable viewport. Both now use `@tanstack/react-virtual`:
+  only the rows in or near view are mounted, represented by two spacer `<tr>`s before/after (the
+  standard technique for virtualizing a real HTML `<table>`, since a `<tr>` can't be absolutely
+  positioned the way a virtualized `<div>` list normally would); `measureElement` re-measures each
+  row's actual height rather than trusting a fixed estimate, since a few columns allow text
+  wrapping. `pages/jobs/CandidatesTable.jsx` had no internal scroll region at all before this (the
+  whole page scrolled with it) - virtualization needs a bounded scrollable element to know what's
+  in view, so it now has the same `maxHeight: '70vh'` internal scrollbar Upload's table already
+  used, a deliberate, approved UX change made specifically to enable this. Verified with an
+  isolated smoke-test harness (a throwaway component swapped into `main.jsx`, not committed)
+  against 5,000 synthetic rows in a real browser: confirmed only ~15-25 rows ever mount regardless
+  of scroll position, scrolling to an arbitrary offset shows the correct data at that position (no
+  index drift/duplication), and variable-height rows are measured and laid out correctly.
 
 ## Known issues / deliberately out of scope
 

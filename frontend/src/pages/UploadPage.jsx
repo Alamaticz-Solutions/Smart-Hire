@@ -133,21 +133,49 @@ export default function UploadPage() {
     });
 
     const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500) }
+
+    // Pagination: GET /api/candidates used to always return every visible
+    // candidate in one unbounded response, hit by this page's own 20s
+    // baseline poll on top of the initial load. `load()` now fetches only
+    // the first PAGE_SIZE (most-recently-updated first, same ORDER BY the
+    // backend always used), and `loadMore()` fetches subsequent pages on
+    // demand via a "Load More" control. Per-request payload size is now
+    // bounded regardless of how large the candidates table grows.
+    //
+    // Trade-off (chosen deliberately, not a bug): filtering/search only
+    // operates on whatever pages have been loaded into `candidates` so far,
+    // not the full server-side dataset, until the user loads more. This
+    // matches the previous "load everything, filter client-side" behavior
+    // exactly for anyone who never needs more than PAGE_SIZE candidates
+    // (the common case), and only changes anything once a table has more
+    // than PAGE_SIZE rows.
+    const PAGE_SIZE = 200
+    const [totalCandidates, setTotalCandidates] = useState(0)
+    const [loadingMore, setLoadingMore] = useState(false)
     // lastLoadedRef holds the last JSON payload actually applied to state, so a
-    // silent poll tick that gets back the exact same data (the common case --
-    // nothing changed since the last tick) can skip setCandidates/sessionStorage
-    // entirely instead of forcing a re-render and a full JSON.stringify +
-    // storage write of the whole candidate list on every single tick.
+    // silent poll tick that gets back the exact same first page (the common
+    // case -- nothing changed since the last tick) can skip setCandidates/
+    // sessionStorage entirely instead of forcing a re-render and a full
+    // JSON.stringify + storage write on every single tick.
     const lastLoadedRef = useRef(null)
     const load = (silent = false) => {
         if (!silent) setLoadingCandidates(true);
-        return apiClient.get(`/api/candidates`)
+        return apiClient.get(`/api/candidates`, { params: { limit: PAGE_SIZE, offset: 0 } })
             .then(r => {
-                const raw = JSON.stringify(r.data);
+                const { items, total } = r.data;
+                const raw = JSON.stringify(items);
+                setTotalCandidates(total);
                 if (raw === lastLoadedRef.current) return;
                 lastLoadedRef.current = raw;
-                setCandidates(r.data);
-                sessionStorage.setItem('cached_candidates', raw);
+                // Replace only the first page; anything loaded beyond it via
+                // loadMore() stays as-is so a poll tick can't discard pages
+                // the user already fetched.
+                setCandidates(prev => {
+                    const rest = prev.slice(PAGE_SIZE);
+                    const merged = [...items, ...rest];
+                    sessionStorage.setItem('cached_candidates', JSON.stringify(merged));
+                    return merged;
+                });
             })
             .catch(err => {
                 console.error("Failed to load candidates", err);
@@ -156,6 +184,25 @@ export default function UploadPage() {
             .finally(() => {
                 if (!silent) setLoadingCandidates(false);
             });
+    }
+    const loadMore = () => {
+        if (loadingMore) return;
+        setLoadingMore(true);
+        return apiClient.get(`/api/candidates`, { params: { limit: PAGE_SIZE, offset: candidates.length } })
+            .then(r => {
+                const { items, total } = r.data;
+                setTotalCandidates(total);
+                setCandidates(prev => {
+                    const merged = [...prev, ...items];
+                    sessionStorage.setItem('cached_candidates', JSON.stringify(merged));
+                    return merged;
+                });
+            })
+            .catch(err => {
+                console.error("Failed to load more candidates", err);
+                showToast("Failed to load more candidates", "error");
+            })
+            .finally(() => setLoadingMore(false));
     }
     const handleAddCandidateSubmit = async () => {
         if (!newCandidateForm.full_name || !newCandidateForm.full_name.trim()) {
@@ -362,6 +409,7 @@ export default function UploadPage() {
                 headers: { 'x-user-username': user?.username }
             });
             setCandidates(p => p.filter(c => c.id !== id));
+            setTotalCandidates(t => Math.max(0, t - 1));
             setSelectedCandidateForDetails(null);
             showToast('Deleted')
         } catch { showToast('Delete failed', 'error') }
@@ -390,6 +438,7 @@ export default function UploadPage() {
                 headers: { 'x-user-username': user?.username }
             })
             setCandidates(prev => prev.filter(c => !selectedIds.has(c.id)))
+            setTotalCandidates(t => Math.max(0, t - selectedIds.size))
             setSelectedIds(new Set())
             showToast(`Deleted ${selectedIds.size} candidate(s)`)
         } catch { showToast('Bulk delete failed', 'error') }
@@ -473,6 +522,9 @@ export default function UploadPage() {
                 loadingCandidates={loadingCandidates}
                 load={load}
                 loadCols={loadCols}
+                totalCandidates={totalCandidates}
+                loadingMore={loadingMore}
+                loadMore={loadMore}
             />
 
             {toast && (
