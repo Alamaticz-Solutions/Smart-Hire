@@ -1,0 +1,29 @@
+{
+    "name": "hire-ai-frontend",
+    "private": true,
+    "version": "1.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build",
+        "preview": "vite preview"
+    },
+    "dependencies": {
+        "axios": "^1.6.7",
+        "exceljs": "^4.4.0",
+        "firebase": "^12.14.0",
+        "lucide-react": "^0.344.0",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "react-dropzone": "^14.2.3",
+        "react-markdown": "^9.0.1",
+        "react-router-dom": "^6.22.1",
+        "recharts": "^2.12.1"
+    },
+    "devDependencies": {
+        "@types/react": "^18.3.1",
+        "@types/react-dom": "^18.3.1",
+        "@vitejs/plugin-react": "^4.3.1",
+        "vite": "^5.2.8"
+    }
+}

@@ -1,0 +1,21 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+torch
+langchain
+langchain-community
+langchain-huggingface
+langchain-groq
+python-dotenv
+docx2txt
+pymupdf
+fastapi
+uvicorn
+python-multipart
+sentence-transformers
+openpyxl
+psycopg2-binary
+pgvector
+boto3
+requests
+google-auth
+python-docx

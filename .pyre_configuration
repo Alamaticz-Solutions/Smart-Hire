@@ -1,0 +1,8 @@
+{
+  "source_directories": [
+    "backend"
+  ],
+  "search_path": [
+    ".venv/Lib/site-packages"
+  ]
+}

@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Environment variables (keep secrets safe!)
+.env
+
+# Database & local storage
+stats.db
+*.db
+
+# ChromaDB vector store (large, regenerated from resumes)
+chroma_db/
+
+
+# Streamlit cache
+.streamlit/secrets.toml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+node_modules/
+
+backend/Client_secret.json
+*.log
+
+# Frontend build output & stray Vite temp config files
+frontend/dist/
+frontend/vite.config.js.timestamp-*.mjs
