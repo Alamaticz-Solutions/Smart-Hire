@@ -246,16 +246,65 @@ the rule for this pass:
   out **not** to be dead and was kept), an unused `xlsx` npm dependency (the app actually uses
   `exceljs`), an unused `assets/logo.png`, and a stray committed Vite build artifact.
 
+## Post-cleanup bug fixes and performance work
+
+Two follow-up passes after the structural cleanup above (see git log for full detail on each):
+
+**Bug sweep** - a systematic hunt across the whole codebase (not limited to files the cleanup
+itself touched) found and fixed: a `backend/backend/` phantom-directory bug (see the
+`STATS_DB_PATH` note below), three DDL/SQL-injection sites where a user-controlled column
+name/update-key was interpolated into raw SQL with no whitelist (`DELETE /api/columns/{col_key}`,
+`admin._approve_delete_column`, `admin._approve_update_candidate`), Excel-import data corruption
+(non-numeric experience values silently zeroed instead of extracted; a duplicate-header collision
+that could blank an already-populated field), a manual-candidate-creation route with no numeric
+validation (unlike its sibling update route) that fed the bug above, a seeded-settings row that
+ignored the `IMAP_PORT`/`SMTP_PORT` env vars, a frontend race condition when switching jobs
+quickly, and two double-submission bugs (Add Candidate in both Jobs and Upload). Left flagged
+rather than guessed at: `matching.py`'s `is_qualified` flag counts all `job_candidates` rows
+regardless of status (confirmed pre-existing, not a regression - its correctness depends on
+intended status-vocabulary semantics this pass couldn't determine), and `REQUIRE_REAL_EMAIL` in
+`.env.example` is documented but never read anywhere in the app.
+
+**Performance**: the two highest-impact items from an earlier performance investigation were
+implemented:
+
+- **DB connection pooling** (`app/db/postgres_adapter.py`). `connect_pg()` used to open a brand
+  new TCP+TLS+auth connection to Postgres on every single call - since every one of the ~99
+  `get_db_connection()` call sites across the app routes through this function via the
+  `sqlite3.connect` monkeypatch, nearly every API request paid a full connection handshake before
+  doing any real work. Now backed by a `psycopg2.pool.ThreadedConnectionPool`
+  (`POSTGRES_POOL_MIN`/`POSTGRES_POOL_MAX` env vars, default 1/10): `connect_pg()` borrows a
+  connection from the pool, and `PGConnection.close()` rolls back any uncommitted work and returns
+  it to the pool instead of tearing down the socket. This required no changes anywhere else in the
+  app - every existing `get_db_connection()` call site benefits automatically. The pool is closed
+  on app shutdown via `closeall_pool()`, called from `main.py`'s `lifespan` handler.
+- **`STATS_DB_PATH` CWD bug** (`app/core/config.py`). `backend/.env`'s `STATS_DB_PATH="backend/stats.db"`
+  is a repo-root-relative path, but the app always runs with its working directory already inside
+  `backend/` (Dockerfile `WORKDIR`, README's `cd backend` step) - so it silently resolved against
+  the process's CWD into a bogus nested `backend/backend/stats.db`, creating an empty
+  `backend/backend/` directory as a side effect of `os.makedirs`. Now resolved against
+  `PROJECT_ROOT` explicitly, independent of the process's working directory. (This is really a
+  correctness bug, not a performance one, but it surfaced during the performance-fix work and is
+  documented here alongside it.)
+- **Frontend polling** (`frontend/src/pages/UploadPage.jsx`). The baseline candidate-list poll ran
+  unconditionally every 5 seconds for as long as the Upload page stayed open, hitting
+  `/api/candidates` (an unbounded, unpaginated query) and re-serializing the full list to
+  `sessionStorage` on every tick regardless of whether anything had changed - the single heaviest,
+  most constant load on that endpoint anywhere in the app. Slowed to 20s (the two *conditional*
+  polls that actually need fast refresh - "a resume is processing," "a file just finished
+  uploading" - are unchanged), and `load()` now skips the state update and `sessionStorage` write
+  entirely when the response is byte-identical to what's already loaded.
+
+Still deferred (unchanged from the original investigation): unbounded `/api/candidates` query
+still has no `LIMIT`/pagination or supporting index; `match_candidates_for_job` still evaluates
+candidates in a serial batch loop; no frontend code-splitting or table virtualization.
+
 ## Known issues / deliberately out of scope
 
 Flagged here rather than fixed, either because they're a different kind of task (performance,
 not structure) or because they need a product/security decision this cleanup pass wasn't
 positioned to make:
 
-- **No DB connection pooling.** `db/session.py` opens a fresh connection per request (matching
-  original behavior, just de-duplicated and leak-fixed). This was identified as the top
-  performance issue in the app in a separate investigation; `db/session.py` is deliberately
-  shaped so adding a real pool later is a small, contained change.
 - **`backend/Client_secret.json`** (gitignored, present locally) contains real Google OAuth
   `client_id`/`client_secret` credentials but is not read by any code path - the actual runtime
   Google Drive auth path is `GDRIVE_SERVICE_ACCOUNT_JSON` or the OAuth env vars above. Appears

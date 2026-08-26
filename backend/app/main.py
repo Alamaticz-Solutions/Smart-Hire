@@ -46,7 +46,7 @@ if os.path.exists(_backend_env_path):
 from app.core.config import PROJECT_ROOT, STATS_DB, UPLOAD_DIR  # noqa: E402
 from app.core.logging import get_logger  # noqa: E402
 from app.db.init_db import init_db  # noqa: E402
-from app.db.postgres_adapter import patch_if_configured  # noqa: E402
+from app.db.postgres_adapter import closeall_pool, patch_if_configured  # noqa: E402
 from app.services.ai_clients import get_models  # noqa: E402
 from app.services.email_worker import poll_emails_and_process  # noqa: E402
 
@@ -83,6 +83,9 @@ async def lifespan(app: FastAPI):
     threading.Thread(target=get_models, daemon=True).start()
     threading.Thread(target=poll_emails_and_process, daemon=True).start()
     yield
+    # Shutdown: release pooled Postgres connections so a reload/restart
+    # doesn't leak sockets on the database server.
+    closeall_pool()
 
 
 app = FastAPI(title="Hire AI API", lifespan=lifespan)

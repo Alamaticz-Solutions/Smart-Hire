@@ -18,11 +18,16 @@ from app.core.config import STATS_DB
 def get_db_connection(timeout: float = 30.0):
     """Yield a DB connection (sqlite3 or Postgres, per postgres_adapter's patch) and guarantee it is closed.
 
-    This is a pure de-duplication / connection-leak fix, not a connection
-    pool -- pooling is out of scope here and deferred to a future task.
-    Callers get a single fresh connection per `with` block today; because
-    every call site goes through this one function, a pool can be dropped
-    in later without touching call sites.
+    When Postgres is active, `sqlite3.connect` is monkey-patched to
+    `postgres_adapter.connect_pg`, which borrows a connection from a
+    process-wide pool instead of opening a new TCP+auth connection every
+    call -- see `postgres_adapter._get_pool()`. `conn.close()` below
+    returns the connection to that pool rather than tearing it down (the
+    pooled `PGConnection.close()` handles that transparently), so this
+    function's own de-duplication/leak-fix contract is unchanged: callers
+    get a connection per `with` block and it's always released on exit,
+    they just don't need to know or care whether "released" means "closed"
+    (plain sqlite3) or "returned to the pool" (Postgres).
     """
     conn = sqlite3.connect(STATS_DB, timeout=timeout)
     try:

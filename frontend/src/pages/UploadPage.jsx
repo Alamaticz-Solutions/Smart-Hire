@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { useOutletContext } from 'react-router-dom'
 import apiClient, { getStaticUrl } from '../api/client'
@@ -133,12 +133,21 @@ export default function UploadPage() {
     });
 
     const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500) }
+    // lastLoadedRef holds the last JSON payload actually applied to state, so a
+    // silent poll tick that gets back the exact same data (the common case --
+    // nothing changed since the last tick) can skip setCandidates/sessionStorage
+    // entirely instead of forcing a re-render and a full JSON.stringify +
+    // storage write of the whole candidate list on every single tick.
+    const lastLoadedRef = useRef(null)
     const load = (silent = false) => {
         if (!silent) setLoadingCandidates(true);
         return apiClient.get(`/api/candidates`)
             .then(r => {
+                const raw = JSON.stringify(r.data);
+                if (raw === lastLoadedRef.current) return;
+                lastLoadedRef.current = raw;
                 setCandidates(r.data);
-                sessionStorage.setItem('cached_candidates', JSON.stringify(r.data));
+                sessionStorage.setItem('cached_candidates', raw);
             })
             .catch(err => {
                 console.error("Failed to load candidates", err);
@@ -205,10 +214,21 @@ export default function UploadPage() {
         load();
         loadCols();
 
-        // Poll for new candidates automatically every 5 seconds (silent refresh)
+        // Baseline silent poll for candidates added by other users/the email
+        // worker. Was every 5s unconditionally for as long as this page stayed
+        // open -- the single heaviest, most constant load on /api/candidates
+        // (itself an unbounded, unpaginated query) in the whole app. The two
+        // effects below already cover the cases that actually need fast
+        // polling (a resume is actively processing, or a file just finished
+        // uploading), so this baseline only needs to be "eventually fresh"
+        // for everything else -- 20s cuts request volume by 4x with no
+        // noticeable difference for that slower-moving case. `load()` itself
+        // also now skips the state update entirely when the response is
+        // byte-identical to what's already loaded, so an unchanged tick no
+        // longer forces a re-render or a sessionStorage write either.
         const interval = setInterval(() => {
             load(true);
-        }, 5000);
+        }, 20000);
 
         return () => clearInterval(interval);
     }, [])

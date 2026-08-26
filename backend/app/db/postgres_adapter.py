@@ -259,9 +259,13 @@ class PGCursor:
         return translated
 
 class PGConnection:
-    def __init__(self, pg_conn):
+    def __init__(self, pg_conn, pool=None):
         self.pg_conn = pg_conn
         self._row_factory = None
+        # When borrowed from a pool, `close()` returns the physical
+        # connection to the pool instead of tearing down the socket -- see
+        # `close()` below and `_get_pool()`.
+        self._pool = pool
 
     @property
     def row_factory(self):
@@ -290,22 +294,70 @@ class PGConnection:
         self.pg_conn.rollback()
 
     def close(self):
+        if self._pool is not None:
+            # Returning to a pool, not actually closing the socket. Roll
+            # back first: `get_db_connection()` callers only ever explicitly
+            # `commit()` when they mean to persist a change, so any
+            # exception path (or a caller that reads without committing)
+            # can leave an open transaction on this connection. Handing that
+            # to the next borrower unrolled-back would let one request's
+            # abandoned transaction bleed into an unrelated request.
+            try:
+                self.pg_conn.rollback()
+            except Exception:
+                pass
+            try:
+                self._pool.putconn(self.pg_conn)
+                return
+            except Exception:
+                pass  # Pool already closed/broken -- fall through and close for real.
         self.pg_conn.close()
 
+# Connection pool. `connect_pg()` used to open a brand-new TCP+TLS+auth
+# connection to Postgres on every single call -- since every one of the
+# ~99 `get_db_connection()` call sites across the app calls `connect_pg()`
+# via the sqlite3.connect monkeypatch, that meant nearly every API request
+# paid a full new-connection handshake before doing any real work. This was
+# identified as the single biggest performance issue in the app. A pool
+# reuses a small number of already-authenticated physical connections
+# instead, so most requests just borrow/return an existing connection.
+_pg_pool = None
+
+# Small pool: this app's routes run synchronously on FastAPI's threadpool
+# (default cap ~40 workers, but rarely all busy on Postgres at once), and
+# most requests hold a connection only briefly. Configurable via env vars
+# in case a specific deployment needs more headroom.
+POSTGRES_POOL_MIN = int(os.getenv("POSTGRES_POOL_MIN", "1"))
+POSTGRES_POOL_MAX = int(os.getenv("POSTGRES_POOL_MAX", "10"))
+
+
+def _get_pool():
+    global _pg_pool
+    if _pg_pool is None:
+        import psycopg2.pool
+        if POSTGRES_URL:
+            _pg_pool = psycopg2.pool.ThreadedConnectionPool(POSTGRES_POOL_MIN, POSTGRES_POOL_MAX, POSTGRES_URL)
+        else:
+            _pg_pool = psycopg2.pool.ThreadedConnectionPool(
+                POSTGRES_POOL_MIN, POSTGRES_POOL_MAX,
+                host=PG_HOST, port=PG_PORT, user=PG_USER, password=PG_PASS, database=PG_DB,
+            )
+    return _pg_pool
+
+
+def closeall_pool():
+    """Close every pooled connection. Call on app shutdown to avoid leaking sockets."""
+    global _pg_pool
+    if _pg_pool is not None:
+        _pg_pool.closeall()
+        _pg_pool = None
+
+
 def connect_pg(*args, **kwargs):
-    import psycopg2
-    if POSTGRES_URL:
-        conn = psycopg2.connect(POSTGRES_URL)
-    else:
-        conn = psycopg2.connect(
-            host=PG_HOST,
-            port=PG_PORT,
-            user=PG_USER,
-            password=PG_PASS,
-            database=PG_DB
-        )
+    pool = _get_pool()
+    conn = pool.getconn()
     conn.set_client_encoding('UTF8')
-    return PGConnection(conn)
+    return PGConnection(conn, pool=pool)
 
 def patch_if_configured():
     """
