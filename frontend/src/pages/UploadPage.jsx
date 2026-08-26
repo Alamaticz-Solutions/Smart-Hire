@@ -6,6 +6,8 @@ import useColumnConfig from '../hooks/useColumnConfig'
 import useDraggableColumns from '../hooks/useDraggableColumns'
 import { useToast } from '../hooks/useToast'
 import { computeTableWidth } from '../utils/tableWidth'
+import { applySavedColumnOrder } from '../utils/columnOrder'
+import { useInlineCellEdit } from '../hooks/useInlineCellEdit'
 import CandidateDetailsModal from '../components/shared/CandidateDetailsModal'
 import UploadDropzone from './upload/UploadDropzone'
 import CandidatesTable from './upload/CandidatesTable'
@@ -230,30 +232,7 @@ export default function UploadPage() {
         const custom = (r.data.custom || []).map(c => ({ key: c.col_key, label: c.col_label, pct: '120px', col_key: c.col_key, col_label: c.col_label, isCustom: true }))
         const allLoaded = [...base, ...custom, { key: '_actions', label: 'Actions', pct: '100px' }]
 
-        const savedOrder = localStorage.getItem('hire_ai_col_order')
-        if (savedOrder) {
-            try {
-                const keys = JSON.parse(savedOrder).filter(k => k !== '_actions')
-                const ordered = []
-                keys.forEach(k => {
-                    const found = allLoaded.find(c => c.key === k)
-                    if (found) ordered.push(found)
-                })
-                allLoaded.forEach(c => {
-                    if (!ordered.find(o => o.key === c.key)) {
-                        if (c.key === '_actions') return
-                        ordered.push(c)
-                    }
-                })
-                const actionsCol = allLoaded.find(c => c.key === '_actions')
-                if (actionsCol) {
-                    ordered.push(actionsCol)
-                }
-                setCols(ordered)
-                return
-            } catch (e) { }
-        }
-        setCols(allLoaded)
+        setCols(applySavedColumnOrder(allLoaded, 'hire_ai_col_order'))
     }).catch(() => { })
 
 
@@ -364,45 +343,11 @@ export default function UploadPage() {
         multiple: true,
     })
 
-    const startEdit = (ri, col, val) => {
-        const isAdmin = user?.role === 'admin' || user?.is_admin === 1 || user?.is_hr === 1;
-        if (col === 'certifications' && !isAdmin) {
-            showToast("Only Admins and HR users can view or edit certifications.", "error");
-            return;
-        }
-        if (val === '[HIDDEN]') {
-            showToast("This field is hidden by the administrator.", "error");
-            return;
-        }
-        setEditCell({ row: ri, col });
-        setEditVal(String(val || ''));
-    }
-    const saveEdit = async (ri) => {
-        const c = candidates[ri]; if (!c?.id) { setEditCell(null); return }
-
-        let finalVal = editVal;
-        if (editCell.col === 'notice_period' || editCell.col === 'availability_in_days') {
-            if (finalVal !== '' && isNaN(finalVal)) {
-                showToast(`${editCell.col} must be a number`, 'error');
-                return;
-            }
-            finalVal = finalVal !== '' ? parseInt(finalVal, 10) : '';
-        }
-        if (editCell.col === 'total_experience' || editCell.col === 'pega_experience' || editCell.col === 'cdh_exp') {
-            if (finalVal !== '' && isNaN(finalVal)) {
-                showToast('Experience must be a number', 'error');
-                return;
-            }
-            finalVal = finalVal !== '' ? parseFloat(finalVal) : '';
-        }
-
-        try {
-            await apiClient.put(`/api/candidates/${c.id}`, { [editCell.col]: finalVal })
-            setCandidates(prev => prev.map((row, i) => i === ri ? { ...row, [editCell.col]: finalVal } : row))
-            showToast('Saved!')
-        } catch (e) { showToast(e.response?.data?.detail || 'Save failed', 'error') }
-        setEditCell(null)
-    }
+    const isAdmin = user?.role === 'admin' || user?.is_admin === 1 || user?.is_hr === 1;
+    const { startEdit, saveEdit } = useInlineCellEdit({
+        candidates, setCandidates, editCell, setEditCell, editVal, setEditVal, showToast,
+        isAdmin, certificationsMessage: "Only Admins and HR users can view or edit certifications.",
+    });
     const del = async (id) => {
         if (!window.confirm('Delete this candidate?')) return
         try {
