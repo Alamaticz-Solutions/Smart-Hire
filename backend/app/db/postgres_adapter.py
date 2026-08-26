@@ -361,11 +361,17 @@ def connect_pg(*args, **kwargs):
 
 def patch_if_configured():
     """
-    Patches sqlite3.connect dynamically to enforce PostgreSQL.
+    Patches sqlite3.connect to route to PostgreSQL when Postgres env vars are
+    configured. If they're not configured, this is a no-op: sqlite3.connect
+    is left untouched and the app runs on local SQLite (see STATS_DB in
+    app/core/config.py). Only raises when Postgres WAS configured but can't
+    actually be used (missing driver, unreachable server) - a genuine
+    misconfiguration worth failing loudly on, as opposed to "not configured
+    at all," which is a normal, supported local-dev mode.
     """
     if not IS_PG_CONFIGURED:
-        raise RuntimeError("Database Configuration Error: PostgreSQL connection details are not configured in the environment variables.")
-    
+        return False
+
     try:
         import psycopg2
     except ImportError as e:

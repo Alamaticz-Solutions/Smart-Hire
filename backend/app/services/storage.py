@@ -14,6 +14,7 @@ app/core/config.py's own comment for the full path-depth explanation.
 """
 import mimetypes
 import json
+import os
 from typing import Optional, Tuple
 
 from app.core.config import STORAGE_PROVIDER, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, AWS_BUCKET_NAME

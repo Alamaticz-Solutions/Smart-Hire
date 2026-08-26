@@ -58,7 +58,7 @@ from pydantic import BaseModel
 from app.core.logging import get_logger
 from app.db.row_helpers import dict_row_factory
 from app.db.session import get_db_connection
-from app.services.auth import get_user_role, is_admin_or_hr
+from app.services.auth import get_user_role, is_admin_or_hr, is_user_approved
 from app.services.matching import match_candidate_to_all_jobs, match_candidates_for_job
 
 logger = get_logger(__name__)
@@ -104,6 +104,8 @@ def _get_masked_keywords() -> list:
 @router.get("/api/admin/requests")
 def list_change_requests(request: Request):
     username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
     role = get_user_role(username)
     if role != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")
@@ -120,6 +122,8 @@ def list_change_requests(request: Request):
 @router.get("/api/admin/users")
 def list_users(request: Request):
     username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
     if not is_admin_or_hr(username):
         raise HTTPException(status_code=403, detail="Forbidden")
 
@@ -136,6 +140,8 @@ def list_users(request: Request):
 @router.put("/api/admin/users/{user_id}/permissions")
 def update_user_permissions_endpoint(user_id: int, body: UserPermissionsUpdate, request: Request):
     username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
     role = get_user_role(username)
     if role != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")
@@ -170,6 +176,8 @@ def update_user_permissions_endpoint(user_id: int, body: UserPermissionsUpdate, 
 @router.delete("/api/admin/users/{user_id}")
 def delete_user_endpoint(user_id: int, request: Request):
     username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
     role = get_user_role(username)
     if role != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")
@@ -253,6 +261,8 @@ def delete_user_endpoint(user_id: int, request: Request):
 @router.get("/api/admin/masked-keywords")
 def get_admin_masked_keywords(request: Request):
     username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
     role = get_user_role(username)
     if role != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")
@@ -262,6 +272,8 @@ def get_admin_masked_keywords(request: Request):
 @router.post("/api/admin/masked-keywords")
 def add_admin_masked_keyword(req: MaskedKeywordCreate, request: Request):
     username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
     role = get_user_role(username)
     if role != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")
@@ -282,6 +294,8 @@ def add_admin_masked_keyword(req: MaskedKeywordCreate, request: Request):
 @router.delete("/api/admin/masked-keywords/{keyword}")
 def delete_admin_masked_keyword(keyword: str, request: Request):
     username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
     role = get_user_role(username)
     if role != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")
@@ -433,8 +447,15 @@ def _approve_reset_all(cur, target_id, payload, background_tasks):
             collection_name="resume_embeddings",
         )
         db.delete_collection()
-    except Exception:
-        pass
+    except Exception as e:
+        # Best-effort: candidate_metadata is already wiped above regardless
+        # of whether this succeeds, so we don't re-raise (that would roll
+        # back the whole reset over a secondary cleanup step). But silently
+        # swallowing this meant a Postgres outage during reset left stale
+        # embeddings in place with no visible signal anywhere - logged now
+        # so it's at least diagnosable instead of silently corrupting future
+        # chat/matching relevance.
+        logger.error(f"Reset: failed to clear vector embeddings collection: {e}")
 
 
 def _approve_approve_user(cur, target_id, payload, background_tasks):
@@ -463,6 +484,8 @@ ACTION_HANDLERS: dict[str, Callable] = {
 @router.post("/api/admin/requests/{request_id}/approve")
 def approve_change_request(request_id: int, request: Request, background_tasks: BackgroundTasks):
     username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
     role = get_user_role(username)
     if role != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")
@@ -504,6 +527,8 @@ def approve_change_request(request_id: int, request: Request, background_tasks: 
 @router.post("/api/admin/requests/{request_id}/reject")
 def reject_change_request(request_id: int, request: Request):
     username = request.headers.get("x-user-username")
+    if not is_user_approved(username):
+        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
     role = get_user_role(username)
     if role != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")

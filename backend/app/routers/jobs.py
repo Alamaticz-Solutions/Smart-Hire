@@ -168,15 +168,30 @@ def list_jobs(request: Request):
                 cur.execute("SELECT * FROM jobs WHERE LOWER(created_by) = LOWER(?) ORDER BY id DESC", (username,))
 
         jobs = [dict(r) for r in cur.fetchall()]
+
+        # Batched instead of one status-count query + one shares query per
+        # job (was 1 + 2N queries for N jobs; now a fixed 3 regardless of N).
+        job_ids = [job["id"] for job in jobs]
+        counts_by_job: dict = {}
+        shares_by_job: dict = {}
+        if job_ids:
+            placeholders = ",".join("?" * len(job_ids))
+            cur.execute(
+                f"SELECT job_id, status, COUNT(*) as cnt FROM job_candidates WHERE job_id IN ({placeholders}) GROUP BY job_id, status",
+                job_ids,
+            )
+            for r in cur.fetchall():
+                counts_by_job.setdefault(r["job_id"], {})[r["status"]] = r["cnt"]
+
+            cur.execute(f"SELECT job_id, username FROM job_shares WHERE job_id IN ({placeholders})", job_ids)
+            for r in cur.fetchall():
+                shares_by_job.setdefault(r["job_id"], []).append(r["username"])
+
         for job in jobs:
-            job_id = job["id"]
-            cur.execute("SELECT status, COUNT(*) as cnt FROM job_candidates WHERE job_id = ? GROUP BY status", (job_id,))
-            counts = {r["status"]: r["cnt"] for r in cur.fetchall()}
+            counts = counts_by_job.get(job["id"], {})
             job["matched_count"] = counts.get("matched", 0)
             job["selected_count"] = counts.get("selected", 0)
-
-            cur.execute("SELECT username FROM job_shares WHERE job_id = ?", (job_id,))
-            job["shared_with"] = [r["username"] for r in cur.fetchall()]
+            job["shared_with"] = shares_by_job.get(job["id"], [])
 
     return jobs
 

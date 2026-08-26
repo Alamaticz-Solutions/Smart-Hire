@@ -292,7 +292,7 @@ def list_candidates(request: Request, limit: Optional[int] = None, offset: int =
 
 
 @router.post("/api/columns")
-def add_column(col: CustomColumn, request: Request):
+def add_column(col: CustomColumn, request: Request, username: str = Depends(require_approved_user)):
     with get_db_connection() as conn:
         cur = conn.cursor()
         clean_key = re.sub(r"[^a-zA-Z0-9_]", "", col.col_key.replace(" ", "_")).lower()
@@ -315,7 +315,7 @@ def add_column(col: CustomColumn, request: Request):
 
 
 @router.get("/api/columns")
-def get_columns():
+def get_columns(username: str = Depends(require_approved_user)):
     with get_db_connection() as conn:
         cur = conn.cursor()
         cur.execute("SELECT col_key, col_label FROM custom_columns")
@@ -352,7 +352,7 @@ def get_columns():
 
 
 @router.delete("/api/columns/{col_key}")
-def delete_column(col_key: str, request: Request):
+def delete_column(col_key: str, request: Request, username: str = Depends(require_approved_user)):
     # SECURITY FIX: `col_key` is a raw path parameter and was being
     # interpolated directly into `ALTER TABLE ... DROP COLUMN {col_key}`
     # below with no sanitization, unlike `add_column` (above) which cleans
