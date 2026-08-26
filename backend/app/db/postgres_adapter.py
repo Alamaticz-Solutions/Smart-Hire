@@ -381,8 +381,26 @@ def closeall_pool():
 
 
 def connect_pg(*args, **kwargs):
+    # `ThreadedConnectionPool.getconn()` does not block when the pool is
+    # exhausted - it raises `PoolError` immediately. With a small pool (see
+    # POSTGRES_POOL_MAX above) any legitimate burst above that size (e.g. a
+    # page load firing several requests at once) previously surfaced as a
+    # hard 500 to the user instead of the brief wait it actually needed, since
+    # most requests hold their connection only briefly. Retry with a short
+    # backoff instead of failing on the first exhausted check.
+    import time
+    import psycopg2.pool
     pool = _get_pool()
-    conn = pool.getconn()
+    last_err = None
+    for attempt in range(20):
+        try:
+            conn = pool.getconn()
+            break
+        except psycopg2.pool.PoolError as e:
+            last_err = e
+            time.sleep(0.1)
+    else:
+        raise last_err
     conn.set_client_encoding('UTF8')
     return PGConnection(conn, pool=pool)
 

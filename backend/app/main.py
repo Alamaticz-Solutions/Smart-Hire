@@ -122,7 +122,6 @@ async def verify_session_middleware(request: Request, call_next):
     """
     token = request.headers.get("x-session-token")
     verified_username = verify_session_token(token) if token else None
-    logger.warning(f"DEBUG middleware: path={request.url.path} token={token!r} verified_username={verified_username!r}")
 
     effective_username = None
     if verified_username:
@@ -135,7 +134,6 @@ async def verify_session_middleware(request: Request, call_next):
     if effective_username:
         headers.append((b"x-user-username", effective_username.encode()))
     request.scope["headers"] = headers
-    logger.warning(f"DEBUG middleware: effective_username={effective_username!r} final_headers_has_username={any(k==b'x-user-username' for k,v in headers)}")
 
     return await call_next(request)
 
