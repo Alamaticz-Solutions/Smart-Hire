@@ -8,7 +8,7 @@ background-worker and AI-parsing *logic* — the pipeline described below, not t
 The application is a full-stack solution utilizing a React (Vite) frontend and a Python (FastAPI) backend. 
 - **Frontend**: React.js, React Router, Vite. Styling is plain hand-written CSS (`index.css`) plus inline styles — no Tailwind or other CSS framework is used.
 - **Backend**: Python, FastAPI, SQLite (Relational Data), PostgreSQL + PGVector (Vector Embeddings).
-- **AI/ML Layer**: LangChain, Groq LLM (for fast inference and parsing), HuggingFace Embeddings.
+- **AI/ML Layer**: LangChain, Groq LLM (for fast inference and parsing), HuggingFace Embeddings via HuggingFace's hosted Inference API (`HuggingFaceInferenceAPIEmbeddings`) — an HTTP call, not a locally-loaded model, so no local ML runtime (e.g. PyTorch) is required.
 
 ---
 

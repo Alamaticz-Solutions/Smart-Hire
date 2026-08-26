@@ -60,9 +60,16 @@ const apiClient = axios.create({
 apiClient.interceptors.request.use((config) => {
     try {
         const user = JSON.parse(localStorage.getItem('hire_ai_user'));
-        const username = user?.active_persona || user?.username;
-        if (username) {
-            config.headers['x-user-username'] = username;
+        // The backend verifies `x-session-token` (main.py's
+        // verify_session_middleware) rather than trusting a plain
+        // username header - see App.jsx's matching useEffect for the
+        // same headers set on the global axios instance. `x-acting-as`
+        // is only honored server-side when the signed-in user is admin/hr.
+        if (user?.token) {
+            config.headers['x-session-token'] = user.token;
+            if (user.active_persona) {
+                config.headers['x-acting-as'] = user.active_persona;
+            }
         }
     } catch {
         // Malformed/missing localStorage value: send the request without

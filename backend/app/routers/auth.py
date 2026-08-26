@@ -28,8 +28,8 @@ exception path (several original handlers called `conn.close()` manually
 and would skip it if an exception fired first).
 """
 
-import hashlib
 import random
+import secrets
 import sqlite3
 import time
 from typing import Optional
@@ -40,6 +40,8 @@ from pydantic import BaseModel
 from app.core.logging import get_logger
 from app.db.row_helpers import dict_row_factory
 from app.db.session import get_db_connection
+from app.services.passwords import hash_password, is_legacy_hash, verify_password
+from app.services.session_tokens import create_session_token
 
 logger = get_logger(__name__)
 
@@ -133,7 +135,7 @@ def register(req: RegisterRequest):
                     is_approved_val = 1 if req.username.lower() in _SEEDED_USERS else 0
                     cur.execute(
                         "INSERT INTO users (full_name, username, password_hash, email, role, is_approved) VALUES (?, ?, ?, ?, 'user', ?)",
-                        (req.full_name, req.username, hashlib.sha256(req.password.encode()).hexdigest(), req.email, is_approved_val),
+                        (req.full_name, req.username, hash_password(req.password), req.email, is_approved_val),
                     )
                     if is_approved_val == 0:
                         cur.execute(
@@ -164,14 +166,24 @@ def login(req: LoginRequest):
     with get_db_connection() as conn:
         conn.row_factory = dict_row_factory
         cur = conn.cursor()
-        cur.execute(
-            "SELECT * FROM users WHERE LOWER(username) = LOWER(?) AND password_hash = ?",
-            (req.username, hashlib.sha256(req.password.encode()).hexdigest()),
-        )
+        cur.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (req.username,))
         user = cur.fetchone()
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-    user_dict = dict(user)
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid username or password")
+        user_dict = dict(user)
+        if not verify_password(req.password, user_dict.get("password_hash", "")):
+            raise HTTPException(status_code=401, detail="Invalid username or password")
+
+        # Transparent migration: a legacy unsalted-SHA256 hash that just
+        # verified correctly gets upgraded to PBKDF2 now, with no separate
+        # migration script and no forced password reset for the user.
+        if is_legacy_hash(user_dict.get("password_hash", "")):
+            cur.execute(
+                "UPDATE users SET password_hash = ? WHERE LOWER(username) = LOWER(?)",
+                (hash_password(req.password), req.username),
+            )
+            conn.commit()
+
     if user_dict.get("is_approved", 0) == 0:
         raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
     return {
@@ -184,6 +196,7 @@ def login(req: LoginRequest):
         "is_approved": user_dict.get("is_approved", 0),
         "email": user_dict.get("email", ""),
         "hidden_fields": user_dict.get("hidden_fields", ""),
+        "token": create_session_token(user_dict["username"]),
     }
 
 
@@ -208,7 +221,7 @@ def firebase_sync(req: FirebaseSyncRequest):
                 is_approved_val = 1 if req.username.lower() in _SEEDED_USERS else 0
                 cur.execute(
                     "INSERT INTO users (full_name, username, password_hash, email, mobile, role, is_approved) VALUES (?, ?, ?, ?, ?, 'user', ?)",
-                    (req.full_name, req.username, hashlib.sha256("firebase_auth_managed".encode()).hexdigest(), req.email, req.mobile, is_approved_val),
+                    (req.full_name, req.username, hash_password(secrets.token_urlsafe(32)), req.email, req.mobile, is_approved_val),
                 )
                 if is_approved_val == 0:
                     cur.execute(
@@ -252,6 +265,7 @@ def firebase_sync(req: FirebaseSyncRequest):
         "is_approved": user_dict.get("is_approved", 0),
         "email": user_dict.get("email", ""),
         "hidden_fields": user_dict.get("hidden_fields", ""),
+        "token": create_session_token(user_dict["username"]),
     }
 
 
@@ -367,8 +381,7 @@ def reset_password(req: ResetPasswordRequest):
 
     with get_db_connection() as conn:
         cur = conn.cursor()
-        new_hash = hashlib.sha256(new_pass.encode()).hexdigest()
-        cur.execute("UPDATE users SET password_hash = ? WHERE username = ?", (new_hash, username))
+        cur.execute("UPDATE users SET password_hash = ? WHERE username = ?", (hash_password(new_pass), username))
         conn.commit()
 
     return {

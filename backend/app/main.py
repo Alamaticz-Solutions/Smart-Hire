@@ -48,7 +48,9 @@ from app.core.logging import get_logger  # noqa: E402
 from app.db.init_db import init_db  # noqa: E402
 from app.db.postgres_adapter import closeall_pool, patch_if_configured  # noqa: E402
 from app.services.ai_clients import get_models  # noqa: E402
+from app.services.auth import is_admin_or_hr  # noqa: E402
 from app.services.email_worker import poll_emails_and_process  # noqa: E402
+from app.services.session_tokens import verify_session_token  # noqa: E402
 
 logger = get_logger(__name__)
 
@@ -97,6 +99,45 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def verify_session_middleware(request: Request, call_next):
+    """Derive a trusted `x-user-username` from a signed session token.
+
+    Previously every route (via `dependencies.require_approved_user` and
+    ~10 routes that read the header directly) trusted whatever
+    `x-user-username` value the client sent, with no verification at all -
+    any HTTP client could impersonate any account, including an admin, by
+    just setting that header. This middleware is now the ONLY place that
+    writes a value into that header: it verifies `x-session-token` (issued
+    by /api/auth/login and /api/auth/firebase-sync) and replaces whatever
+    the client sent with the verified username, so every existing
+    downstream call site is protected without having to touch each one.
+
+    `x-acting-as` implements "admin acting as another user" (previously the
+    frontend just lied about `x-user-username` directly for this - see
+    AdminPage.jsx's persona switch). It's only honored when the verified,
+    signed-in user is actually admin/hr; otherwise it's ignored.
+    """
+    token = request.headers.get("x-session-token")
+    verified_username = verify_session_token(token) if token else None
+    logger.warning(f"DEBUG middleware: path={request.url.path} token={token!r} verified_username={verified_username!r}")
+
+    effective_username = None
+    if verified_username:
+        effective_username = verified_username
+        acting_as = request.headers.get("x-acting-as")
+        if acting_as and is_admin_or_hr(verified_username):
+            effective_username = acting_as
+
+    headers = [(k, v) for k, v in request.scope["headers"] if k != b"x-user-username"]
+    if effective_username:
+        headers.append((b"x-user-username", effective_username.encode()))
+    request.scope["headers"] = headers
+    logger.warning(f"DEBUG middleware: effective_username={effective_username!r} final_headers_has_username={any(k==b'x-user-username' for k,v in headers)}")
+
+    return await call_next(request)
 
 
 # ── Static file serving ─────────────────────────────────────────────────

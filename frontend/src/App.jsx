@@ -45,10 +45,21 @@ export default function App() {
     }, [theme])
 
     useEffect(() => {
-        if (user && user.username) {
-            axios.defaults.headers.common['x-user-username'] = user.active_persona || user.username
+        // The backend derives the trusted identity from a signed session
+        // token (see main.py's verify_session_middleware) rather than
+        // trusting a client-supplied username directly. `x-acting-as`
+        // carries the admin "acting as persona" selection (AdminPage.jsx);
+        // the backend only honors it when the signed-in user is admin/hr.
+        if (user && user.token) {
+            axios.defaults.headers.common['x-session-token'] = user.token
+            if (user.active_persona) {
+                axios.defaults.headers.common['x-acting-as'] = user.active_persona
+            } else {
+                delete axios.defaults.headers.common['x-acting-as']
+            }
         } else {
-            delete axios.defaults.headers.common['x-user-username']
+            delete axios.defaults.headers.common['x-session-token']
+            delete axios.defaults.headers.common['x-acting-as']
         }
     }, [user])
 

@@ -295,6 +295,22 @@ implemented:
   uploading" - are unchanged), and `load()` now skips the state update and `sessionStorage` write
   entirely when the response is byte-identical to what's already loaded.
 
+**Dependency cleanup** (`backend/requirements.txt`) - `torch`, `sentence-transformers`, `langchain`
+(the bare umbrella package), and `langchain-huggingface` were listed but never imported anywhere
+in the codebase; the embeddings client (`services/ai_clients.py`) uses
+`langchain_community.embeddings.HuggingFaceInferenceAPIEmbeddings`, which calls HuggingFace's
+hosted Inference API over HTTP rather than loading a model locally, so no local ML runtime is
+needed. Removing these four packages, along with the now-pointless
+`--extra-index-url https://download.pytorch.org/whl/cpu` line that existed solely to fetch the
+CPU-only PyTorch build, cuts the heaviest part of the backend's install/Docker-image size with no
+code changes required. The remaining LangChain packages (`langchain-groq` for the `ChatGroq`
+wrapper; `langchain-community` for `PGVector` and `Docx2txtLoader`; `langchain-core` for the
+prompt/message/parser primitives used in `routers/chat.py`'s RAG chain; `langchain-text-splitters`
+for `RecursiveCharacterTextSplitter`) are all genuinely used. Also fixed while auditing this:
+`services/storage.py` called `os.getenv(...)` in its OneDrive and Google-Drive-OAuth upload paths
+without ever importing `os` - a latent `NameError` that would fire the first time either
+integration was used; now imported.
+
 **Follow-up performance work** (same investigation, done in a later pass):
 
 - **DB indexes** (`app/db/init_db.py`). None existed anywhere in the original schema. Added
@@ -347,6 +363,57 @@ user rather than guessing):
   against 5,000 synthetic rows in a real browser: confirmed only ~15-25 rows ever mount regardless
   of scroll position, scrolling to an arbitrary offset shows the correct data at that position (no
   index drift/duplication), and variable-height rows are measured and laid out correctly.
+
+## Bug fixes (dependency/config audit)
+
+- **Postgres was silently made mandatory.** `postgres_adapter.py`'s `patch_if_configured()` used
+  to `raise RuntimeError` (which `main.py` turns into `sys.exit(1)` at import time) whenever
+  Postgres env vars weren't set, even though every doc here describes Postgres as optional and
+  SQLite as the local fallback. Git history shows the very first Postgres-support commit was
+  genuinely optional (`if IS_PG_CONFIGURED: patch; else: no-op`); a later, unrelated commit
+  ("Configure Google Drive sync integration, setup guide and postgres support") changed the
+  docstring to "enforce PostgreSQL" and added the hard failure, with no comment explaining a
+  deliberate policy change - and the project's own maintained `backend/.env` still comments
+  Postgres as `"(Optional - takes precedence if set)"`. Restored: `patch_if_configured()` now
+  returns `False` and leaves `sqlite3.connect` untouched when Postgres isn't configured, so the
+  app runs on local SQLite as originally intended. It still raises loudly when Postgres *was*
+  configured but can't actually be used (missing `psycopg2`, unreachable server) - that's a real
+  misconfiguration worth failing on, unlike "not configured at all."
+- **`backend/.env.example` set `STORAGE_PROVIDER=google`** (requiring live Google Drive
+  credentials) instead of `local`, and combined with the bug above meant the README's own Quick
+  Start (`cp .env.example .env`, fill in only `GROQ_API_KEY`, run `uvicorn`) could not actually
+  boot on a fresh clone. Changed the example default to `local`, which needs zero external
+  credentials - `is_external_storage_enabled()` already correctly falls back to local disk when
+  no DB-stored integration settings override it.
+
+## Authentication rework (signed session tokens)
+
+Previously every route trusted a client-supplied `x-user-username` header as-is, via
+`dependencies.require_approved_user` and ~10 routes that read the header directly - any HTTP
+client could set that header to any username, including an admin's, with zero verification.
+Fixed with a stdlib-only signed-token scheme (no new dependencies):
+
+- `app/services/passwords.py` - PBKDF2-HMAC-SHA256 password hashing with a per-user salt,
+  replacing the previous unsalted SHA-256. `verify_password` still recognizes the old bare-hex
+  format, so `login()` transparently upgrades a user's hash to the new format the next time they
+  log in successfully - no migration script, no forced password reset.
+- `app/services/session_tokens.py` - `create_session_token`/`verify_session_token`, an HMAC-SHA256
+  signed, stateless token (7-day expiry). `SESSION_SECRET` should be set in production; if unset,
+  a random per-process secret is generated (logged as a warning) and all sessions are invalidated
+  on the next restart - consistent with this app's "boots with a blank `.env`" local-dev posture.
+- `main.py`'s `verify_session_middleware` is now the *only* place that writes `x-user-username`:
+  it verifies `x-session-token` and derives the trusted username from it, overwriting whatever the
+  client sent. Every existing router/dependency that reads that header is protected without being
+  touched individually. `x-acting-as` (the "admin acting as another user" persona feature -
+  previously implemented by the frontend just lying about `x-user-username` directly) is only
+  honored when the verified, signed-in user is actually admin/hr.
+- `login`/`firebase-sync` now return a `token` field; the frontend (`App.jsx`, `api/client.js`)
+  sends it back as `x-session-token` (and `x-acting-as` for an active persona) instead of a plain
+  username header.
+
+Not addressed by this change (separate, larger scope): Firebase login still has no server-side
+token verification (see Known Issues below) - this rework protects every request *after* login,
+not the Firebase login step itself.
 
 ## Known issues / deliberately out of scope
 
