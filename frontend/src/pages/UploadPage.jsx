@@ -4,6 +4,8 @@ import { useOutletContext } from 'react-router-dom'
 import apiClient, { getStaticUrl } from '../api/client'
 import useColumnConfig from '../hooks/useColumnConfig'
 import useDraggableColumns from '../hooks/useDraggableColumns'
+import { useToast } from '../hooks/useToast'
+import { computeTableWidth } from '../utils/tableWidth'
 import CandidateDetailsModal from '../components/shared/CandidateDetailsModal'
 import UploadDropzone from './upload/UploadDropzone'
 import CandidatesTable from './upload/CandidatesTable'
@@ -19,7 +21,7 @@ export default function UploadPage() {
         } catch { return []; }
     })
     const [progress, setProgress] = useState([])
-    const [toast, setToast] = useState(null)
+    const { toast, showToast } = useToast()
     const [editCell, setEditCell] = useState(null)
     const [editVal, setEditVal] = useState('')
     const [cols, setCols] = useState([])
@@ -132,7 +134,6 @@ export default function UploadPage() {
         return true;
     });
 
-    const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500) }
 
     // Pagination: GET /api/candidates used to always return every visible
     // candidate in one unbounded response, hit by this page's own 20s
@@ -444,18 +445,7 @@ export default function UploadPage() {
         } catch { showToast('Bulk delete failed', 'error') }
     }
 
-    const getTableWidth = () => {
-        let total = 60 + 45 // Width for S.No column + checkbox column
-        activeCols.forEach(c => {
-            const w = c.pct
-            if (w && typeof w === 'string' && w.endsWith('px')) {
-                total += parseInt(w, 10)
-            } else {
-                total += 120
-            }
-        })
-        return total
-    }
+    const getTableWidth = () => computeTableWidth(activeCols, 60 + 45) // + S.No column + checkbox column
 
     return (
         <div style={{ padding: '2rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '2rem', minWidth: 0, width: '100%' }}>

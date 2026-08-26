@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { FileText, Eye, Sparkles, Check, Info, Copy, Save, AlertCircle, Send, Loader } from 'lucide-react'
 import apiClient from '../api/client'
+import { useToast } from '../hooks/useToast'
 
 const THEME_PRESETS = {
   professional: {
@@ -98,7 +99,7 @@ Alamaticz Solutions`
 
 export default function TemplatesPage() {
     const { user } = useOutletContext()
-    const [toast, setToast] = useState(null)
+    const { toast, showToast } = useToast()
     const [saving, setSaving] = useState(false)
     const [editorTab, setEditorTab] = useState('missing') // 'missing' | 'complete'
     const [previewType, setPreviewType] = useState('missing') // 'missing' | 'complete'
@@ -122,11 +123,6 @@ export default function TemplatesPage() {
         theme_usage_counts: '{}',
         default_resume_template: 'alamaticz'
     })
-
-    const showToast = (msg, type = 'success') => {
-        setToast({ msg, type })
-        setTimeout(() => setToast(null), 3500)
-    }
 
     const fetchIntegrationsSettings = useCallback(async () => {
         try {

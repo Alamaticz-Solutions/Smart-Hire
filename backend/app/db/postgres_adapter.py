@@ -1,6 +1,7 @@
 import os
 import re
 import sqlite3
+import threading
 from typing import Any, Dict, List, Optional
 
 # PostgreSQL Env Configuration
@@ -331,17 +332,43 @@ POSTGRES_POOL_MIN = int(os.getenv("POSTGRES_POOL_MIN", "1"))
 POSTGRES_POOL_MAX = int(os.getenv("POSTGRES_POOL_MAX", "10"))
 
 
+_pool_init_lock = threading.Lock()
+
+
 def _get_pool():
+    # `if _pg_pool is None: create it` is not thread-safe on its own: FastAPI
+    # runs sync route handlers (and this module's own sync DB calls made from
+    # the async `verify_session_middleware`) on a threadpool, so multiple
+    # concurrent requests can all see `_pg_pool is None` at once - exactly
+    # what happens the moment a page loads and fires several requests
+    # together right after server startup, before the pool has been created
+    # yet. Each of those threads would then create its OWN separate
+    # ThreadedConnectionPool; whichever assignment happened last "wins" and
+    # becomes the module-level `_pg_pool`, but connections already handed out
+    # by the other, now-orphaned pool(s) are still live and in use - and when
+    # a caller holding one of those calls `close()`, `self._pool.putconn(...)`
+    # returns it to the pool IT was given, not the one everyone else is now
+    # using, so that connection is silently lost to the "real" pool forever
+    # (shrinking the effective pool size below POSTGRES_POOL_MIN over time)
+    # while the caller that requested it can still intermittently get a
+    # connection whose lifecycle nothing is tracking correctly. This
+    # reproduced as auth randomly appearing to fail right after login (a
+    # burst of concurrent requests, each independently racing to initialize
+    # the pool) despite the login response and session token both being
+    # completely correct. Double-checked locking (check, lock, check again)
+    # keeps the common case - pool already initialized - lock-free.
     global _pg_pool
     if _pg_pool is None:
-        import psycopg2.pool
-        if POSTGRES_URL:
-            _pg_pool = psycopg2.pool.ThreadedConnectionPool(POSTGRES_POOL_MIN, POSTGRES_POOL_MAX, POSTGRES_URL)
-        else:
-            _pg_pool = psycopg2.pool.ThreadedConnectionPool(
-                POSTGRES_POOL_MIN, POSTGRES_POOL_MAX,
-                host=PG_HOST, port=PG_PORT, user=PG_USER, password=PG_PASS, database=PG_DB,
-            )
+        with _pool_init_lock:
+            if _pg_pool is None:
+                import psycopg2.pool
+                if POSTGRES_URL:
+                    _pg_pool = psycopg2.pool.ThreadedConnectionPool(POSTGRES_POOL_MIN, POSTGRES_POOL_MAX, POSTGRES_URL)
+                else:
+                    _pg_pool = psycopg2.pool.ThreadedConnectionPool(
+                        POSTGRES_POOL_MIN, POSTGRES_POOL_MAX,
+                        host=PG_HOST, port=PG_PORT, user=PG_USER, password=PG_PASS, database=PG_DB,
+                    )
     return _pg_pool
 
 

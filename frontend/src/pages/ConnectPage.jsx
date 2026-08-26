@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { Mail, Shield, Check, X, Plus, Trash2, Key, Folder, RefreshCw, Loader, ExternalLink } from 'lucide-react'
 import apiClient from '../api/client'
+import { useToast } from '../hooks/useToast'
 
 export default function ConnectPage() {
     const { user } = useOutletContext()
     const [activeTab, setActiveTab] = useState('mail') // 'mail' | 'drive'
-    const [toast, setToast] = useState(null)
+    const { toast, showToast } = useToast()
     const [saving, setSaving] = useState(false)
     const [testingConnection, setTestingConnection] = useState(false)
     const [testStatus, setTestStatus] = useState({ status: 'idle', message: '' })
@@ -49,11 +50,6 @@ export default function ConnectPage() {
     })
     const [testingMailbox, setTestingMailbox] = useState(null)
     const [mailboxTestStatuses, setMailboxTestStatuses] = useState({})
-
-    const showToast = (msg, type = 'success') => {
-        setToast({ msg, type })
-        setTimeout(() => setToast(null), 3500)
-    }
 
     const fetchIntegrationsSettings = useCallback(async () => {
         setLoadingSettings(true)

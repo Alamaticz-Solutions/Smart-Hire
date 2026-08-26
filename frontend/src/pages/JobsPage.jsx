@@ -5,6 +5,8 @@ import { useDropzone } from 'react-dropzone';
 import apiClient, { getStaticUrl } from '../api/client';
 import useColumnConfig from '../hooks/useColumnConfig';
 import useDraggableColumns from '../hooks/useDraggableColumns';
+import { useToast } from '../hooks/useToast';
+import { computeTableWidth } from '../utils/tableWidth';
 import CandidateDetailsModal from '../components/shared/CandidateDetailsModal';
 import CellTextModal from '../components/shared/CellTextModal';
 import JobSidebar from './jobs/JobSidebar';
@@ -82,7 +84,7 @@ export default function JobsPage() {
     });
     const [isMatching, setIsMatching] = useState(false);
     const [activeTab, setActiveTab] = useState('matched'); // 'matched' or 'selected'
-    const [toast, setToast] = useState(null);
+    const { toast, showToast } = useToast();
     const [editingCandidate, setEditingCandidate] = useState(null);
     const [editName, setEditName] = useState('');
     const [editExp, setEditExp] = useState('');
@@ -173,7 +175,6 @@ export default function JobsPage() {
     const [editCell, setEditCell] = useState(null);
     const [editVal, setEditVal] = useState('');
 
-    const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500) }
 
     const [isParsingJD, setIsParsingJD] = useState(false);
 
@@ -593,18 +594,7 @@ export default function JobsPage() {
         ? cols.filter(c => ['full_name', 'ai_reason', 'candidate_status'].includes(c.key))
         : cols.filter(c => c.key === '_actions' || !hiddenColumnKeys.includes(c.key))
 
-    const getTableWidth = () => {
-        let total = 0
-        activeCols.forEach(c => {
-            const w = c.pct
-            if (w && typeof w === 'string' && w.endsWith('px')) {
-                total += parseInt(w, 10)
-            } else {
-                total += 120
-            }
-        })
-        return total
-    }
+    const getTableWidth = () => computeTableWidth(activeCols)
 
     // Inline edit cell handlers
     const startEdit = (ri, col, val) => {
