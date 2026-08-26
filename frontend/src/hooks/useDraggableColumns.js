@@ -30,6 +30,7 @@ import { useState } from 'react';
  *   handleDragEnter: (e: DragEvent, key: string) => void,
  *   handleDragEnd: () => void,
  *   handleDrop: (e: DragEvent, targetKey: string) => void,
+ *   clearDragOver: () => void,
  * }}
  */
 export function useDraggableColumns(columns, setColumns) {
@@ -54,6 +55,13 @@ export function useDraggableColumns(columns, setColumns) {
 
     const handleDragEnd = () => {
         setDraggedColKey(null);
+        setDragOverColKey(null);
+    };
+
+    // Real setter for `onDragLeave`-style "no longer hovering a column"
+    // handlers, instead of callers faking a `handleDragEnter(fakeEvent, null)`
+    // call to reach the same state reset.
+    const clearDragOver = () => {
         setDragOverColKey(null);
     };
 
@@ -86,6 +94,7 @@ export function useDraggableColumns(columns, setColumns) {
         handleDragEnter,
         handleDragEnd,
         handleDrop,
+        clearDragOver,
     };
 }
 

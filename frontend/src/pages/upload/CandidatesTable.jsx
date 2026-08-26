@@ -34,6 +34,7 @@ export default function CandidatesTable({
     handleDragEnter,
     handleDragEnd,
     handleDrop,
+    clearDragOver,
     handleDeleteCol,
     columnFilters,
     setColumnFilters,
@@ -295,7 +296,7 @@ export default function CandidatesTable({
                                                    (passing key=null instead of '_actions' skips its early-return
                                                    and just calls its internal setDragOverColKey(null)) — same
                                                    end effect as the original inline setDragOverColKey(null). */
-                                                onDragLeave={() => !isActions && handleDragEnter(null, null)}
+                                                onDragLeave={() => !isActions && clearDragOver()}
                                                 onDragEnd={() => !isActions && handleDragEnd()}
                                                 onDrop={(e) => !isActions && handleDrop(e, c.key)}
                                                 style={{

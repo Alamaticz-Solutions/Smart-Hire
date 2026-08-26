@@ -30,6 +30,7 @@ export default function CandidatesTable({
     handleDragEnter,
     handleDragEnd,
     handleDrop,
+    clearDragOver,
     TH,
     TD_BASE,
     columnFilters,
@@ -212,7 +213,7 @@ export default function CandidatesTable({
                                                        handleDragEnter(_, null) reuses its public API to clear the
                                                        "drag over" highlight on leave without touching draggedColKey,
                                                        matching the original setDragOverColKey(null) behavior exactly. */
-                                                    onDragLeave={() => !isActions && handleDragEnter(undefined, null)}
+                                                    onDragLeave={() => !isActions && clearDragOver()}
                                                     onDragEnd={() => !isActions && handleDragEnd()}
                                                     onDrop={(e) => !isActions && handleDrop(e, c.key)}
                                                     style={{

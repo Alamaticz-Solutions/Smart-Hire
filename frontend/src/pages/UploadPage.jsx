@@ -62,6 +62,7 @@ export default function UploadPage() {
         handleDragEnter,
         handleDragEnd,
         handleDrop,
+        clearDragOver,
     } = useDraggableColumns(cols, setCols)
 
     useEffect(() => {
@@ -411,6 +412,7 @@ export default function UploadPage() {
                 handleDragEnter={handleDragEnter}
                 handleDragEnd={handleDragEnd}
                 handleDrop={handleDrop}
+                clearDragOver={clearDragOver}
                 handleDeleteCol={handleDeleteCol}
                 columnFilters={columnFilters}
                 setColumnFilters={setColumnFilters}

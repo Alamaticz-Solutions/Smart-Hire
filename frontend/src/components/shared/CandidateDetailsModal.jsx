@@ -4,6 +4,7 @@ import apiClient, { getStaticUrl } from '../../api/client'
 import alamaticzLogo from '../../assets/alamaticz-logo.jpg'
 import ResumePreview, { getResumeHtml } from '../ResumePreview'
 import ResumeEditor from './ResumeEditor'
+import { formatDate } from '../../utils/formatters'
 
 /**
  * Full candidate details modal: profile fields, matched/selected jobs
@@ -252,7 +253,7 @@ export default function CandidateDetailsModal({
                             </h3>
                             <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)', marginTop: '4px', display: 'flex', gap: '15px' }}>
                                 <span>Source: <strong style={{ color: 'var(--gold)' }}>{candidate.source || 'Resume Upload'}</strong></span>
-                                {candidate.timestamp && <span>Analyzed: {new Date(candidate.timestamp).toLocaleDateString()}</span>}
+                                {candidate.timestamp && <span>Analyzed: {formatDate(candidate.timestamp)}</span>}
                             </div>
                         </div>
                         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>

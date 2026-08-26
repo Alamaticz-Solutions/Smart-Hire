@@ -166,7 +166,7 @@ export default function JobsPage() {
     } = useColumnConfig(cols, { ai_reason: '350px', source: '130px' });
     const {
         draggedColKey, dragOverColKey,
-        handleDragStart, handleDragOver, handleDragEnter, handleDragEnd, handleDrop,
+        handleDragStart, handleDragOver, handleDragEnter, handleDragEnd, handleDrop, clearDragOver,
     } = useDraggableColumns(cols, setCols);
     const [columnFilters, setColumnFilters] = useState({});
     const [editCell, setEditCell] = useState(null);
@@ -737,6 +737,7 @@ export default function JobsPage() {
                             handleDragEnter={handleDragEnter}
                             handleDragEnd={handleDragEnd}
                             handleDrop={handleDrop}
+                            clearDragOver={clearDragOver}
                             TH={TH}
                             TD_BASE={TD_BASE}
                             columnFilters={columnFilters}
