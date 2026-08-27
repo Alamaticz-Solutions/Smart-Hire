@@ -30,6 +30,7 @@
   --red-rgb: 220, 38, 38;
   --green-rgb: 34, 150, 94;
   --card-bg: #23262E;
+  --focus: #FFA96E;
   --border: rgba(255, 255, 255, 0.09);
   --border-gold: rgba(var(--gold-rgb), 0.3);
   --text: #EEF0F3;
@@ -79,6 +80,7 @@
   --red-rgb: 220, 38, 38;
   --green-rgb: 22, 130, 74;
   --card-bg: #FFFFFF;
+  --focus: #E2661D;
   --border: rgba(15, 23, 42, 0.09);
   --border-gold: rgba(var(--gold-rgb), 0.25);
   --text: #191B1F;
@@ -111,6 +113,27 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+}
+
+/* ── Focus (WCAG 2.4.7) ───────────────────────────────────
+   Global keyboard-focus indicator. Anything that wants its own custom
+   focus treatment (a box-shadow ring, a border-color swap) already gets
+   it from its own :focus/:focus-within rule; this is the fallback for
+   every element that doesn't define one, so a keyboard user is never
+   left with no visible focus indicator anywhere in the app. */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 html,
@@ -637,7 +660,6 @@ body,
 }
 
 .password-toggle-btn:focus {
-  outline: none;
   color: var(--gold);
 }
 

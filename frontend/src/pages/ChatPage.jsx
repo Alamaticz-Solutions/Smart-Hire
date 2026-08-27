@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
-import { Send, Bot, User } from 'lucide-react'
+import { Send, Bot, User, RotateCcw } from 'lucide-react'
 import apiClient from '../api/client'
 import SkillBadges from '../components/shared/SkillBadges'
 
@@ -81,9 +81,10 @@ function CandidateTable({ rows }) {
 }
 
 
-function Message({ msg }) {
+function Message({ msg, onRetry }) {
     const isUser = msg.role === 'user'
     const isTable = msg.type === 'table'
+    const isError = msg.type === 'error'
     return (
         <div className={`message ${isUser ? 'user' : 'ai'}`}>
             <div className={`msg-avatar ${isUser ? 'user-av' : 'ai'}`}>
@@ -92,7 +93,19 @@ function Message({ msg }) {
             <div className="msg-bubble" style={isTable ? {
                 maxWidth: '100%', width: '100%', flex: 1,
             } : undefined}>
-                {isTable ? (
+                {isError ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <span>{msg.content}</span>
+                        <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{ alignSelf: 'flex-start', fontSize: '0.78rem', padding: '5px 10px', gap: 6 }}
+                            onClick={() => onRetry?.(msg.retryText)}
+                        >
+                            <RotateCcw size={13} /> Retry
+                        </button>
+                    </div>
+                ) : isTable ? (
                     <>
                         <div style={{ marginBottom: '0.5rem', color: 'var(--text-dim)', fontSize: '0.88rem' }}>
                             {msg.answer}
@@ -110,11 +123,7 @@ function Message({ msg }) {
 function TypingIndicator() {
     return (
         <div className="message ai">
-            <div className="msg-avatar ai" style={{
-                width: 34, height: 34, borderRadius: '50%',
-                background: 'linear-gradient(135deg,var(--primary),var(--gold))', display: 'flex', alignItems: 'center',
-                justifyContent: 'center', color: 'var(--navy-dark)', fontFamily: 'var(--fh)', fontWeight: 800, fontSize: '0.85rem'
-            }}>
+            <div className="msg-avatar ai">
                 AI
             </div>
             <div className="msg-bubble">
@@ -164,8 +173,9 @@ export default function ChatPage() {
                     ? { role: 'ai', type: 'table', answer: data.answer, rows: data.rows }
                     : { role: 'ai', type: 'text', content: data.answer }
             ])
-        } catch {
-            setMessages(prev => [...prev, { role: 'ai', type: 'text', content: '⚠️ Something went wrong. Please try again.' }])
+        } catch (err) {
+            console.error('Chat request failed:', err)
+            setMessages(prev => [...prev, { role: 'ai', type: 'error', content: 'Something went wrong answering that.', retryText: content }])
         } finally {
             setLoading(false)
         }
@@ -182,14 +192,14 @@ export default function ChatPage() {
                 <div className="chat-messages">
                     {messages.length === 0 && !loading ? (
                         <div className="chat-empty">
-                            <div className="chat-empty-icon">🤖</div>
+                            <div className="chat-empty-icon"><Bot size={28} /></div>
                             <div className="chat-empty-title">Chat with Hire-Ai</div>
                             <div className="chat-empty-sub">
                                 Ask me anything about your candidates — I'll show results in a table when possible.
                             </div>
                         </div>
                     ) : (
-                        messages.map((msg, i) => <Message key={i} msg={msg} />)
+                        messages.map((msg, i) => <Message key={i} msg={msg} onRetry={sendMessage} />)
                     )}
                     {loading && <TypingIndicator />}
                     <div ref={bottomRef} />

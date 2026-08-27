@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Eye, EyeOff, Check } from 'lucide-react'
+import { Eye, EyeOff, Check, LogIn, UserPlus, Send, KeyRound, ArrowLeft, Loader2 } from 'lucide-react'
 import apiClient from '../api/client'
 import alamaticzLogo from '../assets/alamaticz-logo.jpg'
 import { auth } from '../firebase'
@@ -38,6 +38,7 @@ export default function LoginPage({ onLogin }) {
     const [fpNewPass, setFpNewPass] = useState('')
     const [fpNewPass2, setFpNewPass2] = useState('')
     const [simulatedOtp, setSimulatedOtp] = useState('')
+    const [isSubmitting, setIsSubmitting] = useState(false)
 
     const changeMode = (newMode) => {
         setMode(newMode)
@@ -53,14 +54,17 @@ export default function LoginPage({ onLogin }) {
         setFpNewPass('')
         setFpNewPass2('')
         setSimulatedOtp('')
+        setIsSubmitting(false)
     }
 
     const handleLogin = async (e) => {
         e.preventDefault()
         setError(''); setInfo('')
         if (!cred || !pass) { setError('Please enter your Username and Password.'); return }
-        
+        if (isSubmitting) return
+
         const usernameLower = cred.trim().toLowerCase()
+        setIsSubmitting(true)
         try {
             let resolvedEmail = '';
             try {
@@ -114,8 +118,10 @@ export default function LoginPage({ onLogin }) {
             } else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
                 setError('Invalid username or password.');
             } else {
-                setError(err.message || 'Login failed. (Is the backend server running?)');
+                setError('We couldn\'t sign you in. Please try again in a moment.');
             }
+        } finally {
+            setIsSubmitting(false)
         }
     }
 
@@ -124,7 +130,10 @@ export default function LoginPage({ onLogin }) {
         setError(''); setInfo('')
         if (!name || !cred || !pass || !email) { setError('Name, Username, Email Address, and Password are required.'); return }
         if (pass !== pass2) { setError('Passwords do not match!'); return }
-        
+        if (pass.length < 8) { setError('Password must be at least 8 characters.'); return }
+        if (isSubmitting) return
+
+        setIsSubmitting(true)
         try {
             const usernameLower = cred.trim().toLowerCase();
             const registerEmail = email.trim();
@@ -159,23 +168,17 @@ export default function LoginPage({ onLogin }) {
                 });
             } catch (syncErr) {
                 if (syncErr.response?.status === 403) {
-                    setInfo(`Registration request sent! Please wait for admin approval before signing in.`);
-                    setTimeout(() => {
-                        changeMode('login');
-                        setPass('');
-                        setPass2('');
-                    }, 4000);
+                    changeMode('login');
+                    setInfo('Registration request sent! Please wait for admin approval before signing in.');
+                    setPass(''); setPass2('');
                     return;
                 }
                 throw syncErr;
             }
-            
+
+            changeMode('login');
             setInfo(`Account created for ${name}! Please sign in.`);
-            setTimeout(() => {
-                changeMode('login');
-                setPass('');
-                setPass2('');
-            }, 2000);
+            setPass(''); setPass2('');
         } catch (err) {
             console.error("Register error:", err);
             const detail = err.response?.data?.detail;
@@ -188,10 +191,12 @@ export default function LoginPage({ onLogin }) {
             } else if (err.code === 'auth/email-already-in-use') {
                 setError('Username or email already in use.');
             } else if (err.code === 'auth/weak-password') {
-                setError('Password is too weak. (Must be at least 6 characters)');
+                setError('Password is too weak. Use at least 8 characters.');
             } else {
-                setError(err.message || 'Registration failed. (Is the backend server running?)');
+                setError('We couldn\'t complete your registration. Please try again in a moment.');
             }
+        } finally {
+            setIsSubmitting(false)
         }
     }
 
@@ -199,11 +204,15 @@ export default function LoginPage({ onLogin }) {
         e.preventDefault()
         setError(''); setInfo('')
         if (!mobile) { setError('Please enter your registered Mobile Number.'); return }
-        
+        if (isSubmitting) return
+
+        setIsSubmitting(true)
         try {
             const res = await apiClient.post('/api/auth/forgot-password/request', { mobile: mobile.trim() })
             setInfo(res.data.message)
-            if (res.data.otp) {
+            // Dev-only: the backend can return the OTP directly in non-production setups
+            // where no SMS/email delivery is configured. Never show this in a real build.
+            if (import.meta.env.DEV && res.data.otp) {
                 setSimulatedOtp(res.data.otp)
             } else {
                 setSimulatedOtp('')
@@ -211,6 +220,8 @@ export default function LoginPage({ onLogin }) {
             setForgotStep(2)
         } catch (err) {
             setError(err.response?.data?.detail || 'Failed to request password reset OTP.')
+        } finally {
+            setIsSubmitting(false)
         }
     }
 
@@ -219,20 +230,22 @@ export default function LoginPage({ onLogin }) {
         setError(''); setInfo('')
         if (!fpOtp || !fpNewPass || !fpNewPass2) { setError('All fields are required.'); return }
         if (fpNewPass !== fpNewPass2) { setError('Passwords do not match!'); return }
-        
+        if (fpNewPass.length < 8) { setError('Password must be at least 8 characters.'); return }
+        if (isSubmitting) return
+
+        setIsSubmitting(true)
         try {
             const res = await apiClient.post('/api/auth/forgot-password/reset', {
                 mobile: mobile.trim(),
                 otp: fpOtp.trim(),
                 new_password: fpNewPass
             })
+            changeMode('login')
             setInfo(res.data.message)
-            setSimulatedOtp('')
-            setTimeout(() => {
-                changeMode('login')
-            }, 2500)
         } catch (err) {
             setError(err.response?.data?.detail || 'Failed to reset password. Please check your OTP.')
+        } finally {
+            setIsSubmitting(false)
         }
     }
 
@@ -257,16 +270,18 @@ export default function LoginPage({ onLogin }) {
                 {mode === 'login' && (
                     <form onSubmit={handleLogin}>
                         <div className="form-group">
-                            <label className="form-label">Username</label>
-                            <input className="form-input" placeholder="Enter your username"
+                            <label className="form-label" htmlFor="login-username">Username</label>
+                            <input id="login-username" className="form-input" placeholder="Enter your username"
+                                autoComplete="username" autoFocus
                                 value={cred} onChange={e => setCred(e.target.value)} />
                         </div>
                         <div className="form-group">
-                            <label className="form-label">Password</label>
+                            <label className="form-label" htmlFor="login-password">Password</label>
                             <div className="password-input-container">
-                                <input className="form-input" type={showPass ? "text" : "password"} placeholder="Enter your password"
+                                <input id="login-password" className="form-input" type={showPass ? "text" : "password"} placeholder="Enter your password"
+                                    autoComplete="current-password"
                                     value={pass} onChange={e => setPass(e.target.value)} />
-                                <button type="button" className="password-toggle-btn" onClick={() => setShowPass(!showPass)}>
+                                <button type="button" className="password-toggle-btn" onClick={() => setShowPass(!showPass)} aria-label={showPass ? 'Hide password' : 'Show password'}>
                                     {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
                                 </button>
                             </div>
@@ -276,8 +291,12 @@ export default function LoginPage({ onLogin }) {
                                 Forgot password?
                             </button>
                         </div>
-                        <button type="submit" className="btn btn-primary btn-full">🔐 SIGN IN</button>
-                        {error && <div className="form-error">{error}</div>}
+                        <button type="submit" className="btn btn-primary btn-full" disabled={isSubmitting}>
+                            {isSubmitting ? <Loader2 size={16} className="spin" /> : <LogIn size={16} />}
+                            {isSubmitting ? 'Signing in…' : 'Sign in'}
+                        </button>
+                        {error && <div className="form-error" role="alert">{error}</div>}
+                        {info && <div className="form-success" role="status">{info}</div>}
                         <div className="login-footer" style={{ marginTop: '1.2rem' }}>
                             Don't have an account?{' '}
                             <button type="button" className="form-link" onClick={() => changeMode('register')}>
@@ -291,44 +310,49 @@ export default function LoginPage({ onLogin }) {
                 {mode === 'register' && (
                     <form onSubmit={handleRegister}>
                         <div className="form-group">
-                            <label className="form-label">Full Name</label>
-                            <input className="form-input" placeholder="John Doe" value={name} onChange={e => setName(e.target.value)} />
+                            <label className="form-label" htmlFor="reg-name">Full Name</label>
+                            <input id="reg-name" className="form-input" placeholder="John Doe" autoComplete="name" value={name} onChange={e => setName(e.target.value)} />
                         </div>
                         <div className="form-group">
-                            <label className="form-label">Username</label>
-                            <input className="form-input" placeholder="Choose a username" value={cred} onChange={e => setCred(e.target.value)} />
+                            <label className="form-label" htmlFor="reg-username">Username</label>
+                            <input id="reg-username" className="form-input" placeholder="Choose a username" autoComplete="username" value={cred} onChange={e => setCred(e.target.value)} />
                         </div>
                         <div className="form-group">
-                            <label className="form-label">Mobile (optional)</label>
-                            <input className="form-input" placeholder="+91 98765 43210" value={mobile} onChange={e => setMobile(e.target.value)} />
+                            <label className="form-label" htmlFor="reg-mobile">Mobile (optional)</label>
+                            <input id="reg-mobile" className="form-input" type="tel" placeholder="+91 98765 43210" autoComplete="tel" value={mobile} onChange={e => setMobile(e.target.value)} />
                         </div>
                         <div className="form-group">
-                            <label className="form-label">Email Address *</label>
-                            <input className="form-input" type="email" placeholder="john@example.com" value={email} onChange={e => setEmail(e.target.value)} required />
+                            <label className="form-label" htmlFor="reg-email">Email Address *</label>
+                            <input id="reg-email" className="form-input" type="email" placeholder="john@example.com" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} required />
                         </div>
                         <div className="form-group">
-                            <label className="form-label">Password</label>
+                            <label className="form-label" htmlFor="reg-password">Password</label>
                             <div className="password-input-container">
-                                <input className="form-input" type={showRegisterPass ? "text" : "password"} placeholder="Create a strong password"
+                                <input id="reg-password" className="form-input" type={showRegisterPass ? "text" : "password"} placeholder="At least 8 characters"
+                                    autoComplete="new-password"
                                     value={pass} onChange={e => setPass(e.target.value)} />
-                                <button type="button" className="password-toggle-btn" onClick={() => setShowRegisterPass(!showRegisterPass)}>
+                                <button type="button" className="password-toggle-btn" onClick={() => setShowRegisterPass(!showRegisterPass)} aria-label={showRegisterPass ? 'Hide password' : 'Show password'}>
                                     {showRegisterPass ? <EyeOff size={18} /> : <Eye size={18} />}
                                 </button>
                             </div>
                         </div>
                         <div className="form-group">
-                            <label className="form-label">Confirm Password</label>
+                            <label className="form-label" htmlFor="reg-password2">Confirm Password</label>
                             <div className="password-input-container">
-                                <input className="form-input" type={showRegisterPass2 ? "text" : "password"} placeholder="Repeat password"
+                                <input id="reg-password2" className="form-input" type={showRegisterPass2 ? "text" : "password"} placeholder="Repeat password"
+                                    autoComplete="new-password"
                                     value={pass2} onChange={e => setPass2(e.target.value)} />
-                                <button type="button" className="password-toggle-btn" onClick={() => setShowRegisterPass2(!showRegisterPass2)}>
+                                <button type="button" className="password-toggle-btn" onClick={() => setShowRegisterPass2(!showRegisterPass2)} aria-label={showRegisterPass2 ? 'Hide password' : 'Show password'}>
                                     {showRegisterPass2 ? <EyeOff size={18} /> : <Eye size={18} />}
                                 </button>
                             </div>
                         </div>
-                        <button type="submit" className="btn btn-primary btn-full">🚀 CREATE ACCOUNT</button>
-                        {error && <div className="form-error">{error}</div>}
-                        {info && <div className="form-success">{info}</div>}
+                        <button type="submit" className="btn btn-primary btn-full" disabled={isSubmitting}>
+                            {isSubmitting ? <Loader2 size={16} className="spin" /> : <UserPlus size={16} />}
+                            {isSubmitting ? 'Creating account…' : 'Create account'}
+                        </button>
+                        {error && <div className="form-error" role="alert">{error}</div>}
+                        {info && <div className="form-success" role="status">{info}</div>}
                         <div className="login-footer" style={{ marginTop: '1rem' }}>
                             Already have an account?{' '}
                             <button type="button" className="form-link" onClick={() => changeMode('login')}>
@@ -347,11 +371,14 @@ export default function LoginPage({ onLogin }) {
                                     Enter your registered Mobile Number. We will send you a 6-digit OTP code to reset your password.
                                 </p>
                                 <div className="form-group">
-                                    <label className="form-label">Mobile Number</label>
-                                    <input className="form-input" type="text" placeholder="enter your mobile number"
+                                    <label className="form-label" htmlFor="fp-mobile">Mobile Number</label>
+                                    <input id="fp-mobile" className="form-input" type="tel" placeholder="Enter your mobile number" autoComplete="tel"
                                         value={mobile} onChange={e => setMobile(e.target.value)} required />
                                 </div>
-                                <button type="submit" className="btn btn-primary btn-full">📨 REQUEST RESET OTP</button>
+                                <button type="submit" className="btn btn-primary btn-full" disabled={isSubmitting}>
+                                    {isSubmitting ? <Loader2 size={16} className="spin" /> : <Send size={16} />}
+                                    {isSubmitting ? 'Sending…' : 'Request reset OTP'}
+                                </button>
                             </form>
                         ) : (
                             <form onSubmit={handleForgotReset}>
@@ -370,32 +397,35 @@ export default function LoginPage({ onLogin }) {
                                         textAlign: 'center',
                                         fontWeight: 'bold'
                                     }}>
-                                        🔔 [Demo Mode] OTP Code: {simulatedOtp}
+                                        [Dev Mode] OTP Code: {simulatedOtp}
                                     </div>
                                 )}
                                 <div className="form-group">
-                                    <label className="form-label">6-Digit OTP Code</label>
-                                    <input className="form-input" type="text" placeholder="Enter 6-digit OTP" maxLength={6}
+                                    <label className="form-label" htmlFor="fp-otp">6-Digit OTP Code</label>
+                                    <input id="fp-otp" className="form-input" type="text" inputMode="numeric" pattern="[0-9]*" placeholder="Enter 6-digit OTP" maxLength={6}
                                         value={fpOtp} onChange={e => setFpOtp(e.target.value)} required />
                                 </div>
                                 <div className="form-group">
-                                    <label className="form-label">New Password</label>
-                                    <input className="form-input" type="password" placeholder="Enter new password"
+                                    <label className="form-label" htmlFor="fp-newpass">New Password</label>
+                                    <input id="fp-newpass" className="form-input" type="password" placeholder="At least 8 characters" autoComplete="new-password"
                                         value={fpNewPass} onChange={e => setFpNewPass(e.target.value)} required />
                                 </div>
                                 <div className="form-group">
-                                    <label className="form-label">Confirm New Password</label>
-                                    <input className="form-input" type="password" placeholder="Repeat new password"
+                                    <label className="form-label" htmlFor="fp-newpass2">Confirm New Password</label>
+                                    <input id="fp-newpass2" className="form-input" type="password" placeholder="Repeat new password" autoComplete="new-password"
                                         value={fpNewPass2} onChange={e => setFpNewPass2(e.target.value)} required />
                                 </div>
-                                <button type="submit" className="btn btn-primary btn-full">🔐 RESET PASSWORD</button>
+                                <button type="submit" className="btn btn-primary btn-full" disabled={isSubmitting}>
+                                    {isSubmitting ? <Loader2 size={16} className="spin" /> : <KeyRound size={16} />}
+                                    {isSubmitting ? 'Resetting…' : 'Reset password'}
+                                </button>
                             </form>
                         )}
-                        {error && <div className="form-error" style={{ marginTop: '1rem' }}>{error}</div>}
-                        {info && <div className="form-success" style={{ marginTop: '1rem' }}>{info}</div>}
+                        {error && <div className="form-error" style={{ marginTop: '1rem' }} role="alert">{error}</div>}
+                        {info && <div className="form-success" style={{ marginTop: '1rem' }} role="status">{info}</div>}
                         <div className="login-footer" style={{ marginTop: '1rem' }}>
-                            <button type="button" className="form-link" onClick={() => changeMode('login')}>
-                                ← Back to Sign In
+                            <button type="button" className="form-link" onClick={() => changeMode('login')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                <ArrowLeft size={14} /> Back to sign in
                             </button>
                         </div>
                     </div>
@@ -409,7 +439,7 @@ export default function LoginPage({ onLogin }) {
                 position: 'fixed', bottom: '1.2rem', left: 0, right: 0, textAlign: 'center',
                 color: 'rgba(var(--sky-dim-rgb), 0.6)', fontSize: '0.77rem'
             }}>
-                © 2025 Alamaticz Solutions · Innovation • Excellence • Reliability
+                © {new Date().getFullYear()} Alamaticz Solutions · Innovation · Excellence · Reliability
             </div>
         </div>
     )

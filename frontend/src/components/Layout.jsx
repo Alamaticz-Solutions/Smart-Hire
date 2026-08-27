@@ -1,14 +1,34 @@
-import { Outlet, NavLink } from 'react-router-dom'
+import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import axios from 'axios'
 import { LayoutDashboard, Upload, MessageSquare, LogOut, Sun, Moon, Briefcase, Shield, Users, Download, Activity, X, Link, FileText, AlertTriangle } from 'lucide-react'
 import alamaticzLogo from '../assets/alamaticz-logo.jpg'
+
+// Ref S2.1/G-26: the topbar used to show the company name on every screen
+// ("Alamaticz Solutions", repeated below the sidebar's own brand mark) with
+// no page title at all - so the user never saw where they were. Nav labels
+// here match the renamed items from G-26 (Job Description -> Jobs, etc.)
+const PAGE_TITLES = {
+    '/': 'Dashboard',
+    '/jobs': 'Jobs',
+    '/upload': 'Candidates',
+    '/chat': 'Assistant',
+    '/connect': 'Integrations',
+    '/templates': 'Email Templates',
+    '/admin': 'Administration',
+}
 
 export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUser }) {
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [showActivitySidebar, setShowActivitySidebar] = useState(false);
     const [activities, setActivities] = useState([]);
     const [loadingActivities, setLoadingActivities] = useState(false);
+    const location = useLocation();
+    const pageTitle = PAGE_TITLES[location.pathname] || 'Hire AI';
+
+    useEffect(() => {
+        document.title = `${pageTitle} · Hire AI`;
+    }, [pageTitle]);
 
     useEffect(() => {
         axios.get('/api/auth/status')
@@ -56,17 +76,17 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
     };
 
     const primaryNavItems = [
-        { to: '/', label: 'Dashboard', Icon: LayoutDashboard },
-        ...((user?.is_hr === 1 || user?.is_external === 1) ? [{ to: '/jobs', label: 'Job Description', Icon: Briefcase }] : []),
-        { to: '/upload', label: 'Candidate Profiles', Icon: Users },
-        { to: '/chat', label: 'Chat with Hire-Ai', Icon: MessageSquare },
+        { to: '/', label: PAGE_TITLES['/'], Icon: LayoutDashboard },
+        ...((user?.is_hr === 1 || user?.is_external === 1) ? [{ to: '/jobs', label: PAGE_TITLES['/jobs'], Icon: Briefcase }] : []),
+        { to: '/upload', label: PAGE_TITLES['/upload'], Icon: Users },
+        { to: '/chat', label: PAGE_TITLES['/chat'], Icon: MessageSquare },
     ]
 
     const workspaceNavItems = []
     if (user?.role === 'admin' || user?.is_admin === 1) {
-        workspaceNavItems.push({ to: '/connect', label: 'Connect', Icon: Link })
-        workspaceNavItems.push({ to: '/templates', label: 'Reply Templates', Icon: FileText })
-        workspaceNavItems.push({ to: '/admin', label: 'Admin Portal', Icon: Shield })
+        workspaceNavItems.push({ to: '/connect', label: PAGE_TITLES['/connect'], Icon: Link })
+        workspaceNavItems.push({ to: '/templates', label: PAGE_TITLES['/templates'], Icon: FileText })
+        workspaceNavItems.push({ to: '/admin', label: PAGE_TITLES['/admin'], Icon: Shield })
     }
 
 
@@ -85,7 +105,7 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
                     <span className="sidebar-brand-name">Hire AI</span>
                 </div>
 
-                <nav className="sidebar-nav">
+                <nav className="sidebar-nav" aria-label="Primary">
                     {primaryNavItems.map(({ to, label, Icon }) => (
                         <NavLink
                             key={to}
@@ -101,8 +121,8 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
                     {workspaceNavItems.length > 0 && (
                         <>
                             <div style={{
-                                fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em',
-                                color: 'var(--text-dim)', opacity: 0.6, padding: '18px 16px 6px'
+                                fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em',
+                                color: 'var(--text-dim)', padding: '18px 16px 6px'
                             }}>
                                 Workspace
                             </div>
@@ -130,26 +150,30 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
             </aside>
 
             {/* Main */}
-            <div className="main-content">
+            <main className="main-content">
                 <header className="topbar">
-                    <span className="topbar-title">Alamaticz Solutions</span>
+                    <span className="topbar-title">{pageTitle}</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                        <button 
-                            onClick={toggleTheme} 
-                            style={{ 
-                                background: 'rgba(var(--gold-rgb), 0.15)', border: '1px solid var(--border-gold)', borderRadius: '50%', width: '36px', height: '36px', cursor: 'pointer', 
-                                color: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' 
+                        <button
+                            onClick={toggleTheme}
+                            style={{
+                                background: 'rgba(var(--gold-rgb), 0.15)', border: '1px solid var(--border-gold)', borderRadius: '50%', width: '36px', height: '36px', cursor: 'pointer',
+                                color: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s'
                             }}
+                            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
                             title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} mode`}
                         >
                             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
                         </button>
                         <div style={{ position: 'relative' }}>
-                            <div 
-                                className="profile-chip" 
+                            <button
+                                type="button"
+                                className="profile-chip"
                                 title={user?.active_persona ? `Logged in as Admin, acting as ${user.active_persona}` : `Logged in as ${user.full_name}`}
                                 onClick={() => setShowProfileMenu(!showProfileMenu)}
-                                style={{ cursor: 'pointer' }}
+                                aria-haspopup="menu"
+                                aria-expanded={showProfileMenu}
+                                style={{ cursor: 'pointer', border: 'none', font: 'inherit' }}
                             >
                             <div className="profile-avatar" style={{
                                 background: 'var(--gold)',
@@ -164,8 +188,8 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
                             }}>
                                 {user?.active_persona ? `${user.active_persona} (Admin)` : (user?.full_name || 'HR User')}
                             </span>
-                            </div>
-                            
+                            </button>
+
                             {/* Profile Dropdown */}
                             {showProfileMenu && (
                                 <>
@@ -212,10 +236,10 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
 
                 <div className="page-body" style={{ padding: 0, flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflowY: 'auto' }}>
                     {user?.is_approved !== 1 && (
-                        <div style={{
-                            background: 'rgba(245, 158, 11, 0.15)',
+                        <div role="status" style={{
+                            background: 'var(--warning-bg, rgba(245, 158, 11, 0.15))',
                             borderBottom: '1px solid #f59e0b',
-                            color: '#fbbf24',
+                            color: 'var(--warning-fg, #fbbf24)',
                             padding: '12px 24px',
                             fontSize: '0.88rem',
                             display: 'flex',
@@ -295,8 +319,8 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
                         `}</style>
                     </>
                 )}
-            </div>
-            
+            </main>
+
         </div>
     )
 }
