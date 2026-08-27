@@ -90,7 +90,7 @@ export default function FilterModal({
                                     />
                                     <button
                                         onClick={() => setCustomFilters(p => p.filter((_, idx) => idx !== i))}
-                                        style={{ background: 'none', border: 'none', color: '#ef233c', cursor: 'pointer', padding: '0 4px', display: 'flex' }}>
+                                        style={{ background: 'none', border: 'none', color: 'var(--danger-fg)', cursor: 'pointer', padding: '0 4px', display: 'flex' }}>
                                         <X size={14} />
                                     </button>
                                 </div>
@@ -107,7 +107,7 @@ export default function FilterModal({
                         <button className="btn btn-secondary" onClick={() => { setFilters({ minTotalExp: '', minPegaExp: '', certs: [] }); setCustomFilters([]); setColumnFilters({}); }} style={{ flex: 1, borderColor: 'var(--border)' }}>
                             Clear All
                         </button>
-                        <button className="btn" onClick={onClose} style={{ flex: 1, background: '#ffb703', color: '#011627', fontWeight: '900', border: 'none' }}>
+                        <button className="btn" onClick={onClose} style={{ flex: 1, background: 'var(--gold)', color: 'var(--action-fg)', fontWeight: '900', border: 'none' }}>
                             Apply Filter
                         </button>
                     </div>

@@ -166,7 +166,7 @@ export default function ResumeEditor({ formData, setFormData }) {
         top: '12px',
         right: '12px',
         background: 'rgba(239, 68, 68, 0.15)',
-        color: '#ef4444',
+        color: 'var(--danger-fg)',
         border: '1px solid rgba(239, 68, 68, 0.3)',
         borderRadius: '6px',
         padding: '4px 8px',

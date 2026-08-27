@@ -861,7 +861,7 @@ export default function JobsPage() {
                         </div>
                         <iframe
                             src={`${viewingPdf.url}#view=FitH`}
-                            style={{ width: '100%', flex: 1, border: 'none', background: '#525659' }}
+                            style={{ width: '100%', flex: 1, border: 'none', background: 'var(--surface-sunken)' }}
                             title="Resume Viewer"
                         />
                     </div>

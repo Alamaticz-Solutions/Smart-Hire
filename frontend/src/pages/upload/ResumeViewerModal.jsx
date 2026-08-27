@@ -44,7 +44,7 @@ export default function ResumeViewerModal({ viewingPdf, onClose }) {
                             }}
                             onMouseEnter={e => {
                                 e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.2)';
-                                e.currentTarget.style.color = '#fff';
+                                e.currentTarget.style.color = 'var(--text)';
                             }}
                             onMouseLeave={e => {
                                 e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.1)';
@@ -67,7 +67,7 @@ export default function ResumeViewerModal({ viewingPdf, onClose }) {
                 </div>
                 <iframe
                     src={`${viewingPdf.url}#view=FitH`}
-                    style={{ width: '100%', flex: 1, border: 'none', background: '#525659' }}
+                    style={{ width: '100%', flex: 1, border: 'none', background: 'var(--surface-sunken)' }}
                     title="Resume Viewer"
                 />
             </div>

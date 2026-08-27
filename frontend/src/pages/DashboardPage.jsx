@@ -12,7 +12,7 @@ import CandidateDetailsModal from '../components/shared/CandidateDetailsModal'
 import CellTextModal from '../components/shared/CellTextModal'
 import SkillBadges from '../components/shared/SkillBadges'
 
-const COLORS = ['#D97706', '#4A90D9', '#8B6BC7', '#5FA88A', '#93A5BA']
+const COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)']
 
 export default function DashboardPage() {
     // `Layout.jsx` provides `user` via `<Outlet context={{ user, onUpdateUser }} />`;
@@ -197,12 +197,12 @@ export default function DashboardPage() {
                             <ResponsiveContainer width="100%" height={300}>
                                 <BarChart data={expChartData} margin={{ top: 5, right: 10, bottom: 20, left: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                                    <XAxis dataKey="name" tick={{ fill: '#8593A6', fontSize: 12 }} angle={-30} textAnchor="end" />
-                                    <YAxis tick={{ fill: '#8593A6', fontSize: 12 }} unit=" yr" />
+                                    <XAxis dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} angle={-30} textAnchor="end" />
+                                    <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} unit=" yr" />
                                     <Tooltip content={<CustomTooltip />} />
-                                    <Legend wrapperStyle={{ color: '#8593A6', fontSize: 13 }} />
-                                    <Bar dataKey="Total Exp" fill="#D97706" radius={[4, 4, 0, 0]} />
-                                    <Bar dataKey="Pega Exp" fill="#4A90D9" radius={[4, 4, 0, 0]} />
+                                    <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: 13 }} />
+                                    <Bar dataKey="Total Exp" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
+                                    <Bar dataKey="Pega Exp" fill="var(--chart-2)" radius={[4, 4, 0, 0]} />
                                 </BarChart>
                             </ResponsiveContainer>
                         </div>
@@ -212,8 +212,8 @@ export default function DashboardPage() {
                             <ResponsiveContainer width="100%" height={300}>
                                 <BarChart data={noticeData} margin={{ top: 5, right: 10, bottom: 20, left: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                                    <XAxis dataKey="name" tick={{ fill: '#8593A6', fontSize: 12 }} angle={-30} textAnchor="end" />
-                                    <YAxis tick={{ fill: '#8593A6', fontSize: 12 }} allowDecimals={false} />
+                                    <XAxis dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} angle={-30} textAnchor="end" />
+                                    <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} allowDecimals={false} />
                                     <Tooltip contentStyle={{
                                         background: 'var(--input-bg)',
                                         border: '1px solid rgba(var(--gold-rgb), 0.3)', borderRadius: 10, color: 'var(--text)'

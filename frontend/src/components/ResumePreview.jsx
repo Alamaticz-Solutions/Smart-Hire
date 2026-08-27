@@ -257,7 +257,7 @@ export default function ResumePreview({ data, logoUrl, templateId = 'alamaticz' 
         <div className="resume-preview-container" style={{
             flex: 1,
             overflowY: 'auto',
-            background: '#525659',
+            background: 'var(--surface-sunken)',
             padding: '24px',
             display: 'flex',
             flexDirection: 'column',

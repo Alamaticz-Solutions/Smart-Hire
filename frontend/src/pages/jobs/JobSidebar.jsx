@@ -137,7 +137,7 @@ export default function JobSidebar({
                                                 }}
                                                 style={{
                                                     width: '100%', padding: '8px 12px', background: 'none', border: 'none',
-                                                    color: '#fca5a5', textAlign: 'left', cursor: 'pointer', fontSize: '0.8rem',
+                                                    color: 'var(--danger-fg)', textAlign: 'left', cursor: 'pointer', fontSize: '0.8rem',
                                                     display: 'flex', alignItems: 'center', gap: '8px'
                                                 }}
                                                 onMouseEnter={e => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'}

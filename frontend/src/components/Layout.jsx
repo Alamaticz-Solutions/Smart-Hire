@@ -218,7 +218,7 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
                                             onClick={onLogout}
                                             style={{
                                                 width: '100%', padding: '12px 16px', background: 'none', border: 'none', borderTop: '1px solid var(--border)',
-                                                color: '#fca5a5', textAlign: 'left', cursor: 'pointer', fontSize: '0.9rem',
+                                                color: 'var(--danger-fg)', textAlign: 'left', cursor: 'pointer', fontSize: '0.9rem',
                                                 display: 'flex', alignItems: 'center', gap: '8px', transition: 'background 0.2s'
                                             }}
                                             onMouseEnter={e => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'}
@@ -237,9 +237,9 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
                 <div className="page-body" style={{ padding: 0, flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflowY: 'auto' }}>
                     {user?.is_approved !== 1 && (
                         <div role="status" style={{
-                            background: 'var(--warning-bg, rgba(245, 158, 11, 0.15))',
-                            borderBottom: '1px solid #f59e0b',
-                            color: 'var(--warning-fg, #fbbf24)',
+                            background: 'var(--warning-bg)',
+                            borderBottom: '1px solid var(--warning-fg)',
+                            color: 'var(--warning-fg)',
                             padding: '12px 24px',
                             fontSize: '0.88rem',
                             display: 'flex',
@@ -291,7 +291,7 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
                                                 <div style={{
                                                     width: '32px', height: '32px', borderRadius: '50%',
                                                     background: 'var(--gold)',
-                                                    color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    color: 'var(--action-fg)', display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                     fontWeight: 'bold', fontSize: '0.8rem', flexShrink: 0
                                                 }}>
                                                     {initials}
