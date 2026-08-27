@@ -7,6 +7,7 @@ import ResumeEditor from './ResumeEditor'
 import { formatDate } from '../../utils/formatters'
 import { useToast } from '../../hooks/useToast'
 import ToastHost from './ToastHost'
+import { useModalA11y } from '../../hooks/useModalA11y'
 
 /**
  * Full candidate details modal: profile fields, matched/selected jobs
@@ -80,6 +81,7 @@ export default function CandidateDetailsModal({
     defaultResumeTemplate = 'alamaticz',
 }) {
     const { toast, showToast, dismissToast } = useToast();
+    const modalRef = useModalA11y(true, onClose);
     const canEdit = editable !== undefined ? editable : Boolean(onToggleStatus);
     const canExportDocx = showExportDocx !== undefined ? showExportDocx : Boolean(onToggleStatus);
     const canToggleFormatted = showFormattedToggle !== undefined ? showFormattedToggle : !onToggleStatus;
@@ -225,7 +227,7 @@ export default function CandidateDetailsModal({
 
     return (
         <div className="modal-overlay" style={{ zIndex: 99998 }} onClick={onClose}>
-            <div className="card" onClick={e => e.stopPropagation()} style={{
+            <div ref={modalRef} className="card" role="dialog" aria-modal="true" aria-label={`Candidate details: ${candidate?.full_name || 'candidate'}`} onClick={e => e.stopPropagation()} style={{
                 width: '95%',
                 maxWidth: showRightPanel ? '1400px' : '800px',
                 height: showRightPanel ? '90vh' : 'auto',
@@ -355,7 +357,7 @@ export default function CandidateDetailsModal({
                                     </a>
                                 )
                             )}
-                            <button onClick={onClose} style={{
+                            <button onClick={onClose} aria-label="Close" style={{
                                 background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
                                 color: 'var(--gold)', cursor: 'pointer', padding: '6px', borderRadius: '8px',
                                 display: 'flex', transition: 'all 0.2s'

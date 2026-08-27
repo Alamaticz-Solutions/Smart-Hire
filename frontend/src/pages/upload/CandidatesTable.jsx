@@ -4,6 +4,7 @@ import { Trash2, FileText, Filter, Download, RefreshCw, Eye, X, CheckSquare, Use
 import { exportToExcel, formatCandidatesForExcel } from '../../utils/excelUtils'
 import apiClient from '../../api/client'
 import ExpandableCell from '../../components/shared/ExpandableCell'
+import { useModalA11y } from '../../hooks/useModalA11y'
 
 // Extracted from UploadPage.jsx: the "Table" card — header toolbar (Filter
 // button, Columns visibility popover, Add Candidate, Add Column, Download
@@ -86,6 +87,8 @@ export default function CandidatesTable({
     // each row's actual rendered height rather than trusting a fixed
     // estimate, since a few columns (full_name/current_organization/email)
     // allow text wrapping and can be taller than a single line.
+    const addCandidateModalRef = useModalA11y(showAddCandidate, () => setShowAddCandidate(false))
+    const addColModalRef = useModalA11y(showAddCol, () => setShowAddCol(false))
     const tableScrollRef = useRef(null)
     const rowVirtualizer = useVirtualizer({
         count: filteredCandidates.length,
@@ -766,11 +769,11 @@ export default function CandidatesTable({
             )}
 
             {showAddCandidate && (
-                <div className="modal-overlay" style={{ zIndex: 999 }}>
-                    <div className="card" style={{ width: 550, maxWidth: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+                <div className="modal-overlay" style={{ zIndex: 999 }} onClick={() => setShowAddCandidate(false)}>
+                    <div ref={addCandidateModalRef} className="card" role="dialog" aria-modal="true" aria-labelledby="add-candidate-manual-title" onClick={e => e.stopPropagation()} style={{ width: 550, maxWidth: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 15, paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
-                            <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)' }}>Add Candidate Manually</h3>
-                            <button onClick={() => setShowAddCandidate(false)} style={{ background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><X size={18} /></button>
+                            <h3 id="add-candidate-manual-title" style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)' }}>Add Candidate Manually</h3>
+                            <button onClick={() => setShowAddCandidate(false)} aria-label="Close" style={{ background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><X size={18} /></button>
                         </div>
                         <div style={{ overflowY: 'auto', flex: 1, paddingRight: 5, display: 'flex', flexDirection: 'column', gap: 15, marginBottom: 15 }}>
                             {cols.filter(c => c.key !== '_actions' && c.key !== 'source').map(c => (
@@ -821,11 +824,11 @@ export default function CandidatesTable({
             )}
 
             {showAddCol && (
-                <div className="modal-overlay">
-                    <div className="card" style={{ width: 400, maxWidth: '90%' }}>
+                <div className="modal-overlay" onClick={() => setShowAddCol(false)}>
+                    <div ref={addColModalRef} className="card" role="dialog" aria-modal="true" aria-labelledby="add-column-modal-title" onClick={e => e.stopPropagation()} style={{ width: 400, maxWidth: '90%' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 15 }}>
-                            <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)' }}>Add Custom Column</h3>
-                            <button onClick={() => setShowAddCol(false)} style={{ background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><X size={18} /></button>
+                            <h3 id="add-column-modal-title" style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)' }}>Add Custom Column</h3>
+                            <button onClick={() => setShowAddCol(false)} aria-label="Close" style={{ background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><X size={18} /></button>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
                             <div>
