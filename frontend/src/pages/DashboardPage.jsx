@@ -35,15 +35,20 @@ function readVars(names) {
     return out
 }
 
+// The chip *background* tokens (--st-*-bg) are deliberately low-contrast -
+// they're meant to sit behind the chip's own saturated text color, not to
+// stand alone as a bar fill on a plain card background (in light mode
+// --st-new-bg is ~1.1:1 against --surface - functionally invisible). The
+// *text* tokens are the saturated color already designed to read on its own.
 const PIPELINE_STAGES = [
-    { key: 'New', varName: '--st-new-bg' },
-    { key: 'In-Review', varName: '--st-review-bg' },
-    { key: 'Available', varName: '--st-avail-bg' },
-    { key: 'Selected', varName: '--st-selected-bg' },
-    { key: 'Engaged', varName: '--st-engaged-bg' },
-    { key: 'Offered', varName: '--st-offered-bg' },
-    { key: 'Hired', varName: '--st-hired-bg' },
-    { key: 'Rejected', varName: '--st-rejected-bg' },
+    { key: 'New', varName: '--st-new-text' },
+    { key: 'In-Review', varName: '--st-review-text' },
+    { key: 'Available', varName: '--st-avail-text' },
+    { key: 'Selected', varName: '--st-selected-text' },
+    { key: 'Engaged', varName: '--st-engaged-text' },
+    { key: 'Offered', varName: '--st-offered-text' },
+    { key: 'Hired', varName: '--st-hired-text' },
+    { key: 'Rejected', varName: '--st-rejected-text' },
 ]
 const CHART_VAR_NAMES = ['--chart-1', '--chart-2', '--text-muted', '--surface', ...PIPELINE_STAGES.map(s => s.varName)]
 
