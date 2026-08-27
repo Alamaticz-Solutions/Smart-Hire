@@ -400,12 +400,17 @@ export default function DashboardPage() {
                                                 return (
                                                     <td
                                                         key={col.col_key}
-                                                        onClick={() => setEditStatusCell({ candidateId: c.id })}
-                                                        style={{ padding: '10px 12px', verticalAlign: 'top', cursor: 'pointer' }}
+                                                        style={{ padding: '10px 12px', verticalAlign: 'top' }}
                                                     >
-                                                        <span className={`status-chip ${statusClass}`}>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setEditStatusCell({ candidateId: c.id })}
+                                                            aria-label={`Edit status, currently ${s}`}
+                                                            className={`status-chip ${statusClass}`}
+                                                            style={{ border: 'none', cursor: 'pointer', font: 'inherit' }}
+                                                        >
                                                             {s}
-                                                        </span>
+                                                        </button>
                                                     </td>
                                                 );
                                             }

@@ -41,8 +41,10 @@ export default function ExpandableCell({ value, onEdit }) {
                 }}>{items[0]}</span>
 
                 {items.length > 1 && (
-                    <span ref={btnRef}
+                    <button ref={btnRef}
+                        type="button"
                         onClick={openPopup}
+                        aria-label={`Show ${items.length - 1} more`}
                         style={{
                             background: 'rgba(var(--gold-rgb), 0.13)', border: '1px solid rgba(var(--gold-rgb), 0.35)',
                             borderRadius: 5, padding: '2px 7px', fontSize: '0.7rem',
@@ -51,7 +53,7 @@ export default function ExpandableCell({ value, onEdit }) {
                             flexShrink: 0,
                         }}>
                         +{items.length - 1}
-                    </span>
+                    </button>
                 )}
             </div>
 
