@@ -345,7 +345,7 @@ export default function ConnectPage() {
                 <button 
                     onClick={() => saveIntegrationsSettings(true)} 
                     className="btn" 
-                    style={{ background: 'var(--gold)', color: '#1A1206', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 8, border: 'none', cursor: 'pointer' }}
+                    style={{ background: 'var(--gold)', color: 'var(--action-fg)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 8, border: 'none', cursor: 'pointer' }}
                     disabled={saving}
                 >
                     {saving ? 'Saving...' : 'Save Settings'}
@@ -398,12 +398,12 @@ export default function ConnectPage() {
                                 />
                                 <span style={{
                                     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                                    backgroundColor: integrationsSettings.email_enabled === 1 ? 'var(--gold)' : '#334155',
+                                    backgroundColor: integrationsSettings.email_enabled === 1 ? 'var(--gold)' : 'var(--surface-2)',
                                     transition: '0.3s', borderRadius: 24, display: 'block'
                                 }} />
                                 <span style={{
                                     position: 'absolute', content: '""', height: 18, width: 18, left: integrationsSettings.email_enabled === 1 ? 26 : 4, bottom: 3,
-                                    backgroundColor: '#000', transition: '0.3s', borderRadius: '50%'
+                                    backgroundColor: 'var(--surface)', transition: '0.3s', borderRadius: '50%'
                                 }} />
                             </label>
                         </div>
@@ -424,12 +424,12 @@ export default function ConnectPage() {
                                         />
                                         <span style={{
                                             position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                                            backgroundColor: integrationsSettings.gmail_enabled === 1 ? 'var(--gold)' : '#334155',
+                                            backgroundColor: integrationsSettings.gmail_enabled === 1 ? 'var(--gold)' : 'var(--surface-2)',
                                             transition: '0.3s', borderRadius: 20, display: 'block'
                                         }} />
                                         <span style={{
                                             position: 'absolute', content: '""', height: 14, width: 14, left: integrationsSettings.gmail_enabled === 1 ? 22 : 3, bottom: 3,
-                                            backgroundColor: '#000', transition: '0.3s', borderRadius: '50%'
+                                            backgroundColor: 'var(--surface)', transition: '0.3s', borderRadius: '50%'
                                         }} />
                                     </label>
                                 </div>
@@ -471,12 +471,12 @@ export default function ConnectPage() {
                                         />
                                         <span style={{
                                             position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                                            backgroundColor: integrationsSettings.outlook_enabled === 1 ? 'var(--gold)' : '#334155',
+                                            backgroundColor: integrationsSettings.outlook_enabled === 1 ? 'var(--gold)' : 'var(--surface-2)',
                                             transition: '0.3s', borderRadius: 20, display: 'block'
                                         }} />
                                         <span style={{
                                             position: 'absolute', content: '""', height: 14, width: 14, left: integrationsSettings.outlook_enabled === 1 ? 22 : 3, bottom: 3,
-                                            backgroundColor: '#000', transition: '0.3s', borderRadius: '50%'
+                                            backgroundColor: 'var(--surface)', transition: '0.3s', borderRadius: '50%'
                                         }} />
                                     </label>
                                 </div>
@@ -619,16 +619,16 @@ export default function ConnectPage() {
                                         {testingConnection ? (
                                             <Loader size={16} className="spin" color="var(--gold)" />
                                         ) : testStatus.status === 'connected' ? (
-                                            <Check size={16} color="#4ade80" />
+                                            <Check size={16} color="var(--success-fg)" />
                                         ) : testStatus.status === 'error' ? (
-                                            <X size={16} color="#fca5a5" />
+                                            <X size={16} color="var(--danger-fg)" />
                                         ) : (
                                             <span style={{ fontSize: '0.78rem' }}>ℹ️</span>
                                         )}
                                         <span style={{ 
                                             fontSize: '0.78rem',
-                                            color: testStatus.status === 'connected' ? '#4ade80' : 
-                                                   testStatus.status === 'error' ? '#fca5a5' : 'var(--text)'
+                                            color: testStatus.status === 'connected' ? 'var(--success-fg)' : 
+                                                   testStatus.status === 'error' ? 'var(--danger-fg)' : 'var(--text)'
                                         }}>
                                             {testStatus.message || 'Primary mailbox connection has not been tested.'}
                                         </span>
@@ -673,7 +673,7 @@ export default function ConnectPage() {
                                                     type="button" 
                                                     className="btn btn-secondary" 
                                                     onClick={() => handleDeleteMailbox(index)}
-                                                    style={{ color: '#ef233c', borderColor: 'rgba(239, 35, 60, 0.2)', padding: '4px 8px', fontSize: '0.7rem' }}
+                                                    style={{ color: 'var(--danger-fg)', borderColor: 'rgba(var(--red-rgb), 0.2)', padding: '4px 8px', fontSize: '0.7rem' }}
                                                 >
                                                     <Trash2 size={12} /> Delete
                                                 </button>
@@ -682,8 +682,8 @@ export default function ConnectPage() {
                                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.1)', padding: '6px 10px', borderRadius: 6 }}>
                                                 <span style={{ 
                                                     fontSize: '0.72rem',
-                                                    color: mailboxTestStatuses[index]?.status === 'connected' ? '#4ade80' : 
-                                                           mailboxTestStatuses[index]?.status === 'error' ? '#fca5a5' : 'var(--text-dim)'
+                                                    color: mailboxTestStatuses[index]?.status === 'connected' ? 'var(--success-fg)' : 
+                                                           mailboxTestStatuses[index]?.status === 'error' ? 'var(--danger-fg)' : 'var(--text-dim)'
                                                 }}>
                                                     {mailboxTestStatuses[index] ? (
                                                         <>
@@ -811,7 +811,7 @@ export default function ConnectPage() {
                                             type="button" 
                                             className="btn" 
                                             onClick={handleAddMailbox}
-                                            style={{ background: 'var(--sky)', color: '#fff', border: 'none', padding: '6px 12px', fontSize: '0.75rem', borderRadius: 6, marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}
+                                            style={{ background: 'var(--sky)', color: 'var(--action-fg)', border: 'none', padding: '6px 12px', fontSize: '0.75rem', borderRadius: 6, marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}
                                         >
                                             <Plus size={14} /> Add Mailbox
                                         </button>
@@ -819,7 +819,7 @@ export default function ConnectPage() {
                                     {mailboxTestStatuses['new'] && (
                                         <div style={{ 
                                             marginTop: 10, fontSize: '0.72rem', padding: '6px 10px', borderRadius: 6,
-                                            color: mailboxTestStatuses['new'].status === 'connected' ? '#4ade80' : '#fca5a5',
+                                            color: mailboxTestStatuses['new'].status === 'connected' ? 'var(--success-fg)' : 'var(--danger-fg)',
                                             background: mailboxTestStatuses['new'].status === 'connected' ? 'rgba(74,222,128,0.06)' : 'rgba(239,68,68,0.06)'
                                         }}>
                                             {mailboxTestStatuses['new'].status === 'connected' ? '✔' : '✘'} {mailboxTestStatuses['new'].message}
@@ -849,19 +849,19 @@ export default function ConnectPage() {
                                 />
                                 <span style={{
                                     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                                    backgroundColor: integrationsSettings.drive_enabled === 1 ? 'var(--gold)' : '#334155',
+                                    backgroundColor: integrationsSettings.drive_enabled === 1 ? 'var(--gold)' : 'var(--surface-2)',
                                     transition: '0.3s', borderRadius: 24, display: 'block',
                                     opacity: !integrationsSettings.gdrive_refresh_token ? 0.5 : 1
                                 }} />
                                 <span style={{
                                     position: 'absolute', content: '""', height: 18, width: 18, left: integrationsSettings.drive_enabled === 1 ? 26 : 4, bottom: 3,
-                                    backgroundColor: '#000', transition: '0.3s', borderRadius: '50%'
+                                    backgroundColor: 'var(--surface)', transition: '0.3s', borderRadius: '50%'
                                 }} />
                             </label>
                         </div>
                         
                         {!integrationsSettings.gdrive_refresh_token && (
-                            <div style={{ padding: '10px 14px', background: 'rgba(239, 35, 60, 0.08)', border: '1px solid rgba(239, 35, 60, 0.3)', borderRadius: 8, fontSize: '0.78rem', color: '#ef233c' }}>
+                            <div style={{ padding: '10px 14px', background: 'var(--danger-bg)', border: '1px solid rgba(var(--red-rgb), 0.3)', borderRadius: 8, fontSize: '0.78rem', color: 'var(--danger-fg)' }}>
                                 ⚠️ Google Drive is not authorized. Please complete the authorization process below before enabling sync.
                             </div>
                         )}
@@ -948,13 +948,13 @@ export default function ConnectPage() {
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(74, 222, 128, 0.05)', border: '1px solid rgba(74, 222, 128, 0.3)', padding: '12px 16px', borderRadius: 8 }}>
                                     <div>
                                         <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Connected Account</div>
-                                        <strong style={{ fontSize: '0.88rem', color: '#4ade80' }}>{integrationsSettings.gdrive_email}</strong>
+                                        <strong style={{ fontSize: '0.88rem', color: 'var(--success-fg)' }}>{integrationsSettings.gdrive_email}</strong>
                                     </div>
                                     <button 
                                         type="button" 
                                         className="btn btn-secondary" 
                                         onClick={handleDisconnectGdrive}
-                                        style={{ color: '#ef233c', borderColor: 'rgba(239, 35, 60, 0.3)', padding: '8px 16px', fontSize: '0.8rem', height: 'fit-content' }}
+                                        style={{ color: 'var(--danger-fg)', borderColor: 'rgba(var(--red-rgb), 0.3)', padding: '8px 16px', fontSize: '0.8rem', height: 'fit-content' }}
                                     >
                                         Disconnect Account
                                     </button>
@@ -962,7 +962,7 @@ export default function ConnectPage() {
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                                     <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                                        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--gold)', color: '#000', width: 22, height: 22, borderRadius: '50%', fontWeight: 'bold', fontSize: '0.78rem' }}>1</span>
+                                        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--gold)', color: 'var(--action-fg)', width: 22, height: 22, borderRadius: '50%', fontWeight: 'bold', fontSize: '0.78rem' }}>1</span>
                                         <span style={{ fontSize: '0.82rem', color: 'var(--text)' }}>Generate Authorization Link</span>
                                         <button 
                                             type="button" 
@@ -976,7 +976,7 @@ export default function ConnectPage() {
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                                         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                                            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--gold)', color: '#000', width: 22, height: 22, borderRadius: '50%', fontWeight: 'bold', fontSize: '0.78rem' }}>2</span>
+                                            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--gold)', color: 'var(--action-fg)', width: 22, height: 22, borderRadius: '50%', fontWeight: 'bold', fontSize: '0.78rem' }}>2</span>
                                             <span style={{ fontSize: '0.82rem', color: 'var(--text)' }}>Paste redirect URL or authorization code</span>
                                         </div>
                                         <input 
@@ -987,14 +987,14 @@ export default function ConnectPage() {
                                         />
                                     </div>
                                     <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 4 }}>
-                                        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--gold)', color: '#000', width: 22, height: 22, borderRadius: '50%', fontWeight: 'bold', fontSize: '0.78rem' }}>3</span>
+                                        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--gold)', color: 'var(--action-fg)', width: 22, height: 22, borderRadius: '50%', fontWeight: 'bold', fontSize: '0.78rem' }}>3</span>
                                         <span style={{ fontSize: '0.82rem', color: 'var(--text)' }}>Establish Google Drive credentials link</span>
                                         <button 
                                             type="button" 
                                             className="btn" 
                                             onClick={handleExchangeGdriveCode}
                                             disabled={exchangingGdriveCode || !gdriveAuthCode}
-                                            style={{ marginLeft: 'auto', background: 'var(--gold)', color: '#000', fontWeight: 'bold', border: 'none', padding: '6px 14px', fontSize: '0.75rem', borderRadius: 6, cursor: 'pointer' }}
+                                            style={{ marginLeft: 'auto', background: 'var(--gold)', color: 'var(--action-fg)', fontWeight: 'bold', border: 'none', padding: '6px 14px', fontSize: '0.75rem', borderRadius: 6, cursor: 'pointer' }}
                                         >
                                             {exchangingGdriveCode ? 'Connecting...' : 'Connect Account'}
                                         </button>

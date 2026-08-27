@@ -355,7 +355,7 @@ export default function CandidatesTable({
                                                                     style={{
                                                                         background: 'none',
                                                                         border: 'none',
-                                                                        color: '#ef4444',
+                                                                        color: 'var(--danger-fg)',
                                                                         cursor: 'pointer',
                                                                         padding: '2px',
                                                                         display: 'inline-flex',
@@ -457,10 +457,10 @@ export default function CandidatesTable({
                                                         <button
                                                             onClick={() => setColumnFilters({})}
                                                             style={{
-                                                                background: 'rgba(239, 35, 60, 0.15)',
-                                                                border: '1px solid #ef233c',
+                                                                background: 'var(--danger-bg)',
+                                                                border: '1px solid rgba(var(--red-rgb), 0.4)',
                                                                 borderRadius: '4px',
-                                                                color: '#ef233c',
+                                                                color: 'var(--danger-fg)',
                                                                 cursor: 'pointer',
                                                                 fontSize: '0.7rem',
                                                                 fontWeight: 'bold',
@@ -810,7 +810,7 @@ export default function CandidatesTable({
                                 className="btn"
                                 onClick={handleAddCandidateSubmit}
                                 disabled={isAddingCandidate}
-                                style={{ flex: 1, background: 'var(--gold)', color: '#1A1206', fontWeight: 'bold', opacity: isAddingCandidate ? 0.6 : 1, cursor: isAddingCandidate ? 'not-allowed' : 'pointer' }}
+                                style={{ flex: 1, background: 'var(--gold)', color: 'var(--action-fg)', fontWeight: 'bold', opacity: isAddingCandidate ? 0.6 : 1, cursor: isAddingCandidate ? 'not-allowed' : 'pointer' }}
                             >
                                 {isAddingCandidate ? 'Adding…' : 'Add Candidate'}
                             </button>
@@ -844,7 +844,7 @@ export default function CandidatesTable({
                                     style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', minHeight: 80, resize: 'vertical', outline: 'none' }}
                                 />
                             </div>
-                            <button className="btn" onClick={handleAddCol} style={{ background: 'var(--gold)', color: '#1A1206', fontWeight: 'bold' }}>
+                            <button className="btn" onClick={handleAddCol} style={{ background: 'var(--gold)', color: 'var(--action-fg)', fontWeight: 'bold' }}>
                                 Create Column
                             </button>
                         </div>

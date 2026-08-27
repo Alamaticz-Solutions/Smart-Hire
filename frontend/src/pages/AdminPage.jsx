@@ -358,7 +358,7 @@ export default function AdminPage() {
                                     <button className="btn btn-primary" style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '0.5rem' }} onClick={() => handleApprove(req.id)}>
                                         <CheckCircle size={16} /> Approve
                                     </button>
-                                    <button className="btn btn-danger" style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '0.5rem', background: '#e74c3c' }} onClick={() => handleReject(req.id)}>
+                                    <button className="btn btn-danger" style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '0.5rem' }} onClick={() => handleReject(req.id)}>
                                         <XCircle size={16} /> Reject
                                     </button>
                                 </div>
@@ -383,7 +383,7 @@ export default function AdminPage() {
                             </div>
                         </div>
                         <div className="user-stat-card">
-                            <div className="user-stat-icon-container" style={{ color: '#219EBC', background: 'rgba(33, 158, 188, 0.1)', borderColor: 'rgba(33, 158, 188, 0.3)' }}>
+                            <div className="user-stat-icon-container" style={{ color: 'var(--info-fg)', background: 'var(--info-bg)', borderColor: 'rgba(var(--sky-rgb), 0.3)' }}>
                                 <UserCheck size={20} />
                             </div>
                             <div className="user-stat-info">
@@ -392,7 +392,7 @@ export default function AdminPage() {
                             </div>
                         </div>
                         <div className="user-stat-card">
-                            <div className="user-stat-icon-container" style={{ color: '#FB8500', background: 'rgba(251, 133, 0, 0.1)', borderColor: 'rgba(251, 133, 0, 0.3)' }}>
+                            <div className="user-stat-icon-container" style={{ color: 'var(--warning-fg)', background: 'var(--warning-bg)', borderColor: 'rgba(var(--gold-rgb), 0.3)' }}>
                                 <Shield size={20} />
                             </div>
                             <div className="user-stat-info">
@@ -452,15 +452,15 @@ export default function AdminPage() {
                                         
                                         // Generate beautiful initials and avatar colors
                                         const initials = (u.full_name || u.username).split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-                                        let avatarBg = 'linear-gradient(135deg, #64748b, #475569)'; // slate
+                                        let avatarBg = 'var(--text-subtle)'; // default
                                         if (u.is_admin === 1 && u.is_hr === 1) {
-                                            avatarBg = 'linear-gradient(135deg, #a855f7, #ec4899)'; // purple-pink (super-user)
+                                            avatarBg = 'var(--chart-3)'; // super-user
                                         } else if (u.is_admin === 1) {
-                                            avatarBg = 'linear-gradient(135deg, #f97316, #ef4444)'; // orange-red (admin)
+                                            avatarBg = 'var(--chart-1)'; // admin
                                         } else if (u.is_hr === 1) {
-                                            avatarBg = 'linear-gradient(135deg, #0ea5e9, #059669)'; // sky-emerald (HR manager)
+                                            avatarBg = 'var(--chart-2)'; // HR manager
                                         } else if (u.is_external === 1) {
-                                            avatarBg = 'linear-gradient(135deg, #94a3b8, #64748b)'; // slate grey (external)
+                                            avatarBg = 'var(--border-strong)'; // external
                                         }
 
                                         return (
@@ -614,10 +614,10 @@ export default function AdminPage() {
                                 return (
                                     <label key={f.key} style={{
                                         display: 'flex', alignItems: 'center', gap: '8px',
-                                        fontSize: '0.88rem', color: isChecked ? '#ef4444' : 'var(--text)',
+                                        fontSize: '0.88rem', color: isChecked ? 'var(--danger-fg)' : 'var(--text)',
                                         cursor: 'pointer', padding: '8px 12px', borderRadius: '6px',
-                                        background: isChecked ? 'rgba(239, 68, 68, 0.08)' : 'rgba(255,255,255,0.02)',
-                                        border: `1px solid ${isChecked ? 'rgba(239, 68, 68, 0.2)' : 'transparent'}`,
+                                        background: isChecked ? 'var(--danger-bg)' : 'var(--surface-2)',
+                                        border: `1px solid ${isChecked ? 'rgba(var(--red-rgb), 0.2)' : 'transparent'}`,
                                         transition: 'all 0.15s'
                                     }}>
                                         <input
@@ -630,7 +630,7 @@ export default function AdminPage() {
                                                         : [...prev, f.key]
                                                 );
                                             }}
-                                            style={{ cursor: 'pointer', accentColor: '#ef4444' }}
+                                            style={{ cursor: 'pointer', accentColor: 'var(--danger-fg)' }}
                                         />
                                         {f.label}
                                     </label>
@@ -655,7 +655,7 @@ export default function AdminPage() {
                                     setShowHiddenFieldsModal(false);
                                 }}
                                 className="btn btn-primary"
-                                style={{ padding: '6px 18px', fontSize: '0.8rem', background: '#ef4444', borderColor: '#ef4444' }}
+                                style={{ padding: '6px 18px', fontSize: '0.8rem' }}
                             >
                                 Save Changes
                             </button>

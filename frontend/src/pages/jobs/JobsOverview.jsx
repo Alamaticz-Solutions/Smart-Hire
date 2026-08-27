@@ -177,9 +177,9 @@ export default function JobsOverview({
                                         background: job.job_status === 'In-progress' ? 'rgba(34, 197, 94, 0.12)' :
                                                     job.job_status === 'On-hold' ? 'rgba(249, 115, 22, 0.12)' :
                                                     job.job_status === 'Closed' ? 'rgba(239, 68, 68, 0.12)' : 'rgba(33, 158, 188, 0.12)',
-                                        color: job.job_status === 'In-progress' ? '#4ade80' :
-                                               job.job_status === 'On-hold' ? '#fdba74' :
-                                               job.job_status === 'Closed' ? '#fca5a5' : '#38bdf8',
+                                        color: job.job_status === 'In-progress' ? 'var(--success-fg)' :
+                                               job.job_status === 'On-hold' ? 'var(--warning-fg)' :
+                                               job.job_status === 'Closed' ? 'var(--danger-fg)' : 'var(--info-fg)',
                                         border: `1px solid ${
                                             job.job_status === 'In-progress' ? 'rgba(34, 197, 94, 0.2)' :
                                             job.job_status === 'On-hold' ? 'rgba(249, 115, 22, 0.2)' :
@@ -275,7 +275,7 @@ export default function JobsOverview({
                                     {!isExternal && (
                                         <button
                                             className="btn btn-secondary"
-                                            style={{ padding: '7px', borderColor: 'rgba(239, 68, 68, 0.3)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                            style={{ padding: '7px', borderColor: 'rgba(var(--red-rgb), 0.3)', color: 'var(--danger-fg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 handleDeleteJob(job.id);

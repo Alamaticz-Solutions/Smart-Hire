@@ -57,9 +57,9 @@ export default function JobDetailPanel({
                             background: selectedJob.job_status === 'In-progress' ? 'rgba(34, 197, 94, 0.15)' :
                                         selectedJob.job_status === 'On-hold' ? 'rgba(249, 115, 22, 0.15)' :
                                         selectedJob.job_status === 'Closed' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(33, 158, 188, 0.15)',
-                            color: selectedJob.job_status === 'In-progress' ? '#4ade80' :
-                                   selectedJob.job_status === 'On-hold' ? '#fdba74' :
-                                   selectedJob.job_status === 'Closed' ? '#fca5a5' : '#38bdf8',
+                            color: selectedJob.job_status === 'In-progress' ? 'var(--success-fg)' :
+                                   selectedJob.job_status === 'On-hold' ? 'var(--warning-fg)' :
+                                   selectedJob.job_status === 'Closed' ? 'var(--danger-fg)' : 'var(--info-fg)',
                             border: `1px solid ${
                                 selectedJob.job_status === 'In-progress' ? 'rgba(34, 197, 94, 0.3)' :
                                 selectedJob.job_status === 'On-hold' ? 'rgba(249, 115, 22, 0.3)' :
@@ -163,7 +163,7 @@ export default function JobDetailPanel({
                                         onClick={() => { setShowDropdown(false); handleDeleteJob(selectedJob.id); }}
                                         style={{
                                             width: '100%', padding: '10px 14px', background: 'none', border: 'none',
-                                            color: '#fca5a5', textAlign: 'left', cursor: 'pointer', fontSize: '0.85rem',
+                                            color: 'var(--danger-fg)', textAlign: 'left', cursor: 'pointer', fontSize: '0.85rem',
                                             display: 'flex', alignItems: 'center', gap: '8px'
                                         }}
                                         onMouseEnter={e => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'}

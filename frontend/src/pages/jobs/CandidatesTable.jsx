@@ -307,10 +307,10 @@ export default function CandidatesTable({
                                                             <button
                                                                 onClick={() => setColumnFilters({})}
                                                                 style={{
-                                                                    background: 'rgba(239, 35, 60, 0.15)',
-                                                                    border: '1px solid #ef233c',
+                                                                    background: 'var(--danger-bg)',
+                                                                    border: '1px solid rgba(var(--red-rgb), 0.4)',
                                                                     borderRadius: '4px',
-                                                                    color: '#ef233c',
+                                                                    color: 'var(--danger-fg)',
                                                                     cursor: 'pointer',
                                                                     fontSize: '0.7rem',
                                                                     fontWeight: 'bold',

@@ -261,8 +261,8 @@ export default function CandidateDetailsModal({
                                 <button
                                     onClick={handleDownloadDocx}
                                     style={{
-                                        background: 'linear-gradient(135deg, var(--gold) 0%, #D4AF37 100%)', border: 'none',
-                                        color: 'var(--navy-dark)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
+                                        background: 'var(--gold)', border: 'none',
+                                        color: 'var(--action-fg)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
                                         fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 800,
                                         display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s',
                                         boxShadow: '0 4px 10px rgba(var(--gold-rgb), 0.2)'
@@ -277,8 +277,8 @@ export default function CandidateDetailsModal({
                                 <button
                                     onClick={handleToggleFormatted}
                                     style={{
-                                        background: showAlamaticz ? 'rgba(var(--gold-rgb), 0.2)' : 'linear-gradient(135deg, var(--gold) 0%, #D4AF37 100%)', border: showAlamaticz ? '1px solid var(--gold)' : 'none',
-                                        color: showAlamaticz ? 'var(--gold)' : 'var(--navy-dark)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
+                                        background: showAlamaticz ? 'rgba(var(--gold-rgb), 0.2)' : 'var(--gold)', border: showAlamaticz ? '1px solid var(--gold)' : 'none',
+                                        color: showAlamaticz ? 'var(--gold)' : 'var(--action-fg)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
                                         fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 800,
                                         display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s',
                                         boxShadow: showAlamaticz ? 'none' : '0 4px 10px rgba(var(--gold-rgb), 0.2)'
@@ -291,9 +291,9 @@ export default function CandidateDetailsModal({
                                 <button
                                     onClick={handleToggleStatusClick}
                                     style={{
-                                        background: jobStatus === 'selected' ? 'rgba(45, 212, 191, 0.15)' : 'rgba(var(--gold-rgb), 0.15)',
-                                        border: jobStatus === 'selected' ? '1px solid rgba(45, 212, 191, 0.35)' : '1px solid rgba(var(--gold-rgb), 0.35)',
-                                        color: jobStatus === 'selected' ? '#2dd4bf' : 'var(--gold)',
+                                        background: jobStatus === 'selected' ? 'var(--success-bg)' : 'rgba(var(--gold-rgb), 0.15)',
+                                        border: jobStatus === 'selected' ? '1px solid rgba(var(--green-rgb), 0.35)' : '1px solid rgba(var(--gold-rgb), 0.35)',
+                                        color: jobStatus === 'selected' ? 'var(--success-fg)' : 'var(--gold)',
                                         cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
                                         fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 700,
                                         display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s',
@@ -307,14 +307,14 @@ export default function CandidateDetailsModal({
                                 <button
                                     onClick={() => onDeleteCandidate(candidate.id)}
                                     style={{
-                                        background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)',
-                                        color: '#ef4444', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
+                                        background: 'var(--danger-bg)', border: '1px solid rgba(var(--red-rgb), 0.3)',
+                                        color: 'var(--danger-fg)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
                                         fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 700,
                                         display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s',
                                         outline: 'none'
                                     }}
-                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.25)'}
-                                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)'}
+                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--red-rgb), 0.25)'}
+                                    onMouseLeave={e => e.currentTarget.style.background = 'var(--danger-bg)'}
                                 >
                                     <Trash2 size={14} /> Delete Candidate
                                 </button>
@@ -573,9 +573,9 @@ export default function CandidateDetailsModal({
                                                             <td style={{ padding: '10px 12px' }}>{job.client_name || '—'}</td>
                                                             <td style={{ padding: '10px 12px' }}>
                                                                 <span style={{
-                                                                    background: isSelected ? 'rgba(45, 212, 191, 0.12)' : 'rgba(56, 189, 248, 0.12)',
-                                                                    color: isSelected ? '#2dd4bf' : '#38bdf8',
-                                                                    border: isSelected ? '1px solid rgba(45, 212, 191, 0.25)' : '1px solid rgba(56, 189, 248, 0.25)',
+                                                                                    background: isSelected ? 'var(--success-bg)' : 'var(--info-bg)',
+                                                                    color: isSelected ? 'var(--success-fg)' : 'var(--info-fg)',
+                                                                    border: isSelected ? '1px solid rgba(var(--green-rgb), 0.25)' : '1px solid rgba(var(--sky-rgb), 0.25)',
                                                                     borderRadius: 5, padding: '2px 8px', fontSize: '0.72rem', fontWeight: 700,
                                                                     textTransform: 'uppercase', display: 'inline-block'
                                                                 }}>
@@ -604,7 +604,7 @@ export default function CandidateDetailsModal({
                         height: '100%',
                         display: 'flex',
                         flexDirection: 'column',
-                        background: showFormattedPanel ? '#525659' : (isPdf ? '#525659' : 'rgba(var(--navy-dark-rgb), 0.95)'),
+                        background: showFormattedPanel ? 'var(--surface-sunken)' : (isPdf ? 'var(--surface-sunken)' : 'var(--navy-dark)'),
                         justifyContent: (showFormattedPanel || isPdf) ? 'stretch' : 'center',
                         alignItems: (showFormattedPanel || isPdf) ? 'stretch' : 'center',
                         padding: (showFormattedPanel || isPdf) ? 0 : '40px',
@@ -628,9 +628,9 @@ export default function CandidateDetailsModal({
                                     </span>
                                     {!isEditingFormatted && (
                                         <div style={{ display: 'flex', gap: '8px', marginRight: 'auto', marginLeft: '20px' }}>
-                                            <button onClick={() => setResumeTemplate('alamaticz')} style={{ background: resumeTemplate === 'alamaticz' ? 'var(--gold)' : 'transparent', color: resumeTemplate === 'alamaticz' ? '#000' : 'var(--gold)', border: '1px solid var(--gold)', borderRadius: '4px', padding: '4px 8px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}>Alamaticz</button>
-                                            <button onClick={() => setResumeTemplate('modern')} style={{ background: resumeTemplate === 'modern' ? 'var(--gold)' : 'transparent', color: resumeTemplate === 'modern' ? '#000' : 'var(--gold)', border: '1px solid var(--gold)', borderRadius: '4px', padding: '4px 8px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}>Modern</button>
-                                            <button onClick={() => setResumeTemplate('classic')} style={{ background: resumeTemplate === 'classic' ? 'var(--gold)' : 'transparent', color: resumeTemplate === 'classic' ? '#000' : 'var(--gold)', border: '1px solid var(--gold)', borderRadius: '4px', padding: '4px 8px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}>Classic</button>
+                                            <button onClick={() => setResumeTemplate('alamaticz')} style={{ background: resumeTemplate === 'alamaticz' ? 'var(--gold)' : 'transparent', color: resumeTemplate === 'alamaticz' ? 'var(--action-fg)' : 'var(--gold)', border: '1px solid var(--gold)', borderRadius: '4px', padding: '4px 8px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}>Alamaticz</button>
+                                            <button onClick={() => setResumeTemplate('modern')} style={{ background: resumeTemplate === 'modern' ? 'var(--gold)' : 'transparent', color: resumeTemplate === 'modern' ? 'var(--action-fg)' : 'var(--gold)', border: '1px solid var(--gold)', borderRadius: '4px', padding: '4px 8px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}>Modern</button>
+                                            <button onClick={() => setResumeTemplate('classic')} style={{ background: resumeTemplate === 'classic' ? 'var(--gold)' : 'transparent', color: resumeTemplate === 'classic' ? 'var(--action-fg)' : 'var(--gold)', border: '1px solid var(--gold)', borderRadius: '4px', padding: '4px 8px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}>Classic</button>
                                         </div>
                                     )}
                                     {isEditingFormatted ? (
@@ -639,8 +639,8 @@ export default function CandidateDetailsModal({
                                                 onClick={handleSaveEditedResume}
                                                 disabled={savingEdited}
                                                 style={{
-                                                    background: '#2dd4bf',
-                                                    color: '#000',
+                                                    background: 'var(--success-fg)',
+                                                    color: 'var(--surface)',
                                                     border: 'none',
                                                     borderRadius: '6px',
                                                     padding: '6px 14px',
@@ -659,9 +659,9 @@ export default function CandidateDetailsModal({
                                                 onClick={() => setIsEditingFormatted(false)}
                                                 disabled={savingEdited}
                                                 style={{
-                                                    background: 'rgba(239, 68, 68, 0.15)',
-                                                    color: '#ef4444',
-                                                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                                                    background: 'var(--danger-bg)',
+                                                    color: 'var(--danger-fg)',
+                                                    border: '1px solid rgba(var(--red-rgb), 0.3)',
                                                     borderRadius: '6px',
                                                     padding: '6px 14px',
                                                     fontSize: '0.8rem',
@@ -704,7 +704,7 @@ export default function CandidateDetailsModal({
                                                 disabled={loadingFormatted || !formattedData}
                                                 style={{
                                                     background: 'var(--gold)',
-                                                    color: '#1A1206',
+                                                    color: 'var(--action-fg)',
                                                     border: 'none',
                                                     borderRadius: '6px',
                                                     padding: '6px 14px',
@@ -741,7 +741,7 @@ export default function CandidateDetailsModal({
                             isPdf ? (
                                 <iframe
                                     src={`${getStaticUrl(candidate.filename)}#view=FitH`}
-                                    style={{ width: '100%', height: '100%', border: 'none', background: '#525659' }}
+                                    style={{ width: '100%', height: '100%', border: 'none', background: 'var(--surface-sunken)' }}
                                     title="Candidate Resume"
                                 />
                             ) : (
@@ -779,7 +779,7 @@ export default function CandidateDetailsModal({
                                         download={candidate.filename}
                                         style={{
                                             background: 'var(--gold)',
-                                            color: '#1A1206',
+                                            color: 'var(--action-fg)',
                                             textDecoration: 'none',
                                             fontSize: '0.85rem',
                                             fontFamily: 'var(--fh)',

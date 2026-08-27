@@ -303,7 +303,7 @@ export default function TemplatesPage() {
                 <button 
                     onClick={saveIntegrationsSettings} 
                     className="btn" 
-                    style={{ background: 'var(--gold)', color: '#1A1206', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 8, border: 'none', cursor: 'pointer' }}
+                    style={{ background: 'var(--gold)', color: 'var(--action-fg)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 8, border: 'none', cursor: 'pointer' }}
                     disabled={saving}
                 >
                     <Save size={16} />
@@ -424,7 +424,7 @@ export default function TemplatesPage() {
                                     onClick={() => handleThemeChange('custom')}
                                     style={{ 
                                         padding: '6px 12px', fontSize: '0.72rem', background: 'var(--gold)',
-                                        color: '#1A1206', fontWeight: 'bold', cursor: 'pointer', border: 'none',
+                                        color: 'var(--action-fg)', fontWeight: 'bold', cursor: 'pointer', border: 'none',
                                         borderRadius: 6, marginLeft: 'auto', flexShrink: 0
                                     }}
                                 >
@@ -562,7 +562,7 @@ export default function TemplatesPage() {
                                 style={{
                                     padding: '6px 12px', fontSize: '0.72rem', border: 'none', borderRadius: 6,
                                     background: previewType === 'missing' ? 'var(--gold)' : 'transparent',
-                                    color: previewType === 'missing' ? '#000' : 'var(--text-dim)',
+                                    color: previewType === 'missing' ? 'var(--action-fg)' : 'var(--text-dim)',
                                     fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s'
                                 }}
                             >
@@ -574,7 +574,7 @@ export default function TemplatesPage() {
                                 style={{
                                     padding: '6px 12px', fontSize: '0.72rem', border: 'none', borderRadius: 6,
                                     background: previewType === 'complete' ? 'var(--gold)' : 'transparent',
-                                    color: previewType === 'complete' ? '#000' : 'var(--text-dim)',
+                                    color: previewType === 'complete' ? 'var(--action-fg)' : 'var(--text-dim)',
                                     fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s'
                                 }}
                             >
@@ -583,33 +583,37 @@ export default function TemplatesPage() {
                         </div>
                     </div>
 
-                    {/* Email Client Simulator mockup container */}
+                    {/* Email Client Simulator mockup container — a real inbox renders on a
+                        white surface regardless of the app's own theme, so this mock stays
+                        light-on-white in both themes rather than following --surface/--text
+                        (S9.1: was fixed near-black, which misrepresented what recipients
+                        actually see and looked broken sitting inside the light theme). */}
                     <div style={{
-                        background: '#0a121e', borderRadius: 12, border: '1px solid var(--border)',
-                        display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+                        background: '#FFFFFF', borderRadius: 12, border: '1px solid var(--border)',
+                        display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
                         minHeight: 450
                     }}>
                         {/* Mock header window control bar */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#121d2d', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#F1F2F6', padding: '12px 16px', borderBottom: '1px solid #E2E4EC' }}>
                             <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ff5f56' }}></div>
                             <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ffbd2e' }}></div>
                             <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#27c93f' }}></div>
-                            <div style={{ marginLeft: 12, fontSize: '0.75rem', color: 'var(--text-dim)', fontFamily: 'monospace', letterSpacing: '0.02rem' }}>📧 mail-client-simulator.html</div>
+                            <div style={{ marginLeft: 12, fontSize: '0.75rem', color: '#6B6F94', fontFamily: 'monospace', letterSpacing: '0.02rem' }}>📧 mail-client-simulator.html</div>
                         </div>
 
                         {/* Email headers */}
-                        <div style={{ padding: 16, borderBottom: '1px solid rgba(var(--sky-rgb), 0.15)', display: 'flex', flexDirection: 'column', gap: 8, background: '#0e1725', fontSize: '0.82rem' }}>
+                        <div style={{ padding: 16, borderBottom: '1px solid #E2E4EC', display: 'flex', flexDirection: 'column', gap: 8, background: '#FAFAFC', fontSize: '0.82rem' }}>
                             <div>
-                                <span style={{ color: 'var(--text-dim)', fontWeight: 500 }}>From: </span>
-                                <strong style={{ color: 'var(--sky-dim)' }}>Alamaticz Solutions HR Team</strong> &lt;{integrationsSettings.email_user || 'hr@alamaticz.com'}&gt;
+                                <span style={{ color: '#6B6F94', fontWeight: 500 }}>From: </span>
+                                <strong style={{ color: '#1568A6' }}>Alamaticz Solutions HR Team</strong> &lt;{integrationsSettings.email_user || 'hr@alamaticz.com'}&gt;
                             </div>
                             <div>
-                                <span style={{ color: 'var(--text-dim)', fontWeight: 500 }}>To: </span>
-                                <strong style={{ color: 'var(--text)' }}>Somasekhar Kundurthi</strong> &lt;candidate@gmail.com&gt;
+                                <span style={{ color: '#6B6F94', fontWeight: 500 }}>To: </span>
+                                <strong style={{ color: '#12173F' }}>Somasekhar Kundurthi</strong> &lt;candidate@gmail.com&gt;
                             </div>
                             <div>
-                                <span style={{ color: 'var(--text-dim)', fontWeight: 500 }}>Subject: </span>
-                                <span style={{ color: 'var(--gold)', fontWeight: 700 }}>
+                                <span style={{ color: '#6B6F94', fontWeight: 500 }}>Subject: </span>
+                                <span style={{ color: '#B0650B', fontWeight: 700 }}>
                                     {getPreviewText(integrationsSettings.reply_subject, previewType === 'missing' ? integrationsSettings.reply_body_missing : integrationsSettings.reply_body_complete).subject}
                                 </span>
                             </div>
@@ -618,11 +622,11 @@ export default function TemplatesPage() {
                         {/* Email body render simulation */}
                         <div style={{
                             flex: 1, padding: 24, overflowY: 'auto', fontSize: '0.85rem',
-                            color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6, background: '#070c14',
+                            color: '#12173F', whiteSpace: 'pre-wrap', lineHeight: 1.6, background: '#FFFFFF',
                             fontFamily: 'system-ui, -apple-system, sans-serif'
                         }}>
                             {getPreviewText(integrationsSettings.reply_subject, previewType === 'missing' ? integrationsSettings.reply_body_missing : integrationsSettings.reply_body_complete).body || (
-                                <div style={{ color: 'var(--text-dim)', fontStyle: 'italic', textAlign: 'center', marginTop: '2rem' }}>
+                                <div style={{ color: '#8A8FAF', fontStyle: 'italic', textAlign: 'center', marginTop: '2rem' }}>
                                     No template content. Start editing to see preview.
                                 </div>
                             )}
@@ -651,7 +655,7 @@ export default function TemplatesPage() {
                                 className="btn"
                                 onClick={handleTestEmail}
                                 disabled={isTestingEmail}
-                                style={{ background: 'var(--sky)', color: '#fff', border: 'none', padding: '8px 16px', fontSize: '0.8rem', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, cursor: isTestingEmail ? 'not-allowed' : 'pointer', opacity: isTestingEmail ? 0.7 : 1 }}
+                                style={{ background: 'var(--sky)', color: 'var(--action-fg)', border: 'none', padding: '8px 16px', fontSize: '0.8rem', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, cursor: isTestingEmail ? 'not-allowed' : 'pointer', opacity: isTestingEmail ? 0.7 : 1 }}
                             >
                                 {isTestingEmail ? <Loader size={14} className="spin" /> : <Send size={14} />}
                                 {isTestingEmail ? 'Sending...' : 'Send Test'}
