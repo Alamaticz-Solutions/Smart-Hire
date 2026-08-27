@@ -259,7 +259,7 @@ export default function JobsPage() {
 
     const loadJobs = async () => {
         try {
-            const r = await apiClient.get(`/api/jobs`);
+            const r = await apiClient.get(`/api/jobs`, { headers: { 'x-user-username': user?.username } });
             setJobs(r.data);
             sessionStorage.setItem('cached_jobs', JSON.stringify(r.data));
             if (selectedJob) {
@@ -371,7 +371,7 @@ export default function JobsPage() {
         setTimeout(async () => {
             let updated = null;
             try {
-                const r = await apiClient.get(`/api/jobs`);
+                const r = await apiClient.get(`/api/jobs`, { headers: { 'x-user-username': user?.username } });
                 setJobs(r.data);
                 sessionStorage.setItem('cached_jobs', JSON.stringify(r.data));
                 updated = r.data.find(j => j.id === jobId) || null;
