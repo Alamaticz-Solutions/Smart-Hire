@@ -707,7 +707,8 @@ export default function CandidatesTable({
                                                     cursor: key === 'candidate_status' ? 'pointer' : 'text',
                                                 }}>
                                                     {key === 'full_name' ? (
-                                                        <span
+                                                        <button
+                                                            type="button"
                                                             onClick={() => setSelectedCandidateForDetails(row)}
                                                             style={{
                                                                 display: 'inline-flex',
@@ -717,13 +718,17 @@ export default function CandidatesTable({
                                                                 textDecoration: 'underline',
                                                                 cursor: 'pointer',
                                                                 fontWeight: 700,
-                                                                transition: 'color 0.2s'
+                                                                transition: 'color 0.2s',
+                                                                background: 'none',
+                                                                border: 'none',
+                                                                padding: 0,
+                                                                font: 'inherit',
                                                             }}
                                                             title="View Candidate Details"
                                                         >
                                                             <FileText size={14} style={{ flexShrink: 0, color: 'var(--gold)' }} />
                                                             {display}
-                                                        </span>
+                                                        </button>
                                                     ) : display}
                                                 </td>
                                             )

@@ -304,7 +304,8 @@ export default function DashboardPage() {
                                         {columns.map(col => {
                                             if (col.col_key === 'full_name') {
                                                 return <td style={{ padding: '10px 12px', verticalAlign: 'top', minWidth: '180px' }} key={col.col_key}>
-                                                    <span
+                                                    <button
+                                                        type="button"
                                                         onClick={() => setSelectedCandidateForDetails(c)}
                                                         style={{
                                                             display: 'inline-flex',
@@ -314,13 +315,17 @@ export default function DashboardPage() {
                                                             textDecoration: 'underline',
                                                             cursor: 'pointer',
                                                             fontWeight: 700,
-                                                            transition: 'color 0.2s'
+                                                            transition: 'color 0.2s',
+                                                            background: 'none',
+                                                            border: 'none',
+                                                            padding: 0,
+                                                            font: 'inherit',
                                                         }}
                                                         title="View Candidate Profile & Jobs"
                                                     >
                                                         <FileText size={14} style={{ flexShrink: 0, color: 'var(--gold)' }} />
                                                         {c.full_name || '—'}
-                                                    </span>
+                                                    </button>
                                                 </td>
                                             }
                                             if (col.col_key === 'skills') {

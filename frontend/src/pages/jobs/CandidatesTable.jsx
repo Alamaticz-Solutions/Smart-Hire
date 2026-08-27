@@ -585,7 +585,8 @@ export default function CandidatesTable({
                                                                         flexShrink: 0
                                                                     }}
                                                                 />
-                                                                <span
+                                                                <button
+                                                                    type="button"
                                                                     onClick={() => setSelectedCandidateForDetails(row)}
                                                                     style={{
                                                                         display: 'inline-flex',
@@ -595,7 +596,11 @@ export default function CandidatesTable({
                                                                         textDecoration: 'underline',
                                                                         cursor: 'pointer',
                                                                         fontWeight: 700,
-                                                                        transition: 'color 0.2s'
+                                                                        transition: 'color 0.2s',
+                                                                        background: 'none',
+                                                                        border: 'none',
+                                                                        padding: 0,
+                                                                        font: 'inherit',
                                                                     }}
                                                                     title="View Candidate Profile & Jobs"
                                                                 >
@@ -606,7 +611,7 @@ export default function CandidatesTable({
                                                                             <Star size={11} fill="currentColor" /> Qualified
                                                                         </span>
                                                                     ) : null}
-                                                                </span>
+                                                                </button>
                                                             </div>
                                                         ) : key === 'email' && val ? (
                                                             <a
