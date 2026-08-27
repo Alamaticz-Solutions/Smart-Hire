@@ -345,7 +345,7 @@ export default function ConnectPage() {
                 <button 
                     onClick={() => saveIntegrationsSettings(true)} 
                     className="btn" 
-                    style={{ background: 'var(--gradient-gold)', color: '#000', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 8, border: 'none', cursor: 'pointer' }}
+                    style={{ background: 'var(--gold)', color: '#1A1206', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 8, border: 'none', cursor: 'pointer' }}
                     disabled={saving}
                 >
                     {saving ? 'Saving...' : 'Save Settings'}

@@ -703,8 +703,8 @@ export default function CandidateDetailsModal({
                                                 onClick={handlePrintResume}
                                                 disabled={loadingFormatted || !formattedData}
                                                 style={{
-                                                    background: 'var(--gradient-gold)',
-                                                    color: '#000',
+                                                    background: 'var(--gold)',
+                                                    color: '#1A1206',
                                                     border: 'none',
                                                     borderRadius: '6px',
                                                     padding: '6px 14px',
@@ -778,8 +778,8 @@ export default function CandidateDetailsModal({
                                         href={getStaticUrl(candidate.filename)}
                                         download={candidate.filename}
                                         style={{
-                                            background: 'var(--gradient-gold)',
-                                            color: '#000',
+                                            background: 'var(--gold)',
+                                            color: '#1A1206',
                                             textDecoration: 'none',
                                             fontSize: '0.85rem',
                                             fontFamily: 'var(--fh)',

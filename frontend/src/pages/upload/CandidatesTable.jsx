@@ -810,7 +810,7 @@ export default function CandidatesTable({
                                 className="btn"
                                 onClick={handleAddCandidateSubmit}
                                 disabled={isAddingCandidate}
-                                style={{ flex: 1, background: 'var(--gradient-gold)', color: '#000', fontWeight: 'bold', opacity: isAddingCandidate ? 0.6 : 1, cursor: isAddingCandidate ? 'not-allowed' : 'pointer' }}
+                                style={{ flex: 1, background: 'var(--gold)', color: '#1A1206', fontWeight: 'bold', opacity: isAddingCandidate ? 0.6 : 1, cursor: isAddingCandidate ? 'not-allowed' : 'pointer' }}
                             >
                                 {isAddingCandidate ? 'Adding…' : 'Add Candidate'}
                             </button>
@@ -844,7 +844,7 @@ export default function CandidatesTable({
                                     style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', minHeight: 80, resize: 'vertical', outline: 'none' }}
                                 />
                             </div>
-                            <button className="btn" onClick={handleAddCol} style={{ background: 'var(--gradient-gold)', color: '#000', fontWeight: 'bold' }}>
+                            <button className="btn" onClick={handleAddCol} style={{ background: 'var(--gold)', color: '#1A1206', fontWeight: 'bold' }}>
                                 Create Column
                             </button>
                         </div>

@@ -303,7 +303,7 @@ export default function TemplatesPage() {
                 <button 
                     onClick={saveIntegrationsSettings} 
                     className="btn" 
-                    style={{ background: 'var(--gradient-gold)', color: '#000', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 8, border: 'none', cursor: 'pointer' }}
+                    style={{ background: 'var(--gold)', color: '#1A1206', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 8, border: 'none', cursor: 'pointer' }}
                     disabled={saving}
                 >
                     <Save size={16} />
@@ -423,8 +423,8 @@ export default function TemplatesPage() {
                                     className="btn" 
                                     onClick={() => handleThemeChange('custom')}
                                     style={{ 
-                                        padding: '6px 12px', fontSize: '0.72rem', background: 'var(--gradient-gold)', 
-                                        color: '#000', fontWeight: 'bold', cursor: 'pointer', border: 'none', 
+                                        padding: '6px 12px', fontSize: '0.72rem', background: 'var(--gold)',
+                                        color: '#1A1206', fontWeight: 'bold', cursor: 'pointer', border: 'none',
                                         borderRadius: 6, marginLeft: 'auto', flexShrink: 0
                                     }}
                                 >
