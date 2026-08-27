@@ -66,7 +66,18 @@ export default function App() {
     const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark')
 
     const login = (u) => { setUser(u); localStorage.setItem('hire_ai_user', JSON.stringify(u)) }
-    const logout = () => { setUser(null); localStorage.removeItem('hire_ai_user') }
+    // G-24: candidate/job data cached in sessionStorage (cached_candidates,
+    // cached_jobs, cached_selected_job, cached_job_candidates_*) and this
+    // user's chat history in localStorage had no cleanup on logout - on a
+    // shared machine, the next person to sign in in the same tab could see
+    // the previous user's cached PII for a moment before a fresh fetch
+    // overwrote it. Logout now clears both.
+    const logout = () => {
+        if (user?.username) localStorage.removeItem(`hire_ai_chat_msgs_${user.username}`)
+        sessionStorage.clear()
+        setUser(null)
+        localStorage.removeItem('hire_ai_user')
+    }
     const updateUser = (u) => { setUser(u); localStorage.setItem('hire_ai_user', JSON.stringify(u)) }
 
     return (
