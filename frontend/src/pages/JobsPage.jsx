@@ -6,6 +6,9 @@ import apiClient, { getStaticUrl } from '../api/client';
 import useColumnConfig from '../hooks/useColumnConfig';
 import useDraggableColumns from '../hooks/useDraggableColumns';
 import { useToast } from '../hooks/useToast';
+import ToastHost from '../components/shared/ToastHost';
+import { useConfirm } from '../hooks/useConfirm';
+import ConfirmDialog from '../components/shared/ConfirmDialog';
 import { computeTableWidth } from '../utils/tableWidth';
 import { applySavedColumnOrder } from '../utils/columnOrder';
 import { useInlineCellEdit } from '../hooks/useInlineCellEdit';
@@ -86,7 +89,8 @@ export default function JobsPage() {
     });
     const [isMatching, setIsMatching] = useState(false);
     const [activeTab, setActiveTab] = useState('matched'); // 'matched' or 'selected'
-    const { toast, showToast } = useToast();
+    const { toast, showToast, dismissToast } = useToast();
+    const { confirm, confirmDialogProps } = useConfirm();
     const [editingCandidate, setEditingCandidate] = useState(null);
     const [editName, setEditName] = useState('');
     const [editExp, setEditExp] = useState('');
@@ -417,7 +421,7 @@ export default function JobsPage() {
     }
 
     const handleDeleteJob = async (jobId) => {
-        if (!window.confirm('Delete this job?')) return;
+        if (!await confirm({ title: 'Delete job?', message: 'Are you sure you want to delete this job?', confirmLabel: 'Delete' })) return;
         try {
             await apiClient.delete(`/api/jobs/${jobId}`, {
                 headers: { 'x-user-username': user?.username }
@@ -499,7 +503,7 @@ export default function JobsPage() {
     }
 
     const handleRemoveFromJob = async (candidateId) => {
-        if (!window.confirm('Remove this candidate from this Job?')) return;
+        if (!await confirm({ title: 'Remove candidate?', message: 'Remove this candidate from this job?', confirmLabel: 'Remove' })) return;
         try {
             await apiClient.delete(`/api/jobs/${selectedJob.id}/candidates/${candidateId}`, {
                 headers: { 'x-user-username': user?.username }
@@ -513,7 +517,7 @@ export default function JobsPage() {
     }
 
     const handleDeleteCandidate = async (candidateId) => {
-        if (!window.confirm('Delete this candidate completely from the database? This cannot be undone.')) return;
+        if (!await confirm({ title: 'Delete candidate?', message: 'Delete this candidate completely from the database? This cannot be undone.', confirmLabel: 'Delete permanently' })) return;
         try {
             await apiClient.delete(`/api/candidates/${candidateId}`, {
                 headers: { 'x-user-username': user?.username }
@@ -730,6 +734,7 @@ export default function JobsPage() {
                             saveEdit={saveEdit}
                             setCandidates={setCandidates}
                             showToast={showToast}
+                            confirm={confirm}
                             setSelectedCandidateForDetails={setSelectedCandidateForDetails}
                             setSelectedCellText={setSelectedCellText}
                             handleStatusChange={handleStatusChange}
@@ -892,11 +897,8 @@ export default function JobsPage() {
                 handleSaveShares={handleSaveShares}
             />
 
-             {toast && (
-                 <div className="toast-container">
-                     <div className={`toast ${toast.type}`}>{toast.msg}</div>
-                 </div>
-             )}
+             <ToastHost toast={toast} onDismiss={dismissToast} />
+             <ConfirmDialog {...confirmDialogProps} />
         </div>
     );
 }

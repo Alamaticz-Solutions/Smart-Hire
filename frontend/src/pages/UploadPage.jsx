@@ -5,6 +5,9 @@ import apiClient, { getStaticUrl } from '../api/client'
 import useColumnConfig from '../hooks/useColumnConfig'
 import useDraggableColumns from '../hooks/useDraggableColumns'
 import { useToast } from '../hooks/useToast'
+import ToastHost from '../components/shared/ToastHost'
+import { useConfirm } from '../hooks/useConfirm'
+import ConfirmDialog from '../components/shared/ConfirmDialog'
 import { computeTableWidth } from '../utils/tableWidth'
 import { applySavedColumnOrder } from '../utils/columnOrder'
 import { useInlineCellEdit } from '../hooks/useInlineCellEdit'
@@ -23,7 +26,8 @@ export default function UploadPage() {
         } catch { return []; }
     })
     const [progress, setProgress] = useState([])
-    const { toast, showToast } = useToast()
+    const { toast, showToast, dismissToast } = useToast()
+    const { confirm, confirmDialogProps } = useConfirm()
     const [editCell, setEditCell] = useState(null)
     const [editVal, setEditVal] = useState('')
     const [cols, setCols] = useState([])
@@ -209,7 +213,7 @@ export default function UploadPage() {
     }
     const handleAddCandidateSubmit = async () => {
         if (!newCandidateForm.full_name || !newCandidateForm.full_name.trim()) {
-            alert("Candidate Name is required!");
+            showToast("Candidate Name is required!", "error");
             return;
         }
         // Guard against a double-click firing two duplicate candidate
@@ -222,7 +226,7 @@ export default function UploadPage() {
             setShowAddCandidate(false);
             load();
         } catch (err) {
-            alert(err.response?.data?.detail || "Failed to add candidate");
+            showToast(err.response?.data?.detail || "Failed to add candidate", "error");
         } finally {
             setIsAddingCandidate(false);
         }
@@ -290,7 +294,7 @@ export default function UploadPage() {
 
     const handleDeleteCol = async (col_key, col_label) => {
         const label = col_label || col_key;
-        if (!window.confirm(`Are you sure you want to delete the "${label}" column?`)) return
+        if (!await confirm({ title: 'Delete column?', message: `Are you sure you want to delete the "${label}" column?`, confirmLabel: 'Delete' })) return
         try {
             await apiClient.delete(`/api/columns/${col_key}`, { headers: { 'x-user-username': user?.username } })
             showToast('Column deleted')
@@ -349,7 +353,7 @@ export default function UploadPage() {
         isAdmin, certificationsMessage: "Only Admins and HR users can view or edit certifications.",
     });
     const del = async (id) => {
-        if (!window.confirm('Delete this candidate?')) return
+        if (!await confirm({ title: 'Delete candidate?', message: 'Are you sure you want to delete this candidate?', confirmLabel: 'Delete' })) return
         try {
             await apiClient.delete(`/api/candidates/${id}`, {
                 headers: { 'x-user-username': user?.username }
@@ -378,7 +382,7 @@ export default function UploadPage() {
     }
     const bulkDelete = async () => {
         if (selectedIds.size === 0) return
-        if (!window.confirm(`Are you sure you want to delete ${selectedIds.size} selected candidate(s)?`)) return
+        if (!await confirm({ title: 'Delete selected candidates?', message: `Are you sure you want to delete ${selectedIds.size} selected candidate(s)?`, confirmLabel: 'Delete' })) return
         try {
             await apiClient.post(`/api/candidates/bulk-delete`, { ids: [...selectedIds] }, {
                 headers: { 'x-user-username': user?.username }
@@ -452,6 +456,7 @@ export default function UploadPage() {
                 saveEdit={saveEdit}
                 setCandidates={setCandidates}
                 showToast={showToast}
+                confirm={confirm}
                 setSelectedCandidateForDetails={setSelectedCandidateForDetails}
                 del={del}
                 loadingCandidates={loadingCandidates}
@@ -462,11 +467,8 @@ export default function UploadPage() {
                 loadMore={loadMore}
             />
 
-            {toast && (
-                <div className="toast-container">
-                    <div className={`toast ${toast.type}`}>{toast.msg}</div>
-                </div>
-            )}
+            <ToastHost toast={toast} onDismiss={dismissToast} />
+            <ConfirmDialog {...confirmDialogProps} />
 
             {showFilter && (
                 <FilterModal

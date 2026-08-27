@@ -3,11 +3,12 @@ import { useOutletContext } from 'react-router-dom'
 import { Mail, Shield, Check, X, Plus, Trash2, Key, Folder, RefreshCw, Loader, ExternalLink } from 'lucide-react'
 import apiClient from '../api/client'
 import { useToast } from '../hooks/useToast'
+import ToastHost from '../components/shared/ToastHost'
 
 export default function ConnectPage() {
     const { user } = useOutletContext()
     const [activeTab, setActiveTab] = useState('mail') // 'mail' | 'drive'
-    const { toast, showToast } = useToast()
+    const { toast, showToast, dismissToast } = useToast()
     const [saving, setSaving] = useState(false)
     const [testingConnection, setTestingConnection] = useState(false)
     const [testStatus, setTestStatus] = useState({ status: 'idle', message: '' })
@@ -330,7 +331,7 @@ export default function ConnectPage() {
 
     return (
         <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
-            {toast && <div className={`toast ${toast.type}`}>{toast.msg}</div>}
+            <ToastHost toast={toast} onDismiss={dismissToast} />
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
                 <div>

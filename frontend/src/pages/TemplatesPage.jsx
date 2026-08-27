@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { FileText, Eye, Sparkles, Check, Info, Copy, Save, AlertCircle, Send, Loader } from 'lucide-react'
 import apiClient from '../api/client'
 import { useToast } from '../hooks/useToast'
+import ToastHost from '../components/shared/ToastHost'
 
 const THEME_PRESETS = {
   professional: {
@@ -99,7 +100,7 @@ Alamaticz Solutions`
 
 export default function TemplatesPage() {
     const { user } = useOutletContext()
-    const { toast, showToast } = useToast()
+    const { toast, showToast, dismissToast } = useToast()
     const [saving, setSaving] = useState(false)
     const [editorTab, setEditorTab] = useState('missing') // 'missing' | 'complete'
     const [previewType, setPreviewType] = useState('missing') // 'missing' | 'complete'
@@ -166,7 +167,7 @@ export default function TemplatesPage() {
             showToast("Reply templates saved successfully!", "success")
             fetchIntegrationsSettings()
         } catch (err) {
-            alert(err.response?.data?.detail || "Failed to save template settings")
+            showToast(err.response?.data?.detail || "Failed to save template settings", "error")
         } finally {
             setSaving(false)
         }
@@ -287,7 +288,7 @@ export default function TemplatesPage() {
 
     return (
         <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
-            {toast && <div className={`toast ${toast.type}`}>{toast.msg}</div>}
+            <ToastHost toast={toast} onDismiss={dismissToast} />
 
             {/* Header section */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>

@@ -64,6 +64,7 @@ export default function CandidatesTable({
     saveEdit,
     setCandidates,
     showToast,
+    confirm,
     setSelectedCandidateForDetails,
     del,
     loadingCandidates,
@@ -371,10 +372,10 @@ export default function CandidatesTable({
                                                                 </button>
                                                             ) : (
                                                                 <button
-                                                                    onClick={(e) => {
+                                                                    onClick={async (e) => {
                                                                         e.preventDefault();
                                                                         e.stopPropagation();
-                                                                        if (window.confirm(`Are you sure you want to delete the "${c.label}" column?`)) {
+                                                                        if (await confirm({ title: 'Hide column?', message: `Hide the "${c.label}" column? You can show it again from Columns.`, confirmLabel: 'Hide', danger: false })) {
                                                                             toggleColumnVisibility(c.key);
                                                                         }
                                                                     }}
