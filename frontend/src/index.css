@@ -5,96 +5,163 @@
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 /* ═══════════════════════════════════════════════════════
-   Redesign tokens (2026) — see the "Hire AI Redesign" canvas
-   for the source direction. Class names and custom-property
-   NAMES below are unchanged on purpose: hundreds of inline
-   styles across every page reference var(--gold)/var(--navy)/
-   var(--sky) directly, so retargeting what these resolve to
-   reskins the whole app without touching page components.
+   Design tokens — Part C of the design/a11y audit (see
+   docs/ARCHITECTURE.md and the audit doc for the full source).
+   Semantic tokens (--bg/--surface/--action/--success-fg etc.)
+   are the source of truth. Every OLD token name below them
+   (--gold, --navy, --sky, --primary, --text-dim, and their
+   -rgb triplets) is kept as an ALIAS pointing at a semantic
+   token, per the audit's own migration note: hundreds of
+   inline styles across every page reference these old names
+   directly, so retargeting what they resolve to reskins the
+   whole app without a risky mass rename. New code should
+   prefer the semantic names on the left.
    ═══════════════════════════════════════════════════════ */
 :root {
-  --primary: #C2660A;
-  --gold: #D97706;
-  --navy: #1C1E24;
-  --navy-dark: #121318;
-  --sky: #4A90D9;
-  --sky-dim: #93A5BA;
-  --primary-rgb: 194, 102, 10;
-  --gold-rgb: 217, 119, 6;
-  --navy-rgb: 28, 30, 36;
-  --navy-dark-rgb: 18, 19, 24;
-  --sky-rgb: 74, 144, 217;
-  --sky-dim-rgb: 147, 165, 186;
+  /* Surfaces */
+  --bg: #16181E;
+  --surface: #1E212A;
+  --surface-2: #262A34;
+  --surface-sunken: #101218;
+  --border: #333844;
+  --border-strong: #4B5162;
+
+  /* Text — never expressed as opacity (G-5). --text-subtle is for
+     decorative/non-essential text ONLY (≥3:1); everything else uses
+     --text or --text-muted (≥4.5:1). */
+  --text: #F2F3F7;
+  --text-muted: #B0B5C2;
+  --text-subtle: #8A90A0;
+
+  /* Action — the ONE interactive accent (G-7). Nothing non-interactive
+     (headings, table headers, card titles) should be action-colored. */
+  --action: #F0813C;
+  --action-hover: #FF9A5C;
+  --action-fg: #241206;
+  --action-quiet-bg: #3A251A;
+  --action-rgb: 240, 129, 60;
+  --focus: #FFA96E;
+
+  /* Brand — the Alamaticz mark and wordmark only, never a UI accent */
+  --brand-gold: #F2AE45;
+
+  /* Semantic status colors, both directions (fg = text/icon, bg = tint) */
+  --success-fg: #5FD79B; --success-bg: #10301F;
+  --warning-fg: #FFC46B; --warning-bg: #33240D;
+  --danger-fg: #FF9089; --danger-bg: #3D1618;
+  --info-fg: #7FB6E8; --info-bg: #142737;
+
+  /* Chart categorical palette (G-8) - read from CSS by JS via
+     getComputedStyle where a chart needs literal color values */
+  --chart-1: #F0813C; --chart-2: #7FB6E8; --chart-3: #B48CE0; --chart-4: #5FD79B; --chart-5: #FFC46B;
+
+  /* Type scale (G-10): 11/12/13/14/16/20/28px. New rules should use
+     these; existing per-file font-size values are being migrated
+     incrementally rather than all at once. */
+  --fs-1: 0.6875rem; --fs-2: 0.75rem; --fs-3: 0.8125rem; --fs-4: 0.875rem;
+  --fs-5: 1rem; --fs-6: 1.25rem; --fs-7: 1.75rem;
+
+  /* Radius scale (G-11): 6/10/16/22/999px */
+  --r-sm: 6px; --r-md: 10px; --r-lg: 16px; --r-xl: 22px; --r-full: 999px;
+
+  --fh: 'Manrope', system-ui, sans-serif;
+  --fb: 'Manrope', system-ui, sans-serif;
+  --fm: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
+  --radius: var(--r-md);
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+
+  /* ── Legacy aliases (compatibility layer - see note above) ── */
+  --gold: var(--action);
+  --primary: var(--action-hover);
+  --navy: var(--surface);
+  --navy-dark: var(--surface-sunken);
+  --sky: var(--info-fg);
+  --sky-dim: var(--text-muted);
+  --text-dim: var(--text-muted);
+  --card-bg: var(--surface);
+  --bg-gradient: var(--bg);
+  --sidebar-bg: var(--surface-sunken);
+  --topbar-bg: var(--surface);
+  --input-bg: var(--surface-2);
+  --table-header-bg: var(--surface-2);
+  --nav-active-text: #fff;
+  --profile-chip-bg: var(--surface-2);
+  --login-card-bg: var(--surface);
+  --border-gold: rgba(var(--action-rgb), 0.3);
+  /* -rgb triplets can't be derived from the hex/oklch tokens above via
+     CSS alone, so they're kept in sync by hand - literal RGB matching
+     --action/--action-hover/--surface/--surface-sunken/--info-fg/
+     --text-muted respectively. Every existing rgba(var(--gold-rgb), x)
+     etc. rule elsewhere in this file inherits the new palette through
+     these two lines without being touched individually. */
+  --gold-rgb: 240, 129, 60;
+  --primary-rgb: 255, 154, 92;
+  --navy-rgb: 30, 33, 42;
+  --navy-dark-rgb: 16, 18, 24;
+  --sky-rgb: 127, 182, 232;
+  --sky-dim-rgb: 176, 181, 194;
   --black-rgb: 0, 0, 0;
   --white-rgb: 255, 255, 255;
   --red-rgb: 220, 38, 38;
   --green-rgb: 34, 150, 94;
-  --card-bg: #23262E;
-  --focus: #FFA96E;
-  --border: rgba(255, 255, 255, 0.09);
-  --border-gold: rgba(var(--gold-rgb), 0.3);
-  --text: #EEF0F3;
-  --text-dim: #9AA3B0;
-  --fh: 'Manrope', system-ui, sans-serif;
-  --fb: 'Manrope', system-ui, sans-serif;
-  --fm: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
-  --radius: 12px;
-  --shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
-  --glow: none;
-  --bg-gradient: #17181D;
-  --sidebar-bg: #121318;
-  --topbar-bg: #1A1C22;
-  --input-bg: #1A1C22;
-  --table-header-bg: #1E2027;
-  --nav-active-text: #fff;
-  --profile-chip-bg: #1E2027;
-  --login-card-bg: #1E2027;
+
   /* Candidate status chips — one hue per status, matched lightness/chroma.
      Same token names/values as the "Hire AI Redesign" canvas's Foundations
-     sheet, so every page's status chip stays visually identical. */
-  --st-new-bg: oklch(30% 0.015 260); --st-new-text: oklch(85% 0.02 260);
-  --st-review-bg: oklch(32% 0.08 70); --st-review-text: oklch(86% 0.09 70);
-  --st-avail-bg: oklch(30% 0.08 165); --st-avail-text: oklch(84% 0.09 165);
-  --st-selected-bg: oklch(30% 0.09 250); --st-selected-text: oklch(84% 0.1 250);
-  --st-rejected-bg: oklch(32% 0.1 25); --st-rejected-text: oklch(86% 0.1 25);
-  --st-engaged-bg: oklch(32% 0.09 300); --st-engaged-text: oklch(85% 0.1 300);
-  --st-offered-bg: oklch(32% 0.1 350); --st-offered-text: oklch(86% 0.1 350);
-  --st-hired-bg: oklch(28% 0.11 150); --st-hired-text: oklch(82% 0.12 150);
+     sheet, so every page's status chip stays visually identical. Per the
+     audit: this is the one part of the palette that was already correct. */
+  --st-new-bg: oklch(32% 0.015 260); --st-new-text: oklch(85% 0.02 260);
+  --st-review-bg: oklch(34% 0.08 70); --st-review-text: oklch(86% 0.09 70);
+  --st-avail-bg: oklch(32% 0.08 165); --st-avail-text: oklch(84% 0.09 165);
+  --st-selected-bg: oklch(32% 0.09 250); --st-selected-text: oklch(84% 0.1 250);
+  --st-rejected-bg: oklch(34% 0.1 25); --st-rejected-text: oklch(86% 0.1 25);
+  --st-engaged-bg: oklch(34% 0.09 300); --st-engaged-text: oklch(85% 0.1 300);
+  --st-offered-bg: oklch(34% 0.1 350); --st-offered-text: oklch(86% 0.1 350);
+  --st-hired-bg: oklch(30% 0.11 150); --st-hired-text: oklch(82% 0.12 150);
 }
 
 [data-theme="light"] {
-  --primary: #C2660A;
-  --gold: #B45309;
-  --navy: #FFFFFF;
-  --navy-dark: #FFFFFF;
-  --sky: #2563A8;
-  --sky-dim: #5B6B7F;
-  --primary-rgb: 194, 102, 10;
-  --gold-rgb: 180, 83, 9;
+  --bg: #FAF8F4;
+  --surface: #FFFFFF;
+  --surface-2: #F5F5F9;
+  --surface-sunken: #EDEEF4;
+  --border: #E9EAF2;
+  --border-strong: #B7BAD1;
+
+  --text: #12173F;
+  --text-muted: #6B6F94;
+  --text-subtle: #8A8FAF;
+
+  --action: #B84E13;
+  --action-hover: #9C3F0D;
+  --action-fg: #FFFFFF;
+  --action-quiet-bg: #FBE3D1;
+  --action-rgb: 184, 78, 19;
+  --focus: #E2661D;
+
+  --brand-gold: #B0650B;
+
+  --success-fg: #1E8E5A; --success-bg: #E1F5EA;
+  --warning-fg: #B0650B; --warning-bg: #FBEBD6;
+  --danger-fg: #C4293A; --danger-bg: #FBE2E5;
+  --info-fg: #1568A6; --info-bg: #DCEBF7;
+
+  --chart-1: #B84E13; --chart-2: #1568A6; --chart-3: #6B4BA8; --chart-4: #1E8E5A; --chart-5: #B0650B;
+
+  --shadow: 0 1px 3px rgba(15, 23, 42, 0.07);
+
+  --gold-rgb: 184, 78, 19;
+  --primary-rgb: 156, 63, 13;
   --navy-rgb: 255, 255, 255;
-  --navy-dark-rgb: 255, 255, 255;
-  --sky-rgb: 37, 99, 168;
-  --sky-dim-rgb: 91, 107, 127;
+  --navy-dark-rgb: 237, 238, 244;
+  --sky-rgb: 21, 104, 166;
+  --sky-dim-rgb: 107, 111, 148;
   --black-rgb: 0, 0, 0;
   --white-rgb: 255, 255, 255;
   --red-rgb: 220, 38, 38;
   --green-rgb: 22, 130, 74;
-  --card-bg: #FFFFFF;
-  --focus: #E2661D;
-  --border: rgba(15, 23, 42, 0.09);
-  --border-gold: rgba(var(--gold-rgb), 0.25);
-  --text: #191B1F;
-  --text-dim: #5B6472;
-  --shadow: 0 1px 3px rgba(15, 23, 42, 0.07);
-  --glow: none;
-  --bg-gradient: #FAFAF9;
-  --sidebar-bg: #FFFFFF;
-  --topbar-bg: #FFFFFF;
-  --input-bg: #FFFFFF;
-  --table-header-bg: #F4F5F7;
-  --nav-active-text: #191B1F;
-  --profile-chip-bg: #FFFFFF;
-  --login-card-bg: #FFFFFF;
+
+  --nav-active-text: #12173F;
+
   --st-new-bg: oklch(92% 0.01 260); --st-new-text: oklch(38% 0.02 260);
   --st-review-bg: oklch(92% 0.05 80); --st-review-text: oklch(40% 0.12 70);
   --st-avail-bg: oklch(92% 0.05 165); --st-avail-text: oklch(40% 0.12 165);
@@ -141,14 +208,23 @@ body,
 #root {
   height: 100%;
   font-family: var(--fb);
-  background: var(--bg-gradient);
+  background: var(--bg);
   color: var(--text);
   overflow-x: auto;
 }
 
-/* ── Scrollbar ────────────────────────────────────────── */
+/* ── Scrollbar (G-19) ─────────────────────────────────────
+   Was 6px, WebKit-only, sky-tinted - a precision-mouse target on the
+   app's widest surfaces (a 2600px candidate table), and Firefox users
+   saw the OS default so the two browsers looked unrelated. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 12px;
+  height: 12px;
 }
 
 ::-webkit-scrollbar-track {
@@ -156,12 +232,15 @@ body,
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(var(--sky-rgb), 0.4);
-  border-radius: 3px;
+  background: var(--border-strong);
+  border-radius: var(--r-full);
+  border: 3px solid transparent;
+  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--sky);
+  background: var(--text-subtle);
+  background-clip: padding-box;
 }
 
 /* ── Layout Shell ─────────────────────────────────────── */
@@ -180,7 +259,6 @@ body,
   display: flex;
   flex-direction: column;
   padding: 0;
-  backdrop-filter: blur(25px);
   position: relative;
   z-index: 10;
 }
@@ -223,12 +301,12 @@ body,
   align-items: center;
   gap: 12px;
   padding: 13px 16px;
-  border-radius: 12px;
-  color: var(--text-dim);
+  border-radius: var(--r-md);
+  color: var(--text-muted);
   font-weight: 500;
   font-size: 0.9rem;
   cursor: pointer;
-  transition: all 0.25s ease;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
   border: 1px solid transparent;
   text-decoration: none;
   background: transparent;
@@ -246,7 +324,6 @@ body,
   background: rgba(var(--gold-rgb), 0.14);
   color: var(--nav-active-text);
   border-color: rgba(var(--gold-rgb), 0.3);
-  box-shadow: none;
 }
 
 .nav-link svg {
@@ -265,14 +342,14 @@ body,
   padding: 10px 16px;
   background: transparent;
   border: 1px solid rgba(var(--gold-rgb), 0.4);
-  border-radius: 10px;
+  border-radius: var(--r-md);
   color: var(--gold);
   font-family: var(--fh);
   font-weight: 700;
   font-size: 0.85rem;
   letter-spacing: 0.06rem;
   cursor: pointer;
-  transition: all 0.25s ease;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -281,7 +358,6 @@ body,
 
 .logout-btn:hover {
   background: rgba(var(--gold-rgb), 0.12);
-  box-shadow: 0 0 15px rgba(var(--gold-rgb), 0.25);
 }
 
 /* ── Main Content ─────────────────────────────────────── */
@@ -301,16 +377,15 @@ body,
   padding: 1rem 2rem;
   border-bottom: 1px solid var(--border);
   background: var(--topbar-bg);
-  backdrop-filter: blur(15px);
   flex-shrink: 0;
 }
 
 .topbar-title {
   font-family: var(--fh);
-  font-size: 1.4rem;
+  font-size: 1.3rem;
   font-weight: 800;
-  color: var(--gold);
-  letter-spacing: 0.05rem;
+  color: var(--text);
+  letter-spacing: -0.01em;
 }
 
 .profile-chip {
@@ -319,9 +394,8 @@ body,
   gap: 10px;
   background: var(--profile-chip-bg);
   border: 1px solid var(--border-gold);
-  border-radius: 40px;
+  border-radius: var(--r-full);
   padding: 6px 14px 6px 6px;
-  box-shadow: var(--glow);
 }
 
 .profile-avatar {
@@ -335,7 +409,7 @@ body,
   font-family: var(--fh);
   font-weight: 800;
   font-size: 0.9rem;
-  color: #1A1206;
+  color: var(--action-fg);
 }
 
 .profile-name {
@@ -355,9 +429,8 @@ body,
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 1.5rem;
-  backdrop-filter: blur(12px);
   box-shadow: var(--shadow);
-  transition: all 0.3s ease;
+  transition: border-color 0.2s ease;
 }
 
 .card:hover {
@@ -368,7 +441,7 @@ body,
   font-family: var(--fh);
   font-size: 1.1rem;
   font-weight: 700;
-  color: var(--gold);
+  color: var(--text);
   margin-bottom: 1rem;
   display: flex;
   align-items: center;
@@ -389,31 +462,14 @@ body,
   border-radius: var(--radius);
   padding: 1.4rem;
   text-align: center;
-  backdrop-filter: blur(12px);
   box-shadow: var(--shadow);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: border-color 0.2s ease;
   position: relative;
   overflow: hidden;
 }
 
-.kpi-card::before {
-  content: '';
-  position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(circle, rgba(var(--gold-rgb), 0.05), transparent 70%);
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
 .kpi-card:hover {
   border-color: var(--border-gold);
-}
-
-.kpi-card:hover::before {
-  opacity: 1;
 }
 
 .kpi-value {
@@ -427,7 +483,7 @@ body,
 
 .kpi-label {
   font-size: 0.82rem;
-  color: var(--text-dim);
+  color: var(--text-muted);
   font-weight: 500;
   letter-spacing: 0.05rem;
   text-transform: uppercase;
@@ -453,19 +509,18 @@ body,
   align-items: center;
   gap: 8px;
   padding: 10px 20px;
-  border-radius: 10px;
+  border-radius: var(--r-md);
   font-family: var(--fb);
   font-weight: 600;
   font-size: 0.9rem;
   cursor: pointer;
   border: none;
-  transition: all 0.25s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
 .btn-primary {
   background: var(--gold);
-  color: #1A1206;
-  box-shadow: none;
+  color: var(--action-fg);
 }
 
 .btn-primary:hover {
@@ -475,7 +530,6 @@ body,
 .btn-primary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  transform: none;
 }
 
 .btn-secondary {
@@ -486,13 +540,13 @@ body,
 
 .btn-secondary:hover {
   background: rgba(var(--sky-rgb), 0.15);
-  color: #fff;
+  color: var(--text);
   border-color: var(--sky);
 }
 
 .btn-danger {
-  background: rgba(var(--red-rgb), 0.15);
-  color: #f87171;
+  background: var(--danger-bg);
+  color: var(--danger-fg);
   border: 1px solid rgba(var(--red-rgb), 0.3);
 }
 
@@ -506,21 +560,22 @@ body,
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-gradient);
+  background: var(--bg);
   position: relative;
   overflow: hidden;
 }
 
+/* Static (not perpetually animating) ambient background - was a 4s/6s
+   infinite pulse behind a login form with no way to pause it (G-18/S1.1) */
 .login-bg::before {
   content: '';
   position: absolute;
   width: 600px;
   height: 600px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(var(--primary-rgb), 0.12), transparent 70%);
+  background: radial-gradient(circle, rgba(var(--gold-rgb), 0.1), transparent 70%);
   top: -100px;
   right: -100px;
-  animation: pulse 4s ease-in-out infinite;
 }
 
 .login-bg::after {
@@ -528,36 +583,19 @@ body,
   position: absolute;
   width: 400px;
   height: 400px;
-  background: radial-gradient(circle, rgba(var(--sky-rgb), 0.1), transparent 70%);
+  background: radial-gradient(circle, rgba(var(--sky-rgb), 0.08), transparent 70%);
   bottom: -50px;
   left: -50px;
-  animation: pulse 6s ease-in-out infinite reverse;
-}
-
-@keyframes pulse {
-
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-
-  50% {
-    transform: scale(1.1);
-    opacity: 0.7;
-  }
 }
 
 .login-card {
   background: var(--login-card-bg);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid var(--border-gold);
-  border-radius: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
   padding: 2.8rem 2.4rem;
   width: 100%;
   max-width: 420px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(var(--gold-rgb), 0.1);
+  box-shadow: var(--shadow);
   position: relative;
   z-index: 1;
 }
@@ -586,7 +624,7 @@ body,
 
 .login-subtitle {
   font-size: 0.8rem;
-  color: var(--text-dim);
+  color: var(--text-muted);
   margin-top: 4px;
   letter-spacing: 0.12rem;
   text-transform: uppercase;
@@ -601,7 +639,7 @@ body,
   display: block;
   font-size: 0.82rem;
   font-weight: 600;
-  color: var(--text-dim);
+  color: var(--text-muted);
   margin-bottom: 6px;
   letter-spacing: 0.04rem;
 }
@@ -610,13 +648,12 @@ body,
   width: 100%;
   background: var(--input-bg);
   border: 1.5px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--r-md);
   padding: 12px 14px;
   color: var(--text);
   font-family: var(--fb);
   font-size: 0.9rem;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
-  outline: none;
 }
 
 .form-input:focus {
@@ -625,7 +662,7 @@ body,
 }
 
 .form-input::placeholder {
-  color: rgba(var(--sky-dim-rgb), 0.5);
+  color: var(--text-subtle);
 }
 
 .password-input-container {
@@ -644,14 +681,14 @@ body,
   right: 12px;
   background: none;
   border: none;
-  color: var(--text-dim);
+  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 4px;
   border-radius: 50%;
-  transition: all 0.2s ease;
+  transition: color 0.2s ease, background-color 0.2s ease;
 }
 
 .password-toggle-btn:hover {
@@ -675,22 +712,22 @@ body,
 }
 
 .form-error {
-  background: rgba(var(--red-rgb), 0.15);
+  background: var(--danger-bg);
   border: 1px solid rgba(var(--red-rgb), 0.3);
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   padding: 10px 14px;
   font-size: 0.85rem;
-  color: #f87171;
+  color: var(--danger-fg);
   margin-top: 1rem;
 }
 
 .form-success {
-  background: rgba(var(--green-rgb), 0.15);
+  background: var(--success-bg);
   border: 1px solid rgba(var(--green-rgb), 0.3);
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   padding: 10px 14px;
   font-size: 0.85rem;
-  color: #86efac;
+  color: var(--success-fg);
   margin-top: 1rem;
 }
 
@@ -705,7 +742,7 @@ body,
 .login-footer {
   text-align: center;
   margin-top: 1.5rem;
-  color: var(--text-dim);
+  color: var(--text-muted);
   font-size: 0.82rem;
 }
 
@@ -716,7 +753,7 @@ body,
   padding: 3rem 2rem;
   text-align: center;
   cursor: pointer;
-  transition: all 0.25s ease;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
   background: rgba(var(--sky-rgb), 0.05);
   position: relative;
   overflow: hidden;
@@ -752,7 +789,6 @@ body,
 .dropzone.active {
   border-color: var(--gold);
   background: rgba(var(--gold-rgb), 0.06);
-  box-shadow: 0 0 24px rgba(var(--gold-rgb), 0.1);
 }
 
 .dropzone-icon {
@@ -761,7 +797,7 @@ body,
 }
 
 .dropzone-text {
-  color: var(--text-dim);
+  color: var(--text-muted);
   font-size: 0.9rem;
 }
 
@@ -773,7 +809,7 @@ body,
 .progress-bar {
   width: 100%;
   height: 6px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-2);
   border-radius: 3px;
   overflow: hidden;
   margin: 0.8rem 0;
@@ -809,7 +845,7 @@ th {
   font-family: var(--fh);
   font-weight: 700;
   font-size: 0.8rem;
-  color: var(--gold);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05rem;
   white-space: nowrap;
@@ -824,7 +860,7 @@ td {
 }
 
 tbody tr {
-  transition: background 0.15s ease;
+  transition: background-color 0.15s ease;
 }
 
 tbody tr:hover {
@@ -867,29 +903,28 @@ tbody tr:last-child td {
   align-items: center;
   justify-content: center;
   gap: 1rem;
-  opacity: 0.6;
 }
 
 .chat-empty-icon {
   width: 64px;
   height: 64px;
-  background: var(--gold);
-  border-radius: 20px;
+  background: var(--action-quiet-bg);
+  color: var(--gold);
+  border-radius: var(--r-lg);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 2rem;
 }
 
 .chat-empty-title {
   font-family: var(--fh);
   font-size: 1.3rem;
   font-weight: 700;
-  color: var(--gold);
+  color: var(--text);
 }
 
 .chat-empty-sub {
-  color: var(--text-dim);
+  color: var(--text-muted);
   font-size: 0.88rem;
   text-align: center;
   max-width: 320px;
@@ -920,7 +955,7 @@ tbody tr:last-child td {
 
 .msg-avatar.ai {
   background: var(--gold);
-  color: #1A1206;
+  color: var(--action-fg);
 }
 
 .msg-avatar.user-av {
@@ -930,16 +965,16 @@ tbody tr:last-child td {
 }
 
 .msg-bubble {
-  max-width: 72%;
+  max-width: 72ch;
   padding: 12px 16px;
-  border-radius: 16px;
+  border-radius: var(--r-lg);
   font-size: 0.92rem;
   line-height: 1.6;
 }
 
 .message.user .msg-bubble {
-  background: linear-gradient(135deg, rgba(var(--primary-rgb), 0.25), rgba(var(--gold-rgb), 0.2));
-  border: 1px solid rgba(var(--gold-rgb), 0.3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   border-top-right-radius: 4px;
   color: var(--text);
 }
@@ -961,7 +996,6 @@ tbody tr:last-child td {
   border-top: 1px solid var(--border);
   flex-shrink: 0;
   background: var(--topbar-bg);
-  backdrop-filter: blur(10px);
 }
 
 .chat-input-wrap {
@@ -969,13 +1003,14 @@ tbody tr:last-child td {
   align-items: center;
   gap: 10px;
   background: var(--input-bg);
-  border: 1.5px solid var(--gold);
-  border-radius: 14px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-lg);
   padding: 4px 4px 4px 16px;
-  transition: box-shadow 0.2s ease;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .chat-input-wrap:focus-within {
+  border-color: var(--gold);
   box-shadow: 0 0 0 3px rgba(var(--gold-rgb), 0.15);
 }
 
@@ -987,7 +1022,6 @@ tbody tr:last-child td {
   font-family: var(--fb);
   font-size: 0.92rem;
   resize: none;
-  outline: none;
   min-height: 24px;
   max-height: 120px;
   overflow-y: auto;
@@ -996,7 +1030,7 @@ tbody tr:last-child td {
 }
 
 .chat-textarea::placeholder {
-  color: rgba(var(--sky-dim-rgb), 0.5);
+  color: var(--text-subtle);
 }
 
 .chat-send-btn {
@@ -1004,13 +1038,13 @@ tbody tr:last-child td {
   height: 40px;
   background: var(--gold);
   border: none;
-  border-radius: 10px;
+  border-radius: var(--r-md);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #1A1206;
-  transition: all 0.2s ease;
+  color: var(--action-fg);
+  transition: background-color 0.2s ease;
   flex-shrink: 0;
 }
 
@@ -1065,7 +1099,7 @@ tbody tr:last-child td {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.84rem;
-  border-radius: 12px;
+  border-radius: var(--r-md);
   overflow: hidden;
   border: 1px solid var(--border);
   margin-top: 0.5rem;
@@ -1092,7 +1126,7 @@ tbody tr:last-child td {
 .status-chip {
   display: inline-block;
   padding: 2px 10px;
-  border-radius: 999px;
+  border-radius: var(--r-full);
   font-size: 0.73rem;
   font-weight: 700;
   white-space: nowrap;
@@ -1111,7 +1145,7 @@ tbody tr:last-child td {
 .badge {
   display: inline-block;
   padding: 2px 10px;
-  border-radius: 20px;
+  border-radius: var(--r-full);
   font-size: 0.75rem;
   font-weight: 600;
 }
@@ -1129,14 +1163,14 @@ tbody tr:last-child td {
 }
 
 .badge-red {
-  background: rgba(var(--red-rgb), 0.15);
-  color: #f87171;
+  background: var(--danger-bg);
+  color: var(--danger-fg);
   border: 1px solid rgba(var(--red-rgb), 0.3);
 }
 
 .badge-green {
-  background: rgba(var(--green-rgb), 0.15);
-  color: #86efac;
+  background: var(--success-bg);
+  color: var(--success-fg);
   border: 1px solid rgba(var(--green-rgb), 0.3);
 }
 
@@ -1158,7 +1192,8 @@ tbody tr:last-child td {
   gap: 10px;
 }
 
-/* ── Toast ────────────────────────────────────────────── */
+/* ── Toast (G-27: icon + text + dismiss + aria-live wired in JSX;
+   this is the visual shell only) ─────────────────────────────── */
 .toast-container {
   position: fixed;
   bottom: 2rem;
@@ -1170,24 +1205,40 @@ tbody tr:last-child td {
 }
 
 .toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   background: var(--login-card-bg);
-  border: 1px solid var(--border-gold);
-  border-radius: 12px;
-  padding: 12px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
   font-size: 0.88rem;
   color: var(--text);
-  backdrop-filter: blur(12px);
   animation: slideIn 0.3s ease;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow);
 }
 
 .toast.success {
   border-color: rgba(var(--green-rgb), 0.4);
 }
+.toast.success .toast-icon { color: var(--success-fg); }
 
 .toast.error {
   border-color: rgba(var(--red-rgb), 0.4);
 }
+.toast.error .toast-icon { color: var(--danger-fg); }
+
+.toast-dismiss {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  flex-shrink: 0;
+}
+.toast-dismiss:hover { color: var(--text); }
 
 @keyframes slideIn {
   from {
@@ -1224,7 +1275,7 @@ tbody tr:last-child td {
   gap: 6px;
   background: rgba(var(--sky-rgb), 0.12);
   border: 1px solid rgba(var(--sky-rgb), 0.25);
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   padding: 4px 10px;
   font-size: 0.82rem;
   color: var(--sky-dim);
@@ -1240,14 +1291,14 @@ tbody tr:last-child td {
 }
 
 .chip {
-  background: rgba(var(--navy-rgb), 0.7);
+  background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: var(--r-full);
   padding: 6px 14px;
   font-size: 0.82rem;
-  color: var(--text-dim);
+  color: var(--text-muted);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
 }
 
 .chip:hover {
@@ -1276,14 +1327,15 @@ tbody tr:last-child td {
 }
 
 .msg-bubble strong {
-  color: var(--gold);
+  color: var(--text);
+  font-weight: 700;
 }
 
 .msg-bubble code {
-  background: rgba(var(--gold-rgb), 0.12);
+  background: var(--surface-2);
   padding: 2px 6px;
   border-radius: 4px;
-  font-family: monospace;
+  font-family: var(--fm);
   font-size: 0.85em;
 }
 
@@ -1298,26 +1350,24 @@ tbody tr:last-child td {
 .user-stat-card {
   background: var(--card-bg);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--r-lg);
   padding: 1.2rem 1.5rem;
   display: flex;
   align-items: center;
   gap: 1rem;
   box-shadow: var(--shadow);
-  transition: all 0.3s ease;
-  backdrop-filter: blur(10px);
+  transition: border-color 0.2s ease, transform 0.2s ease;
 }
 
 .user-stat-card:hover {
   border-color: var(--border-gold);
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4), var(--glow);
 }
 
 .user-stat-icon-container {
   width: 48px;
   height: 48px;
-  border-radius: 12px;
+  border-radius: var(--r-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1342,7 +1392,7 @@ tbody tr:last-child td {
 
 .user-stat-label {
   font-size: 0.78rem;
-  color: var(--text-dim);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05rem;
   font-weight: 600;
@@ -1351,10 +1401,9 @@ tbody tr:last-child td {
 .user-table-card {
   background: var(--card-bg);
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: var(--r-xl);
   box-shadow: var(--shadow);
   overflow: hidden;
-  backdrop-filter: blur(12px);
 }
 
 .user-cell-profile {
@@ -1391,8 +1440,7 @@ tbody tr:last-child td {
 
 .user-info-username {
   font-size: 0.78rem;
-  color: var(--text-dim);
-  opacity: 0.75;
+  color: var(--text-muted);
 }
 
 /* Beautiful Switch Toggle CSS */
@@ -1414,11 +1462,16 @@ tbody tr:last-child td {
 .switch-slider {
   width: 46px;
   height: 24px;
-  background-color: rgba(var(--white-rgb), 0.1);
+  background-color: var(--surface-2);
   border: 1.5px solid var(--border);
-  border-radius: 20px;
+  border-radius: var(--r-full);
   position: relative;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.switch-input:focus-visible + .switch-slider {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .switch-slider::before {
@@ -1428,21 +1481,20 @@ tbody tr:last-child td {
   width: 16px;
   left: 3px;
   bottom: 2.5px;
-  background-color: var(--text-dim);
+  background-color: var(--text-muted);
   border-radius: 50%;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.2s ease, background-color 0.2s ease;
   box-shadow: 0 2px 4px rgba(0,0,0,0.3);
 }
 
 .switch-input:checked + .switch-slider {
-  background-color: rgba(var(--primary-rgb), 0.15);
+  background-color: rgba(var(--primary-rgb), 0.2);
   border-color: var(--primary);
 }
 
 .switch-input:checked + .switch-slider::before {
   transform: translateX(20px);
   background-color: var(--primary);
-  box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.6);
 }
 
 .switch-label-tag {
@@ -1451,8 +1503,7 @@ tbody tr:last-child td {
   text-transform: uppercase;
   letter-spacing: 0.05rem;
   padding: 2px 8px;
-  border-radius: 6px;
-  transition: all 0.2s ease;
+  border-radius: var(--r-sm);
 }
 
 .switch-label-tag.active {
@@ -1462,32 +1513,24 @@ tbody tr:last-child td {
 }
 
 .switch-label-tag.inactive {
-  background: rgba(var(--white-rgb), 0.05);
-  color: var(--text-dim);
+  background: var(--surface-2);
+  color: var(--text-subtle);
   border: 1px solid transparent;
-  opacity: 0.6;
 }
 
 .current-user-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: rgba(var(--green-rgb), 0.12);
-  color: #4ade80;
+  background: var(--success-bg);
+  color: var(--success-fg);
   border: 1px solid rgba(var(--green-rgb), 0.3);
   padding: 4px 10px;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04rem;
-}
-
-/* Fix Chromium rendering bug where cards inside fixed modal overlays become completely transparent/invisible due to nested backdrop blurs */
-div[style*="position: fixed"] .card,
-div[style*="position:fixed"] .card {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
 }
 
 /* Glassmorphism modal wrapper */
@@ -1497,28 +1540,25 @@ div[style*="position:fixed"] .card {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(1, 10, 18, 0.7); /* Deep dark semi-transparent */
-  backdrop-filter: blur(8px) saturate(140%); /* Modern blur and saturation */
+  background: rgba(1, 10, 18, 0.7);
+  backdrop-filter: blur(8px) saturate(140%);
   -webkit-backdrop-filter: blur(8px) saturate(140%);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 99999;
-  animation: overlayFadeIn 0.25s ease-out;
+  animation: overlayFadeIn 0.2s ease-out;
 }
 
 /* Modal Content Card override */
 .modal-overlay .card {
   position: relative;
-  background: var(--navy-dark) !important; /* solid deep dark color */
-  border: 1px solid rgba(var(--sky-rgb), 0.35) !important; /* Sleek sky border */
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75), 0 0 30px rgba(var(--gold-rgb), 0.15) !important; /* Gold outer glow & deep shadow */
-  border-radius: 20px !important; /* Modern rounded corners */
+  background: var(--navy-dark) !important;
+  border: 1px solid rgba(var(--sky-rgb), 0.35) !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5) !important;
+  border-radius: var(--r-xl) !important;
   overflow: hidden;
-  animation: modalScaleUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); /* Bouncy enter animation */
-  transition: all 0.3s ease;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+  animation: modalScaleUp 0.18s ease-out;
 }
 
 [data-theme="light"] .modal-overlay {
@@ -1528,7 +1568,7 @@ div[style*="position:fixed"] .card {
 [data-theme="light"] .modal-overlay .card {
   background: #FFFFFF !important;
   border: 1px solid rgba(0, 0, 0, 0.1) !important;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.15), 0 0 30px rgba(var(--gold-rgb), 0.08) !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.15) !important;
 }
 
 @keyframes overlayFadeIn {
@@ -1539,7 +1579,7 @@ div[style*="position:fixed"] .card {
 @keyframes modalScaleUp {
   from {
     opacity: 0;
-    transform: scale(0.92) translateY(10px);
+    transform: scale(0.97) translateY(6px);
   }
   to {
     opacity: 1;
@@ -1562,9 +1602,9 @@ div[style*="position:fixed"] .card {
 .jd-param-card {
   background: rgba(var(--navy-rgb), 0.22);
   border: 1px solid rgba(var(--sky-rgb), 0.18);
-  border-radius: 12px;
+  border-radius: var(--r-md);
   padding: 14px 18px;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: border-color 0.2s ease, transform 0.2s ease;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -1576,32 +1616,10 @@ div[style*="position:fixed"] .card {
   border-color: rgba(var(--sky-rgb), 0.15);
 }
 
-.jd-param-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 3px;
-  background: linear-gradient(90deg, rgba(var(--sky-rgb), 0.6), rgba(var(--gold-rgb), 0.6));
-  opacity: 0;
-  transition: opacity 0.25s ease;
-}
-
-.jd-param-card:hover {
-  transform: translateY(-3px);
-  border-color: rgba(var(--gold-rgb), 0.45);
-  box-shadow: 0 10px 24px -10px rgba(0, 0, 0, 0.3), 0 0 15px rgba(var(--gold-rgb), 0.1);
-}
-
-.jd-param-card:hover::before {
-  opacity: 1;
-}
-
 .jd-param-label {
   display: block;
   font-size: 0.72rem;
-  color: var(--text-dim);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05rem;
   margin-bottom: 6px;
@@ -1627,11 +1645,11 @@ div[style*="position:fixed"] .card {
   font-size: 0.78rem;
   font-weight: 600;
   padding: 6px 14px;
-  border-radius: 20px;
+  border-radius: var(--r-full);
   background: rgba(var(--sky-rgb), 0.08);
   color: var(--sky-dim);
   border: 1px solid rgba(var(--sky-rgb), 0.25);
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1648,8 +1666,6 @@ div[style*="position:fixed"] .card {
   background: rgba(var(--sky-rgb), 0.18);
   border-color: rgba(var(--sky-rgb), 0.6);
   color: var(--text);
-  transform: translateY(-2px) scale(1.03);
-  box-shadow: 0 6px 15px -4px rgba(var(--sky-rgb), 0.3);
 }
 
 /* Markdown Container */
@@ -1660,9 +1676,9 @@ div[style*="position:fixed"] .card {
   padding: 24px;
   background: rgba(var(--navy-dark-rgb), 0.25);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--r-lg);
   min-height: 200px;
-  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+  transition: border-color 0.2s ease;
 }
 
 [data-theme="light"] .jd-markdown-container {
@@ -1672,18 +1688,17 @@ div[style*="position:fixed"] .card {
 
 .jd-markdown-container:hover {
   border-color: rgba(var(--sky-rgb), 0.45);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
 }
 
 .jd-markdown-container p {
   margin-bottom: 14px;
 }
 
-.jd-markdown-container h1, 
-.jd-markdown-container h2, 
+.jd-markdown-container h1,
+.jd-markdown-container h2,
 .jd-markdown-container h3 {
   font-family: var(--fh);
-  color: var(--gold);
+  color: var(--text);
   margin-top: 22px;
   margin-bottom: 10px;
   font-weight: 700;
@@ -1693,7 +1708,7 @@ div[style*="position:fixed"] .card {
 .jd-markdown-container h2 { font-size: 1.3rem; }
 .jd-markdown-container h3 { font-size: 1.15rem; }
 
-.jd-markdown-container ul, 
+.jd-markdown-container ul,
 .jd-markdown-container ol {
   margin-left: 24px;
   margin-bottom: 14px;
@@ -1704,12 +1719,12 @@ div[style*="position:fixed"] .card {
 }
 
 .jd-markdown-container strong {
-  color: var(--gold);
+  color: var(--text);
   font-weight: 700;
 }
 
 .jd-markdown-container code {
-  font-family: monospace;
+  font-family: var(--fm);
   background: rgba(var(--navy-rgb), 0.5);
   padding: 3px 6px;
   border-radius: 5px;
@@ -1719,39 +1734,20 @@ div[style*="position:fixed"] .card {
 
 /* Premium Form Design System */
 .modern-form-card {
-  background: rgba(var(--navy-dark-rgb), 0.45);
+  background: var(--card-bg);
   border: 1px solid rgba(var(--sky-rgb), 0.22);
-  border-radius: 24px;
+  border-radius: var(--r-xl);
   padding: 3rem;
-  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.4), 0 0 35px rgba(var(--sky-rgb), 0.05);
-  transition: all 0.3s ease;
+  box-shadow: var(--shadow);
   position: relative;
   overflow: hidden;
-}
-
-[data-theme="light"] .modern-form-card {
-  background: #FFFFFF;
-  border-color: rgba(var(--sky-rgb), 0.18);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.05), 0 0 30px rgba(var(--sky-rgb), 0.02);
-}
-
-.modern-form-card::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 250px;
-  height: 250px;
-  background: radial-gradient(circle, rgba(var(--gold-rgb), 0.08) 0%, transparent 70%);
-  pointer-events: none;
-  z-index: 0;
 }
 
 .form-section-title {
   font-family: var(--fh);
   font-size: 1.1rem;
   font-weight: 800;
-  color: var(--gold);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.06rem;
   margin-top: 2rem;
@@ -1776,8 +1772,8 @@ div[style*="position:fixed"] .card {
 .modern-input-icon {
   position: absolute;
   left: 14px;
-  color: var(--text-dim);
-  transition: color 0.25s ease;
+  color: var(--text-muted);
+  transition: color 0.2s ease;
   pointer-events: none;
   z-index: 10;
 }
@@ -1787,21 +1783,13 @@ div[style*="position:fixed"] .card {
 .modern-textarea {
   width: 100%;
   padding: 12px 14px 12px 42px !important;
-  border-radius: 12px !important;
+  border-radius: var(--r-md) !important;
   border: 1px solid rgba(var(--sky-rgb), 0.25) !important;
-  background: rgba(var(--navy-dark-rgb), 0.5) !important;
+  background: var(--input-bg) !important;
   color: var(--text) !important;
   font-family: var(--fb) !important;
   font-size: 0.9rem !important;
-  outline: none !important;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
-}
-
-[data-theme="light"] .modern-input,
-[data-theme="light"] .modern-select,
-[data-theme="light"] .modern-textarea {
-  background: #F8FAFC !important;
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
 }
 
 .modern-textarea {
@@ -1818,15 +1806,6 @@ div[style*="position:fixed"] .card {
 .modern-textarea:focus {
   border-color: var(--gold) !important;
   box-shadow: 0 0 0 4px rgba(var(--gold-rgb), 0.12) !important;
-  background: rgba(var(--navy-dark-rgb), 0.8) !important;
-}
-
-[data-theme="light"] .modern-input:focus,
-[data-theme="light"] .modern-select:focus,
-[data-theme="light"] .modern-textarea:focus {
-  background: #FFFFFF !important;
-  border-color: var(--gold) !important;
-  box-shadow: 0 0 0 4px rgba(var(--gold-rgb), 0.1) !important;
 }
 
 .modern-input:hover,
@@ -1838,7 +1817,7 @@ div[style*="position:fixed"] .card {
 .modern-label {
   display: block;
   margin-bottom: 8px;
-  color: var(--text-dim);
+  color: var(--text-muted);
   font-size: 0.82rem;
   font-weight: 700;
   text-transform: uppercase;
