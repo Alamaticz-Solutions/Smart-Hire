@@ -1,7 +1,7 @@
 import { Outlet, NavLink } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import axios from 'axios'
-import { LayoutDashboard, Upload, MessageSquare, LogOut, Sun, Moon, Briefcase, Shield, Users, Download, Activity, X, Link, FileText } from 'lucide-react'
+import { LayoutDashboard, Upload, MessageSquare, LogOut, Sun, Moon, Briefcase, Shield, Users, Download, Activity, X, Link, FileText, AlertTriangle } from 'lucide-react'
 import alamaticzLogo from '../assets/alamaticz-logo.jpg'
 
 export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUser }) {
@@ -55,19 +55,19 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
         }
     };
 
-    const navItems = [
+    const primaryNavItems = [
         { to: '/', label: 'Dashboard', Icon: LayoutDashboard },
         ...((user?.is_hr === 1 || user?.is_external === 1) ? [{ to: '/jobs', label: 'Job Description', Icon: Briefcase }] : []),
         { to: '/upload', label: 'Candidate Profiles', Icon: Users },
+        { to: '/chat', label: 'Chat with Hire-Ai', Icon: MessageSquare },
     ]
 
+    const workspaceNavItems = []
     if (user?.role === 'admin' || user?.is_admin === 1) {
-        navItems.push({ to: '/connect', label: 'Connect', Icon: Link })
-        navItems.push({ to: '/templates', label: 'Reply Templates', Icon: FileText })
-        navItems.push({ to: '/admin', label: 'Admin Portal', Icon: Shield })
+        workspaceNavItems.push({ to: '/connect', label: 'Connect', Icon: Link })
+        workspaceNavItems.push({ to: '/templates', label: 'Reply Templates', Icon: FileText })
+        workspaceNavItems.push({ to: '/admin', label: 'Admin Portal', Icon: Shield })
     }
-
-    navItems.push({ to: '/chat', label: 'Chat with Hire-Ai', Icon: MessageSquare })
 
 
 
@@ -86,7 +86,7 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
                 </div>
 
                 <nav className="sidebar-nav">
-                    {navItems.map(({ to, label, Icon }) => (
+                    {primaryNavItems.map(({ to, label, Icon }) => (
                         <NavLink
                             key={to}
                             to={to}
@@ -97,6 +97,28 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
                             {label}
                         </NavLink>
                     ))}
+
+                    {workspaceNavItems.length > 0 && (
+                        <>
+                            <div style={{
+                                fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em',
+                                color: 'var(--text-dim)', opacity: 0.6, padding: '18px 16px 6px'
+                            }}>
+                                Workspace
+                            </div>
+                            {workspaceNavItems.map(({ to, label, Icon }) => (
+                                <NavLink
+                                    key={to}
+                                    to={to}
+                                    end={to === '/'}
+                                    className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+                                >
+                                    <Icon size={18} />
+                                    {label}
+                                </NavLink>
+                            ))}
+                        </>
+                    )}
                 </nav>
 
                 <div className="sidebar-footer">
@@ -130,8 +152,7 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
                                 style={{ cursor: 'pointer' }}
                             >
                             <div className="profile-avatar" style={{
-                                background: user?.active_persona ? 'linear-gradient(135deg, #FB8500, #FFB703)' : 'var(--gold)',
-                                boxShadow: user?.active_persona ? '0 0 10px rgba(251, 133, 0, 0.4)' : 'none',
+                                background: 'var(--gold)',
                                 transition: 'all 0.3s ease'
                             }}>
                                 {(user?.active_persona?.[0] || user?.full_name?.[0] || 'H').toUpperCase()}
@@ -202,7 +223,7 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
                             gap: '10px',
                             fontWeight: '500'
                         }}>
-                            <span>⚠️</span>
+                            <AlertTriangle size={16} style={{ flexShrink: 0 }} />
                             <span>
                                 <strong>Access Pending:</strong> Your account is currently awaiting administrator approval. You can navigate the portal, but no candidate or job data will be visible.
                             </span>
@@ -245,7 +266,7 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
                                             <div key={act.id} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
                                                 <div style={{
                                                     width: '32px', height: '32px', borderRadius: '50%',
-                                                    background: 'linear-gradient(135deg, #FB8500, #FFB703)',
+                                                    background: 'var(--gold)',
                                                     color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                     fontWeight: 'bold', fontSize: '0.8rem', flexShrink: 0
                                                 }}>

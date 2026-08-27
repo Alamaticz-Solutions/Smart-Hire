@@ -5,14 +5,14 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
     ResponsiveContainer, Cell
 } from 'recharts'
-import { Users, Clock, Download, Plus, Trash2, FileText, X, Loader } from 'lucide-react'
+import { Users, Clock, Download, Plus, Trash2, FileText, X, Loader, BarChart3, Timer, BarChart2 } from 'lucide-react'
 import { exportToExcel, formatCandidatesForExcel } from '../utils/excelUtils'
 import apiClient, { getStaticUrl } from '../api/client'
 import CandidateDetailsModal from '../components/shared/CandidateDetailsModal'
 import CellTextModal from '../components/shared/CellTextModal'
 import SkillBadges from '../components/shared/SkillBadges'
 
-const COLORS = ['#FB8500', '#FFB703', '#219EBC', '#8ECAE6', '#023047']
+const COLORS = ['#D97706', '#4A90D9', '#8B6BC7', '#5FA88A', '#93A5BA']
 
 export default function DashboardPage() {
     // `Layout.jsx` provides `user` via `<Outlet context={{ user, onUpdateUser }} />`;
@@ -184,7 +184,7 @@ export default function DashboardPage() {
             {/* Empty state */}
             {candidates.length === 0 ? (
                 <div className="card" style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-dim)' }}>
-                    <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📊</div>
+                    <BarChart2 size={40} style={{ marginBottom: '1rem', color: 'var(--text-dim)' }} />
                     <p style={{ fontSize: '1.1rem', fontFamily: 'var(--fh)', color: 'var(--gold)' }}>No Data Yet</p>
                     <p style={{ marginTop: '0.5rem' }}>Upload and analyze resumes to see insights here.</p>
                 </div>
@@ -193,27 +193,27 @@ export default function DashboardPage() {
                     {/* Charts */}
                     <div className="charts-grid">
                         <div className="card">
-                            <div className="card-title">📊 Experience</div>
+                            <div className="card-title"><BarChart3 size={17} /> Experience</div>
                             <ResponsiveContainer width="100%" height={300}>
                                 <BarChart data={expChartData} margin={{ top: 5, right: 10, bottom: 20, left: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                                    <XAxis dataKey="name" tick={{ fill: '#8ECAE6', fontSize: 12 }} angle={-30} textAnchor="end" />
-                                    <YAxis tick={{ fill: '#8ECAE6', fontSize: 12 }} unit=" yr" />
+                                    <XAxis dataKey="name" tick={{ fill: '#8593A6', fontSize: 12 }} angle={-30} textAnchor="end" />
+                                    <YAxis tick={{ fill: '#8593A6', fontSize: 12 }} unit=" yr" />
                                     <Tooltip content={<CustomTooltip />} />
-                                    <Legend wrapperStyle={{ color: '#8ECAE6', fontSize: 13 }} />
-                                    <Bar dataKey="Total Exp" fill="#FB8500" radius={[6, 6, 0, 0]} />
-                                    <Bar dataKey="Pega Exp" fill="#FFB703" radius={[6, 6, 0, 0]} />
+                                    <Legend wrapperStyle={{ color: '#8593A6', fontSize: 13 }} />
+                                    <Bar dataKey="Total Exp" fill="#D97706" radius={[4, 4, 0, 0]} />
+                                    <Bar dataKey="Pega Exp" fill="#4A90D9" radius={[4, 4, 0, 0]} />
                                 </BarChart>
                             </ResponsiveContainer>
                         </div>
 
                         <div className="card">
-                            <div className="card-title">⏱ Notice Period</div>
+                            <div className="card-title"><Timer size={17} /> Notice Period</div>
                             <ResponsiveContainer width="100%" height={300}>
                                 <BarChart data={noticeData} margin={{ top: 5, right: 10, bottom: 20, left: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                                    <XAxis dataKey="name" tick={{ fill: '#8ECAE6', fontSize: 12 }} angle={-30} textAnchor="end" />
-                                    <YAxis tick={{ fill: '#8ECAE6', fontSize: 12 }} allowDecimals={false} />
+                                    <XAxis dataKey="name" tick={{ fill: '#8593A6', fontSize: 12 }} angle={-30} textAnchor="end" />
+                                    <YAxis tick={{ fill: '#8593A6', fontSize: 12 }} allowDecimals={false} />
                                     <Tooltip contentStyle={{
                                         background: 'var(--input-bg)',
                                         border: '1px solid rgba(var(--gold-rgb), 0.3)', borderRadius: 10, color: 'var(--text)'
@@ -230,7 +230,7 @@ export default function DashboardPage() {
                     <div className="card" ref={summaryRef}>
                         <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', minWidth: '800px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                👥 {filterType === 'immediate' ? 'Immediate Joiners' : 'Candidate Summary'}
+                                <Users size={17} /> {filterType === 'immediate' ? 'Immediate Joiners' : 'Candidate Summary'}
                             </div>
                             <div style={{ display: 'flex', gap: 8 }}>
                                 <button
@@ -384,26 +384,7 @@ export default function DashboardPage() {
                                                     );
                                                 }
 
-                                                let color = '#38bdf8';
-                                                let bg = 'rgba(56, 189, 248, 0.12)';
-                                                let border = '1px solid rgba(56, 189, 248, 0.25)';
-
-                                                const lowerS = s.toLowerCase();
-                                                if (lowerS === 'in-review') {
-                                                    color = '#fbbf24'; bg = 'rgba(251, 191, 36, 0.12)'; border = '1px solid rgba(251, 191, 36, 0.25)';
-                                                } else if (lowerS === 'available') {
-                                                    color = '#34d399'; bg = 'rgba(52, 211, 153, 0.12)'; border = '1px solid rgba(52, 211, 153, 0.25)';
-                                                } else if (lowerS === 'selected') {
-                                                    color = '#2dd4bf'; bg = 'rgba(45, 212, 191, 0.12)'; border = '1px solid rgba(45, 212, 191, 0.25)';
-                                                } else if (lowerS === 'rejected') {
-                                                    color = '#f87171'; bg = 'rgba(248, 113, 113, 0.12)'; border = '1px solid rgba(248, 113, 113, 0.25)';
-                                                } else if (lowerS === 'engaged') {
-                                                    color = '#c084fc'; bg = 'rgba(192, 132, 252, 0.12)'; border = '1px solid rgba(192, 132, 252, 0.25)';
-                                                } else if (lowerS === 'offered') {
-                                                    color = '#f43f5e'; bg = 'rgba(244, 63, 94, 0.12)'; border = '1px solid rgba(244, 63, 94, 0.25)';
-                                                } else if (lowerS === 'hired') {
-                                                    color = '#4ade80'; bg = 'rgba(74, 222, 128, 0.15)'; border = '1px solid rgba(74, 222, 128, 0.35)';
-                                                }
+                                                const statusClass = 'status-' + s.toLowerCase().replace(/\s+/g, '-');
 
                                                 return (
                                                     <td
@@ -411,12 +392,7 @@ export default function DashboardPage() {
                                                         onClick={() => setEditStatusCell({ candidateId: c.id })}
                                                         style={{ padding: '10px 12px', verticalAlign: 'top', cursor: 'pointer' }}
                                                     >
-                                                        <span style={{
-                                                            background: bg, color: color, border: border,
-                                                            borderRadius: 5, padding: '2px 8px', fontSize: '0.73rem',
-                                                            fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-block',
-                                                            textTransform: 'capitalize'
-                                                        }}>
+                                                        <span className={`status-chip ${statusClass}`}>
                                                             {s}
                                                         </span>
                                                     </td>

@@ -2,77 +2,105 @@
    HIRE AI – Global Design System
    ═══════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
+/* ═══════════════════════════════════════════════════════
+   Redesign tokens (2026) — see the "Hire AI Redesign" canvas
+   for the source direction. Class names and custom-property
+   NAMES below are unchanged on purpose: hundreds of inline
+   styles across every page reference var(--gold)/var(--navy)/
+   var(--sky) directly, so retargeting what these resolve to
+   reskins the whole app without touching page components.
+   ═══════════════════════════════════════════════════════ */
 :root {
-  --primary: #FB8500;
-  --gold: #FFB703;
-  --navy: #023047;
-  --navy-dark: #011627;
-  --sky: #219EBC;
-  --sky-dim: #8ECAE6;
-  --primary-rgb: 251, 133, 0;
-  --gold-rgb: 255, 183, 3;
-  --navy-rgb: 2, 48, 71;
-  --navy-dark-rgb: 1, 22, 39;
-  --sky-rgb: 33, 158, 188;
-  --sky-dim-rgb: 142, 202, 230;
+  --primary: #C2660A;
+  --gold: #D97706;
+  --navy: #1C1E24;
+  --navy-dark: #121318;
+  --sky: #4A90D9;
+  --sky-dim: #93A5BA;
+  --primary-rgb: 194, 102, 10;
+  --gold-rgb: 217, 119, 6;
+  --navy-rgb: 28, 30, 36;
+  --navy-dark-rgb: 18, 19, 24;
+  --sky-rgb: 74, 144, 217;
+  --sky-dim-rgb: 147, 165, 186;
   --black-rgb: 0, 0, 0;
   --white-rgb: 255, 255, 255;
   --red-rgb: 220, 38, 38;
-  --green-rgb: 34, 197, 94;
-  --card-bg: rgba(var(--navy-rgb), 0.45);
-  --border: rgba(var(--sky-rgb), 0.25);
-  --border-gold: rgba(var(--gold-rgb), 0.35);
-  --text: #FFFFFF;
-  --text-dim: #8ECAE6;
-  --fh: 'Outfit', sans-serif;
-  --fb: 'Inter', sans-serif;
-  --radius: 18px;
-  --shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-  --glow: 0 0 15px rgba(var(--gold-rgb), 0.2);
-  --bg-gradient: radial-gradient(ellipse at top right, #051923 0%, #023047 50%, #011627 100%);
-  --sidebar-bg: rgba(var(--navy-dark-rgb), 0.95);
-  --topbar-bg: rgba(var(--navy-dark-rgb), 0.6);
-  --input-bg: rgba(var(--navy-dark-rgb), 0.7);
-  --table-header-bg: rgba(var(--navy-rgb), 0.9);
+  --green-rgb: 34, 150, 94;
+  --card-bg: #23262E;
+  --border: rgba(255, 255, 255, 0.09);
+  --border-gold: rgba(var(--gold-rgb), 0.3);
+  --text: #EEF0F3;
+  --text-dim: #9AA3B0;
+  --fh: 'Manrope', system-ui, sans-serif;
+  --fb: 'Manrope', system-ui, sans-serif;
+  --fm: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
+  --radius: 12px;
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+  --glow: none;
+  --bg-gradient: #17181D;
+  --sidebar-bg: #121318;
+  --topbar-bg: #1A1C22;
+  --input-bg: #1A1C22;
+  --table-header-bg: #1E2027;
   --nav-active-text: #fff;
-  --profile-chip-bg: rgba(var(--navy-rgb), 0.82);
-  --login-card-bg: rgba(2, 36, 56, 0.85);
+  --profile-chip-bg: #1E2027;
+  --login-card-bg: #1E2027;
+  /* Candidate status chips — one hue per status, matched lightness/chroma.
+     Same token names/values as the "Hire AI Redesign" canvas's Foundations
+     sheet, so every page's status chip stays visually identical. */
+  --st-new-bg: oklch(30% 0.015 260); --st-new-text: oklch(85% 0.02 260);
+  --st-review-bg: oklch(32% 0.08 70); --st-review-text: oklch(86% 0.09 70);
+  --st-avail-bg: oklch(30% 0.08 165); --st-avail-text: oklch(84% 0.09 165);
+  --st-selected-bg: oklch(30% 0.09 250); --st-selected-text: oklch(84% 0.1 250);
+  --st-rejected-bg: oklch(32% 0.1 25); --st-rejected-text: oklch(86% 0.1 25);
+  --st-engaged-bg: oklch(32% 0.09 300); --st-engaged-text: oklch(85% 0.1 300);
+  --st-offered-bg: oklch(32% 0.1 350); --st-offered-text: oklch(86% 0.1 350);
+  --st-hired-bg: oklch(28% 0.11 150); --st-hired-text: oklch(82% 0.12 150);
 }
 
 [data-theme="light"] {
-  --primary: #FF8A00;
-  --gold: #E85D04;
+  --primary: #C2660A;
+  --gold: #B45309;
   --navy: #FFFFFF;
   --navy-dark: #FFFFFF;
-  --sky: #0284C7;
-  --sky-dim: #0ea5e9;
-  --primary-rgb: 255, 138, 0;
-  --gold-rgb: 232, 93, 4;
+  --sky: #2563A8;
+  --sky-dim: #5B6B7F;
+  --primary-rgb: 194, 102, 10;
+  --gold-rgb: 180, 83, 9;
   --navy-rgb: 255, 255, 255;
   --navy-dark-rgb: 255, 255, 255;
-  --sky-rgb: 2, 132, 199;
-  --sky-dim-rgb: 14, 165, 233;
+  --sky-rgb: 37, 99, 168;
+  --sky-dim-rgb: 91, 107, 127;
   --black-rgb: 0, 0, 0;
   --white-rgb: 255, 255, 255;
   --red-rgb: 220, 38, 38;
-  --green-rgb: 34, 197, 94;
+  --green-rgb: 22, 130, 74;
   --card-bg: #FFFFFF;
-  --border: rgba(0, 0, 0, 0.1);
-  --border-gold: rgba(var(--gold-rgb), 0.3);
-  --text: #0F172A;
-  --text-dim: #475569;
-  --shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-  --glow: 0 0 15px rgba(var(--gold-rgb), 0.15);
-  --bg-gradient: #F8FAFC;
+  --border: rgba(15, 23, 42, 0.09);
+  --border-gold: rgba(var(--gold-rgb), 0.25);
+  --text: #191B1F;
+  --text-dim: #5B6472;
+  --shadow: 0 1px 3px rgba(15, 23, 42, 0.07);
+  --glow: none;
+  --bg-gradient: #FAFAF9;
   --sidebar-bg: #FFFFFF;
   --topbar-bg: #FFFFFF;
   --input-bg: #FFFFFF;
-  --table-header-bg: #F1F5F9;
-  --nav-active-text: #0F172A;
+  --table-header-bg: #F4F5F7;
+  --nav-active-text: #191B1F;
   --profile-chip-bg: #FFFFFF;
   --login-card-bg: #FFFFFF;
+  --st-new-bg: oklch(92% 0.01 260); --st-new-text: oklch(38% 0.02 260);
+  --st-review-bg: oklch(92% 0.05 80); --st-review-text: oklch(40% 0.12 70);
+  --st-avail-bg: oklch(92% 0.05 165); --st-avail-text: oklch(40% 0.12 165);
+  --st-selected-bg: oklch(92% 0.04 240); --st-selected-text: oklch(38% 0.14 250);
+  --st-rejected-bg: oklch(92% 0.05 25); --st-rejected-text: oklch(46% 0.16 25);
+  --st-engaged-bg: oklch(92% 0.05 300); --st-engaged-text: oklch(44% 0.14 300);
+  --st-offered-bg: oklch(92% 0.05 350); --st-offered-text: oklch(44% 0.15 350);
+  --st-hired-bg: oklch(89% 0.08 150); --st-hired-text: oklch(30% 0.14 150);
 }
 
 
@@ -156,10 +184,7 @@ body,
   font-family: var(--fh);
   font-size: 1.35rem;
   font-weight: 800;
-  background: linear-gradient(90deg, #FFB703, #FB8500);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--text);
 }
 
 .sidebar-nav {
@@ -195,10 +220,10 @@ body,
 }
 
 .nav-link.active {
-  background: linear-gradient(90deg, rgba(var(--primary-rgb), 0.2), rgba(var(--gold-rgb), 0.15));
+  background: rgba(var(--gold-rgb), 0.14);
   color: var(--nav-active-text);
-  border-color: rgba(var(--primary-rgb), 0.4);
-  box-shadow: 0 4px 15px rgba(var(--primary-rgb), 0.15);
+  border-color: rgba(var(--gold-rgb), 0.3);
+  box-shadow: none;
 }
 
 .nav-link svg {
@@ -279,7 +304,7 @@ body,
 .profile-avatar {
   width: 32px;
   height: 32px;
-  background: linear-gradient(135deg, var(--primary), var(--gold));
+  background: var(--gold);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -287,7 +312,7 @@ body,
   font-family: var(--fh);
   font-weight: 800;
   font-size: 0.9rem;
-  color: var(--navy-dark);
+  color: #1A1206;
 }
 
 .profile-name {
@@ -314,7 +339,6 @@ body,
 
 .card:hover {
   border-color: var(--border-gold);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7), var(--glow);
 }
 
 .card-title {
@@ -326,7 +350,6 @@ body,
   display: flex;
   align-items: center;
   gap: 8px;
-  text-shadow: 0 0 10px rgba(var(--gold-rgb), 0.3);
 }
 
 /* ── KPI Stats ────────────────────────────────────────── */
@@ -363,9 +386,7 @@ body,
 }
 
 .kpi-card:hover {
-  transform: translateY(-5px) scale(1.02);
-  box-shadow: 0 15px 45px rgba(0, 0, 0, 0.6), var(--glow);
-  border-color: var(--gold);
+  border-color: var(--border-gold);
 }
 
 .kpi-card:hover::before {
@@ -373,16 +394,12 @@ body,
 }
 
 .kpi-value {
-  font-family: var(--fh);
-  font-size: 2.2rem;
-  font-weight: 800;
-  background: linear-gradient(135deg, var(--gold), var(--primary));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  font-family: var(--fm);
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--text);
   line-height: 1;
   margin-bottom: 0.4rem;
-  filter: drop-shadow(0 0 8px rgba(var(--primary-rgb), 0.3));
 }
 
 .kpi-label {
@@ -423,14 +440,13 @@ body,
 }
 
 .btn-primary {
-  background: linear-gradient(90deg, var(--primary), var(--gold));
-  color: var(--navy-dark);
-  box-shadow: 0 4px 15px rgba(var(--primary-rgb), 0.3);
+  background: var(--gold);
+  color: #1A1206;
+  box-shadow: none;
 }
 
 .btn-primary:hover {
-  box-shadow: 0 6px 20px rgba(var(--primary-rgb), 0.45);
-  transform: translateY(-1px);
+  background: var(--primary);
 }
 
 .btn-primary:disabled {
@@ -541,12 +557,8 @@ body,
   font-family: var(--fh);
   font-size: 2rem;
   font-weight: 800;
-  background: linear-gradient(90deg, #FFB703, #FB8500);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  letter-spacing: 0.06rem;
-  text-transform: uppercase;
+  color: var(--text);
+  letter-spacing: -0.01em;
 }
 
 .login-subtitle {
@@ -747,7 +759,7 @@ body,
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--primary), var(--gold));
+  background: var(--gold);
   border-radius: 3px;
   transition: width 0.4s ease;
 }
@@ -839,7 +851,7 @@ tbody tr:last-child td {
 .chat-empty-icon {
   width: 64px;
   height: 64px;
-  background: linear-gradient(135deg, var(--primary), var(--gold));
+  background: var(--gold);
   border-radius: 20px;
   display: flex;
   align-items: center;
@@ -885,8 +897,8 @@ tbody tr:last-child td {
 }
 
 .msg-avatar.ai {
-  background: linear-gradient(135deg, var(--primary), var(--gold));
-  color: var(--navy-dark);
+  background: var(--gold);
+  color: #1A1206;
 }
 
 .msg-avatar.user-av {
@@ -968,20 +980,20 @@ tbody tr:last-child td {
 .chat-send-btn {
   width: 40px;
   height: 40px;
-  background: linear-gradient(135deg, var(--primary), var(--gold));
+  background: var(--gold);
   border: none;
   border-radius: 10px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--navy-dark);
+  color: #1A1206;
   transition: all 0.2s ease;
   flex-shrink: 0;
 }
 
 .chat-send-btn:hover {
-  box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.4);
+  background: var(--primary);
 }
 
 .chat-send-btn:disabled {
@@ -1051,6 +1063,27 @@ tbody tr:last-child td {
 .response-table tbody tr:hover {
   background: rgba(var(--sky-rgb), 0.06);
 }
+
+/* ── Status chip (candidate pipeline status) ─────────────
+   One shared source of truth for the 8-status color system,
+   instead of each page hand-rolling its own hex per status. */
+.status-chip {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.73rem;
+  font-weight: 700;
+  white-space: nowrap;
+  text-transform: capitalize;
+}
+.status-chip.status-new { background: var(--st-new-bg); color: var(--st-new-text); }
+.status-chip.status-in-review { background: var(--st-review-bg); color: var(--st-review-text); }
+.status-chip.status-available { background: var(--st-avail-bg); color: var(--st-avail-text); }
+.status-chip.status-selected { background: var(--st-selected-bg); color: var(--st-selected-text); }
+.status-chip.status-rejected { background: var(--st-rejected-bg); color: var(--st-rejected-text); }
+.status-chip.status-engaged { background: var(--st-engaged-bg); color: var(--st-engaged-text); }
+.status-chip.status-offered { background: var(--st-offered-bg); color: var(--st-offered-text); }
+.status-chip.status-hired { background: var(--st-hired-bg); color: var(--st-hired-text); }
 
 /* ── Badge ────────────────────────────────────────────── */
 .badge {

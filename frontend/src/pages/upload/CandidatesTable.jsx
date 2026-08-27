@@ -1,6 +1,6 @@
 import React, { useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Trash2, FileText, Filter, Download, RefreshCw, Eye, X, CheckSquare } from 'lucide-react'
+import { Trash2, FileText, Filter, Download, RefreshCw, Eye, X, CheckSquare, Users, Search } from 'lucide-react'
 import { exportToExcel, formatCandidatesForExcel } from '../../utils/excelUtils'
 import apiClient from '../../api/client'
 import ExpandableCell from '../../components/shared/ExpandableCell'
@@ -98,7 +98,7 @@ export default function CandidatesTable({
         <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, width: '100%' }}>
             <div className="section-header" style={{ borderBottom: '1px solid rgba(var(--sky-rgb), 0.2)', paddingBottom: '1rem', marginBottom: '1rem' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    <div className="section-title">👥 Candidate Profiles</div>
+                    <div className="section-title"><Users size={18} /> Candidate Profiles</div>
                 </div>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', alignSelf: 'flex-start', marginTop: '10px' }}>
                     <button className="btn btn-secondary" onClick={() => setShowFilter(true)} style={{ gap: 6, color: 'var(--sky)', borderColor: 'rgba(var(--sky-rgb), 0.3)' }}>
@@ -530,7 +530,7 @@ export default function CandidatesTable({
                                 {filteredCandidates.length === 0 ? (
                                     <tr>
                                         <td colSpan={activeCols.length + 2} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-dim)' }}>
-                                            <div style={{ fontSize: '2rem', marginBottom: 8 }}>🔍</div>
+                                            <Search size={28} style={{ marginBottom: 8, opacity: 0.6 }} />
                                             <p style={{ margin: 0 }}>No candidates match the applied filters.</p>
                                         </td>
                                     </tr>
@@ -673,34 +673,9 @@ export default function CandidatesTable({
                                             let display;
                                             if (key === 'candidate_status') {
                                                  const s = String(val || 'New').trim();
-                                                 let color = '#38bdf8';
-                                                 let bg = 'rgba(56, 189, 248, 0.12)';
-                                                 let border = '1px solid rgba(56, 189, 248, 0.25)';
-
-                                                 const lowerS = s.toLowerCase();
-                                                 if (lowerS === 'in-review') {
-                                                     color = '#fbbf24'; bg = 'rgba(251, 191, 36, 0.12)'; border = '1px solid rgba(251, 191, 36, 0.25)';
-                                                 } else if (lowerS === 'available') {
-                                                     color = '#34d399'; bg = 'rgba(52, 211, 153, 0.12)'; border = '1px solid rgba(52, 211, 153, 0.25)';
-                                                 } else if (lowerS === 'selected') {
-                                                     color = '#2dd4bf'; bg = 'rgba(45, 212, 191, 0.12)'; border = '1px solid rgba(45, 212, 191, 0.25)';
-                                                 } else if (lowerS === 'rejected') {
-                                                     color = '#f87171'; bg = 'rgba(248, 113, 113, 0.12)'; border = '1px solid rgba(248, 113, 113, 0.25)';
-                                                 } else if (lowerS === 'engaged') {
-                                                     color = '#c084fc'; bg = 'rgba(192, 132, 252, 0.12)'; border = '1px solid rgba(192, 132, 252, 0.25)';
-                                                 } else if (lowerS === 'offered') {
-                                                     color = '#f43f5e'; bg = 'rgba(244, 63, 94, 0.12)'; border = '1px solid rgba(244, 63, 94, 0.25)';
-                                                 } else if (lowerS === 'hired') {
-                                                     color = '#4ade80'; bg = 'rgba(74, 222, 128, 0.15)'; border = '1px solid rgba(74, 222, 128, 0.35)';
-                                                 }
-
+                                                 const statusClass = 'status-' + s.toLowerCase().replace(/\s+/g, '-');
                                                  display = (
-                                                     <span style={{
-                                                         background: bg, color: color, border: border,
-                                                         borderRadius: 5, padding: '2px 8px', fontSize: '0.73rem',
-                                                         fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-block',
-                                                         textTransform: 'capitalize'
-                                                     }}>
+                                                     <span className={`status-chip ${statusClass}`}>
                                                          {s}
                                                      </span>
                                                  );

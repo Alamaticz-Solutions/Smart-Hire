@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Search, UserCheck, ChevronRight, Edit, Trash2, Eye, Download, X, FileText } from 'lucide-react';
+import { Search, UserCheck, ChevronRight, Edit, Trash2, Eye, Download, X, FileText, Mail, Star } from 'lucide-react';
 import apiClient from '../../api/client';
 import { exportToExcel, formatCandidatesForExcel } from '../../utils/excelUtils';
 import ExpandableCell from '../../components/shared/ExpandableCell';
@@ -432,7 +432,7 @@ export default function CandidatesTable({
                                                                             style={{ fontSize: '0.73rem', padding: '5px 9px', background: 'rgba(var(--sky-rgb), 0.15)', borderColor: 'rgba(var(--sky-rgb), 0.3)', color: 'var(--sky-dim)' }}
                                                                             title="Send congratulations email via Gmail"
                                                                         >
-                                                                            ✉ Send Gmail
+                                                                            <Mail size={12} /> Send Gmail
                                                                         </button>
                                                                     )}
                                                                 </>
@@ -529,34 +529,9 @@ export default function CandidatesTable({
                                                 let display;
                                                 if (key === 'candidate_status') {
                                                      const s = String(val || 'New').trim();
-                                                     let color = '#38bdf8';
-                                                     let bg = 'rgba(56, 189, 248, 0.12)';
-                                                     let border = '1px solid rgba(56, 189, 248, 0.25)';
-
-                                                     const lowerS = s.toLowerCase();
-                                                     if (lowerS === 'in-review') {
-                                                         color = '#fbbf24'; bg = 'rgba(251, 191, 36, 0.12)'; border = '1px solid rgba(251, 191, 36, 0.25)';
-                                                     } else if (lowerS === 'available') {
-                                                         color = '#34d399'; bg = 'rgba(52, 211, 153, 0.12)'; border = '1px solid rgba(52, 211, 153, 0.25)';
-                                                     } else if (lowerS === 'selected') {
-                                                         color = '#2dd4bf'; bg = 'rgba(45, 212, 191, 0.12)'; border = '1px solid rgba(45, 212, 191, 0.25)';
-                                                     } else if (lowerS === 'rejected') {
-                                                         color = '#f87171'; bg = 'rgba(248, 113, 113, 0.12)'; border = '1px solid rgba(248, 113, 113, 0.25)';
-                                                     } else if (lowerS === 'engaged') {
-                                                         color = '#c084fc'; bg = 'rgba(192, 132, 252, 0.12)'; border = '1px solid rgba(192, 132, 252, 0.25)';
-                                                     } else if (lowerS === 'offered') {
-                                                         color = '#f43f5e'; bg = 'rgba(244, 63, 94, 0.12)'; border = '1px solid rgba(244, 63, 94, 0.25)';
-                                                     } else if (lowerS === 'hired') {
-                                                         color = '#4ade80'; bg = 'rgba(74, 222, 128, 0.15)'; border = '1px solid rgba(74, 222, 128, 0.35)';
-                                                     }
-
+                                                     const statusClass = 'status-' + s.toLowerCase().replace(/\s+/g, '-');
                                                      display = (
-                                                         <span style={{
-                                                             background: bg, color: color, border: border,
-                                                             borderRadius: 5, padding: '2px 8px', fontSize: '0.73rem',
-                                                             fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-block',
-                                                             textTransform: 'capitalize'
-                                                         }}>
+                                                         <span className={`status-chip ${statusClass}`}>
                                                              {s}
                                                          </span>
                                                      );
@@ -626,8 +601,8 @@ export default function CandidatesTable({
                                                                     <FileText size={14} style={{ flexShrink: 0, color: 'var(--gold)' }} />
                                                                     {display}
                                                                     {row.is_qualified ? (
-                                                                        <span style={{ fontSize: '0.72rem', background: 'rgba(var(--gold-rgb), 0.2)', padding: '2px 6px', borderRadius: '10px', color: 'var(--gold)', marginLeft: '6px' }} title="Qualified candidate">
-                                                                            ⭐ Qualified
+                                                                        <span style={{ fontSize: '0.72rem', background: 'rgba(var(--gold-rgb), 0.2)', padding: '2px 6px', borderRadius: '10px', color: 'var(--gold)', marginLeft: '6px', display: 'inline-flex', alignItems: 'center', gap: '3px' }} title="Qualified candidate">
+                                                                            <Star size={11} fill="currentColor" /> Qualified
                                                                         </span>
                                                                     ) : null}
                                                                 </span>
