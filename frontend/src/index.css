@@ -449,10 +449,16 @@ body,
 }
 
 /* ── KPI Stats ────────────────────────────────────────── */
+/* auto-fill + a capped max (vs. the old auto-fit/1fr) keeps a short row of
+   KPI tiles from stretching to fill the container - with only 2-4 tiles at
+   a wide viewport that used to mean ~900px-wide cards holding a single
+   number (audit S3.4). justify-content:start keeps the row left-aligned
+   instead of centering the leftover space. */
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 1.2rem;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 200px));
+  justify-content: start;
+  gap: 1rem;
   margin-bottom: 2rem;
 }
 
@@ -460,8 +466,8 @@ body,
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 1.4rem;
-  text-align: center;
+  padding: 1.2rem 1.4rem;
+  text-align: left;
   box-shadow: var(--shadow);
   transition: border-color 0.2s ease;
   position: relative;
@@ -499,6 +505,26 @@ body,
 
 @media (max-width: 900px) {
   .charts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Dashboard's 3-up (Pipeline / Notice Period / Recent Activity) row - a
+   dedicated class rather than an inline grid-template-columns override, so
+   the 900px stack-to-one-column media query above still applies (an inline
+   style would win over it regardless of viewport). */
+.dashboard-charts-grid {
+  grid-template-columns: 1.3fr 1fr 1fr;
+}
+
+@media (max-width: 1200px) {
+  .dashboard-charts-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .dashboard-charts-grid {
     grid-template-columns: 1fr;
   }
 }
