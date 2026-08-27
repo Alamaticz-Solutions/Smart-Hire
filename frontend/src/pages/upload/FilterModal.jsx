@@ -1,5 +1,6 @@
 import React from 'react'
 import { X, Check } from 'lucide-react'
+import { useModalA11y } from '../../hooks/useModalA11y'
 
 // Extracted from UploadPage.jsx: the "Filter Candidates" modal (min total /
 // pega experience, Pega certifications, and the custom column-based
@@ -16,12 +17,13 @@ export default function FilterModal({
     setColumnFilters,
     cols,
 }) {
+    const modalRef = useModalA11y(true, onClose)
     return (
-        <div className="modal-overlay">
-            <div className="card" style={{ width: 400, maxWidth: '90%' }}>
+        <div className="modal-overlay" onClick={onClose}>
+            <div ref={modalRef} className="card" role="dialog" aria-modal="true" aria-labelledby="filter-modal-title" onClick={e => e.stopPropagation()} style={{ width: 400, maxWidth: '90%' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 15 }}>
-                    <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)' }}>Filter Candidates</h3>
-                    <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><X size={18} /></button>
+                    <h3 id="filter-modal-title" style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)' }}>Filter Candidates</h3>
+                    <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><X size={18} /></button>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
                     <div>

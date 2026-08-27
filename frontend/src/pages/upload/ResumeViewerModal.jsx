@@ -1,5 +1,6 @@
 import React from 'react'
 import { Download, X } from 'lucide-react'
+import { useModalA11y } from '../../hooks/useModalA11y'
 
 // Extracted from UploadPage.jsx: the "Resume Viewer Modal" — the PDF/DOCX
 // iframe viewer opened from CandidateDetailsModal's "View Resume" action.
@@ -7,10 +8,11 @@ import { Download, X } from 'lucide-react'
 // the `viewingPdf` state ({ url, name } or null) and its setter stay in
 // UploadPage.
 export default function ResumeViewerModal({ viewingPdf, onClose }) {
+    const modalRef = useModalA11y(!!viewingPdf, onClose)
     if (!viewingPdf) return null
     return (
         <div className="modal-overlay" onClick={onClose}>
-            <div className="card" onClick={e => e.stopPropagation()} style={{
+            <div ref={modalRef} className="card" role="dialog" aria-modal="true" aria-labelledby="resume-viewer-modal-title" onClick={e => e.stopPropagation()} style={{
                 width: '90%', maxWidth: 1000, height: '90vh',
                 display: 'flex', flexDirection: 'column', padding: 0,
                 overflow: 'hidden'
@@ -19,8 +21,8 @@ export default function ResumeViewerModal({ viewingPdf, onClose }) {
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                     padding: '20px 24px', background: 'rgba(var(--navy-dark-rgb), 0.4)', borderBottom: '1px solid var(--border)'
                 }}>
-                    <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', display: 'flex', alignItems: 'center', gap: 10, fontSize: '1.05rem' }}>
-                        <span style={{ fontSize: '1.2rem', opacity: 0.8 }}>📄</span> {viewingPdf.name}
+                    <h3 id="resume-viewer-modal-title" style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', display: 'flex', alignItems: 'center', gap: 10, fontSize: '1.05rem' }}>
+                        {viewingPdf.name}
                     </h3>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <a
@@ -53,7 +55,7 @@ export default function ResumeViewerModal({ viewingPdf, onClose }) {
                         >
                             <Download size={14} /> Download File
                         </a>
-                        <button onClick={onClose} style={{
+                        <button onClick={onClose} aria-label="Close" style={{
                             background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
                             color: 'var(--gold)', cursor: 'pointer', padding: 6, borderRadius: '8px',
                             display: 'flex', transition: 'all 0.2s'

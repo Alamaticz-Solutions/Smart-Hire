@@ -6,6 +6,7 @@ import { useToast } from '../hooks/useToast'
 import ToastHost from '../components/shared/ToastHost'
 import { useConfirm } from '../hooks/useConfirm'
 import ConfirmDialog from '../components/shared/ConfirmDialog'
+import { useModalA11y } from '../hooks/useModalA11y'
 
 const CANDIDATE_FIELDS = [
     { key: 'full_name', label: 'Name' },
@@ -44,6 +45,7 @@ export default function AdminPage() {
     const [selectedUserForHiddenFields, setSelectedUserForHiddenFields] = useState(null)
     const [tempHiddenFields, setTempHiddenFields] = useState([])
     const [showHiddenFieldsModal, setShowHiddenFieldsModal] = useState(false)
+    const hiddenFieldsModalRef = useModalA11y(showHiddenFieldsModal, () => setShowHiddenFieldsModal(false))
 
     useEffect(() => {
         if (activeTab === 'requests') {
@@ -594,7 +596,7 @@ export default function AdminPage() {
 
             {showHiddenFieldsModal && selectedUserForHiddenFields && (
                 <div className="modal-overlay" onClick={() => setShowHiddenFieldsModal(false)}>
-                    <div className="card" onClick={e => e.stopPropagation()} style={{
+                    <div ref={hiddenFieldsModalRef} className="card" role="dialog" aria-modal="true" aria-labelledby="hidden-fields-modal-title" onClick={e => e.stopPropagation()} style={{
                         width: '90%', maxWidth: '500px', maxHeight: '85vh',
                         display: 'flex', flexDirection: 'column', padding: 0
                     }}>
@@ -603,10 +605,10 @@ export default function AdminPage() {
                             padding: '20px 24px', background: 'rgba(var(--navy-dark-rgb), 0.4)',
                             borderBottom: '1px solid var(--border)'
                         }}>
-                            <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 800 }}>
-                                🚫 Hidden Candidate Fields for @{selectedUserForHiddenFields.username}
+                            <h3 id="hidden-fields-modal-title" style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 800 }}>
+                                Hidden Candidate Fields for @{selectedUserForHiddenFields.username}
                             </h3>
-                            <button onClick={() => setShowHiddenFieldsModal(false)} style={{
+                            <button onClick={() => setShowHiddenFieldsModal(false)} aria-label="Close" style={{
                                 background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
                                 color: 'var(--gold)', cursor: 'pointer', padding: 6, borderRadius: '8px',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center'

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Briefcase, Building, Phone, User, Calendar, Target, Award, DollarSign } from 'lucide-react';
+import { useModalA11y } from '../../../hooks/useModalA11y';
 
 // Extracted from JobsPage.jsx: the "Edit Job Description" modal (editingJob
 // state). Purely presentational; all state/handlers are owned by JobsPage.
@@ -11,12 +12,13 @@ export default function EditJobModal({
     handleSaveJobEdit,
     isSavingJob,
 }) {
+    const modalRef = useModalA11y(!!editingJob, () => setEditingJob(null));
     if (!editingJob) return null;
 
     return (
-        <div className="modal-overlay">
-            <div className="card" style={{ width: '850px', padding: '2.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxHeight: '90vh', overflowY: 'auto' }}>
-                <h3 style={{ color: 'var(--gold)', margin: 0, fontFamily: 'var(--fh)', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem', fontSize: '1.5rem', fontWeight: 800 }}>Edit Job Description</h3>
+        <div className="modal-overlay" onClick={() => setEditingJob(null)}>
+            <div ref={modalRef} className="card" role="dialog" aria-modal="true" aria-labelledby="edit-job-modal-title" onClick={e => e.stopPropagation()} style={{ width: '850px', padding: '2.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxHeight: '90vh', overflowY: 'auto' }}>
+                <h3 id="edit-job-modal-title" style={{ color: 'var(--gold)', margin: 0, fontFamily: 'var(--fh)', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem', fontSize: '1.5rem', fontWeight: 800 }}>Edit Job Description</h3>
 
                 <div className="form-section-title">
                     <Briefcase size={16} className="jd-param-icon" /> Role & Client Details

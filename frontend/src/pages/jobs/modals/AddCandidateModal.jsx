@@ -1,5 +1,6 @@
 import React from 'react';
 import { X, Search, Loader } from 'lucide-react';
+import { useModalA11y } from '../../../hooks/useModalA11y';
 
 // Extracted from JobsPage.jsx: the "Add Candidate manually to Job" modal
 // (showAddCandidateModal state). Purely presentational; all state/handlers
@@ -14,11 +15,12 @@ export default function AddCandidateModal({
     handleAddCandidateManually,
     addingCandidateId,
 }) {
+    const modalRef = useModalA11y(showAddCandidateModal, () => setShowAddCandidateModal(false));
     if (!showAddCandidateModal) return null;
 
     return (
         <div className="modal-overlay" onClick={() => setShowAddCandidateModal(false)}>
-            <div className="card" onClick={e => e.stopPropagation()} style={{
+            <div ref={modalRef} className="card" role="dialog" aria-modal="true" aria-labelledby="add-candidate-modal-title" onClick={e => e.stopPropagation()} style={{
                 width: '90%', maxWidth: '500px', maxHeight: '80vh',
                 display: 'flex', flexDirection: 'column', padding: 0
             }}>
@@ -28,10 +30,10 @@ export default function AddCandidateModal({
                     padding: '20px 24px', background: 'rgba(var(--navy-dark-rgb), 0.4)',
                     borderBottom: '1px solid var(--border)'
                 }}>
-                    <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 800 }}>
-                        ➕ Add Candidate manually to Job
+                    <h3 id="add-candidate-modal-title" style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 800 }}>
+                        Add Candidate manually to Job
                     </h3>
-                    <button onClick={() => setShowAddCandidateModal(false)} style={{
+                    <button onClick={() => setShowAddCandidateModal(false)} aria-label="Close" style={{
                         background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', display: 'flex'
                     }}>
                         <X size={18} />

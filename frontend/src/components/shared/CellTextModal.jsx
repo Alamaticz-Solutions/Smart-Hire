@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
+import { useModalA11y } from '../../hooks/useModalA11y'
 
 /**
  * Modal that shows the full, un-truncated text of a table cell (`data.title`
@@ -21,6 +22,7 @@ import { X } from 'lucide-react'
  */
 export default function CellTextModal({ data, onClose }) {
     const [copied, setCopied] = useState(false);
+    const modalRef = useModalA11y(true, onClose);
 
     const handleCopy = () => {
         navigator.clipboard.writeText(data.text);
@@ -30,7 +32,7 @@ export default function CellTextModal({ data, onClose }) {
 
     return (
         <div className="modal-overlay" onClick={onClose}>
-            <div className="card" onClick={e => e.stopPropagation()} style={{
+            <div ref={modalRef} className="card" role="dialog" aria-modal="true" aria-labelledby="cell-text-modal-title" onClick={e => e.stopPropagation()} style={{
                 width: '90%', maxWidth: '600px', maxHeight: '80vh',
                 display: 'flex', flexDirection: 'column', padding: 0
             }}>
@@ -39,10 +41,10 @@ export default function CellTextModal({ data, onClose }) {
                     padding: '20px 24px', background: 'rgba(var(--navy-dark-rgb), 0.4)',
                     borderBottom: '1px solid var(--border)'
                 }}>
-                    <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 800 }}>
-                        🔍 View {data.title}
+                    <h3 id="cell-text-modal-title" style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 800 }}>
+                        View {data.title}
                     </h3>
-                    <button onClick={onClose} style={{
+                    <button onClick={onClose} aria-label="Close" style={{
                         background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
                         color: 'var(--gold)', cursor: 'pointer', padding: 6, borderRadius: '8px',
                         display: 'flex', transition: 'all 0.2s'

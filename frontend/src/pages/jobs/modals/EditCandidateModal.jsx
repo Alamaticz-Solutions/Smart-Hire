@@ -1,4 +1,5 @@
 import React from 'react';
+import { useModalA11y } from '../../../hooks/useModalA11y';
 
 // Extracted from JobsPage.jsx: the "Edit Candidate & Match Details" modal
 // (editingCandidate state) — edits core candidate fields plus the per-job
@@ -26,12 +27,13 @@ export default function EditCandidateModal({
     handleSaveCandidateEdit,
     isSavingEdit,
 }) {
+    const modalRef = useModalA11y(!!editingCandidate, () => setEditingCandidate(null));
     if (!editingCandidate) return null;
 
     return (
-        <div className="modal-overlay">
-            <div className="card" style={{ width: '500px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxHeight: '90vh', overflowY: 'auto' }}>
-                <h3 style={{ color: 'var(--gold)', margin: 0, fontFamily: 'var(--fh)', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem' }}>Edit Candidate & Match Details</h3>
+        <div className="modal-overlay" onClick={() => setEditingCandidate(null)}>
+            <div ref={modalRef} className="card" role="dialog" aria-modal="true" aria-labelledby="edit-candidate-modal-title" onClick={e => e.stopPropagation()} style={{ width: '500px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxHeight: '90vh', overflowY: 'auto' }}>
+                <h3 id="edit-candidate-modal-title" style={{ color: 'var(--gold)', margin: 0, fontFamily: 'var(--fh)', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem' }}>Edit Candidate & Match Details</h3>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <div>

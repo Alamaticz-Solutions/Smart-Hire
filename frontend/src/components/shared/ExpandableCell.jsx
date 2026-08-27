@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { X } from 'lucide-react'
 import Chip from './Chip'
+import { useModalA11y } from '../../hooks/useModalA11y'
 
 /**
  * Collapsible table-cell popup: shows the first comma-separated item inline
@@ -17,6 +18,7 @@ import Chip from './Chip'
 export default function ExpandableCell({ value, onEdit }) {
     const [open, setOpen] = useState(false)
     const btnRef = useRef(null)
+    const modalRef = useModalA11y(open, () => setOpen(false))
 
     const items = value ? String(value).split(',').map(s => s.trim()).filter(Boolean) : []
 
@@ -59,6 +61,10 @@ export default function ExpandableCell({ value, onEdit }) {
                     className="modal-overlay"
                 >
                     <div
+                        ref={modalRef}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="expandable-cell-modal-title"
                         onClick={e => e.stopPropagation()}
                         style={{
                             position: 'relative',
@@ -67,13 +73,13 @@ export default function ExpandableCell({ value, onEdit }) {
                             boxShadow: '0 20px 50px rgba(0, 0, 0, 0.45)',
                         }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                            <span style={{
+                            <span id="expandable-cell-modal-title" style={{
                                 fontSize: '0.78rem', color: 'var(--gold)', fontFamily: 'var(--fh)',
                                 fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05rem'
                             }}>
                                 All ({items.length})
                             </span>
-                            <button onClick={() => setOpen(false)}
+                            <button onClick={() => setOpen(false)} aria-label="Close"
                                 style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center' }}>
                                 <X size={16} />
                             </button>

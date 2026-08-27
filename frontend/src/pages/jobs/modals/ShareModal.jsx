@@ -1,5 +1,6 @@
 import React from 'react';
 import { Share2, X, Loader } from 'lucide-react';
+import { useModalA11y } from '../../../hooks/useModalA11y';
 
 // Extracted from JobsPage.jsx: the job-sharing modal cluster — the
 // "Shared Candidates" viewer (viewingSharedList state) and the "Share Job
@@ -19,11 +20,13 @@ export default function ShareModal({
     setSharedUsernames,
     handleSaveShares,
 }) {
+    const sharedListModalRef = useModalA11y(!!viewingSharedList, () => setViewingSharedList(null));
+    const shareModalRef = useModalA11y(showShareModal, () => setShowShareModal(false));
     return (
         <>
             {viewingSharedList && (
                 <div className="modal-overlay" onClick={() => setViewingSharedList(null)}>
-                    <div className="card" onClick={e => e.stopPropagation()} style={{
+                    <div ref={sharedListModalRef} className="card" role="dialog" aria-modal="true" aria-labelledby="shared-list-modal-title" onClick={e => e.stopPropagation()} style={{
                         width: '95%', maxWidth: '400px', maxHeight: '80vh',
                         display: 'flex', flexDirection: 'column', padding: 0
                     }}>
@@ -33,10 +36,10 @@ export default function ShareModal({
                             padding: '20px 24px', background: 'rgba(var(--navy-dark-rgb), 0.4)',
                             borderBottom: '1px solid var(--border)'
                         }}>
-                            <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <h3 id="shared-list-modal-title" style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <Share2 size={18} /> Shared Candidates
                             </h3>
-                            <button onClick={() => setViewingSharedList(null)} style={{
+                            <button onClick={() => setViewingSharedList(null)} aria-label="Close" style={{
                                 background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', display: 'flex', transition: 'all 0.2s'
                             }}
                             onMouseEnter={e => e.currentTarget.style.color = 'var(--gold)'}
@@ -100,7 +103,7 @@ export default function ShareModal({
 
             {showShareModal && (
                 <div className="modal-overlay" onClick={() => setShowShareModal(false)}>
-                    <div className="card" onClick={e => e.stopPropagation()} style={{
+                    <div ref={shareModalRef} className="card" role="dialog" aria-modal="true" aria-labelledby="share-job-modal-title" onClick={e => e.stopPropagation()} style={{
                         width: '90%', maxWidth: '500px', maxHeight: '80vh',
                         display: 'flex', flexDirection: 'column', padding: 0
                     }}>
@@ -110,10 +113,10 @@ export default function ShareModal({
                             padding: '20px 24px', background: 'rgba(var(--navy-dark-rgb), 0.4)',
                             borderBottom: '1px solid var(--border)'
                         }}>
-                            <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <h3 id="share-job-modal-title" style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <Share2 size={18} /> Share Job Profile
                             </h3>
-                            <button onClick={() => setShowShareModal(false)} style={{
+                            <button onClick={() => setShowShareModal(false)} aria-label="Close" style={{
                                 background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', display: 'flex', transition: 'all 0.2s'
                             }}
                             onMouseEnter={e => e.currentTarget.style.color = 'var(--gold)'}
