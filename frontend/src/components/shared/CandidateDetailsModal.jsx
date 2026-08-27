@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Download, Trash2, FileText, X, Loader, Edit, Check, Eye } from 'lucide-react'
+import { Download, Trash2, FileText, X, Loader, Edit, Check, Eye, Plus } from 'lucide-react'
 import apiClient, { getStaticUrl } from '../../api/client'
 import alamaticzLogo from '../../assets/alamaticz-logo.jpg'
 import ResumePreview, { getResumeHtml } from '../ResumePreview'
@@ -305,7 +305,7 @@ export default function CandidateDetailsModal({
                                         outline: 'none'
                                     }}
                                 >
-                                    {jobStatus === 'selected' ? '✓ Selected for Job' : '➕ Select Candidate'}
+                                    {jobStatus === 'selected' ? <><Check size={14} /> Selected for Job</> : <><Plus size={14} /> Select Candidate</>}
                                 </button>
                             )}
                             {onDeleteCandidate && (

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X } from 'lucide-react'
+import { X, Copy, Check } from 'lucide-react'
 import { useModalA11y } from '../../hooks/useModalA11y'
 
 /**
@@ -72,7 +72,7 @@ export default function CellTextModal({ data, onClose }) {
                         className="btn btn-secondary"
                         style={{ padding: '6px 12px', fontSize: '0.8rem', gap: '6px', borderColor: 'var(--border)' }}
                     >
-                        {copied ? '✅ Copied!' : '📋 Copy to Clipboard'}
+                        {copied ? <><Check size={14} /> Copied!</> : <><Copy size={14} /> Copy to Clipboard</>}
                     </button>
                     <button
                         onClick={onClose}

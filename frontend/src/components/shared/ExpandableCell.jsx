@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { X } from 'lucide-react'
+import { X, Edit } from 'lucide-react'
 import Chip from './Chip'
 import { useModalA11y } from '../../hooks/useModalA11y'
 
@@ -100,9 +100,10 @@ export default function ExpandableCell({ value, onEdit }) {
                                 style={{
                                     background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
                                     borderRadius: 6, color: 'var(--gold)', fontSize: '0.75rem', cursor: 'pointer',
-                                    padding: '4px 12px', fontFamily: 'var(--fh)', fontWeight: 700
+                                    padding: '4px 12px', fontFamily: 'var(--fh)', fontWeight: 700,
+                                    display: 'inline-flex', alignItems: 'center', gap: '4px'
                                 }}>
-                                ✏ Edit
+                                <Edit size={12} /> Edit
                             </button>
                         </div>
                     </div>

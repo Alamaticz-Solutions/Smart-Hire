@@ -1,5 +1,5 @@
 import React from 'react';
-import { Share2, X, Loader } from 'lucide-react';
+import { Share2, X, Loader, Edit } from 'lucide-react';
 import { useModalA11y } from '../../../hooks/useModalA11y';
 
 // Extracted from JobsPage.jsx: the job-sharing modal cluster — the
@@ -87,7 +87,7 @@ export default function ShareModal({
                                 className="btn btn-primary"
                                 style={{ padding: '6px 12px', fontSize: '0.8rem' }}
                             >
-                                ✏ Manage Shares
+                                <Edit size={13} /> Manage Shares
                             </button>
                             <button
                                 onClick={() => setViewingSharedList(null)}
