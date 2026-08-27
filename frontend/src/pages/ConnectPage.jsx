@@ -4,11 +4,14 @@ import { Mail, Shield, Check, X, Plus, Trash2, Key, Folder, RefreshCw, Loader, E
 import apiClient from '../api/client'
 import { useToast } from '../hooks/useToast'
 import ToastHost from '../components/shared/ToastHost'
+import { useConfirm } from '../hooks/useConfirm'
+import ConfirmDialog from '../components/shared/ConfirmDialog'
 
 export default function ConnectPage() {
     const { user } = useOutletContext()
     const [activeTab, setActiveTab] = useState('mail') // 'mail' | 'drive'
     const { toast, showToast, dismissToast } = useToast()
+    const { confirm, confirmDialogProps } = useConfirm()
     const [saving, setSaving] = useState(false)
     const [testingConnection, setTestingConnection] = useState(false)
     const [testStatus, setTestStatus] = useState({ status: 'idle', message: '' })
@@ -92,7 +95,7 @@ export default function ConnectPage() {
             } else if (err.message) {
                 errMsg = err.message;
             }
-            alert(errMsg);
+            showToast(errMsg, 'error');
         } finally {
             setSaving(false)
         }
@@ -141,7 +144,7 @@ export default function ConnectPage() {
 
     const handleAddMailbox = () => {
         if (!newEmailForm.email_user || !newEmailForm.email_pass) {
-            alert("Please enter both email address and app password.")
+            showToast("Please enter both email address and app password.", "error")
             return
         }
         let list = []
@@ -151,7 +154,7 @@ export default function ConnectPage() {
             list = []
         }
         if (list.some(m => m.email_user.toLowerCase() === newEmailForm.email_user.toLowerCase())) {
-            alert("This email account is already added.")
+            showToast("This email account is already added.", "error")
             return
         }
         const updatedList = [...list, { ...newEmailForm }]
@@ -249,7 +252,7 @@ export default function ConnectPage() {
     const handleGenerateGdriveAuthUrl = () => {
         const clientId = integrationsSettings.gdrive_client_id?.trim();
         if (!clientId) {
-            alert('Please enter a Google Client ID first.');
+            showToast('Please enter a Google Client ID first.', 'error');
             return;
         }
         
@@ -268,11 +271,11 @@ export default function ConnectPage() {
         const clientId = integrationsSettings.gdrive_client_id?.trim();
         const clientSecret = integrationsSettings.gdrive_client_secret?.trim();
         if (!clientId || !clientSecret) {
-            alert('Please enter Client ID and Client Secret first.');
+            showToast('Please enter Client ID and Client Secret first.', 'error');
             return;
         }
         if (!gdriveAuthCode.trim()) {
-            alert('Please paste the authorization code or redirect URL first.');
+            showToast('Please paste the authorization code or redirect URL first.', 'error');
             return;
         }
         
@@ -295,14 +298,14 @@ export default function ConnectPage() {
             setGdriveAuthCode('');
             showToast(`Connected successfully to ${email}!`, 'success');
         } catch (err) {
-            alert(err.response?.data?.detail || 'Failed to exchange authorization code.');
+            showToast(err.response?.data?.detail || 'Failed to exchange authorization code.', 'error');
         } finally {
             setExchangingGdriveCode(false);
         }
     };
 
-    const handleDisconnectGdrive = () => {
-        if (window.confirm('Are you sure you want to disconnect this Google Drive account?')) {
+    const handleDisconnectGdrive = async () => {
+        if (await confirm({ title: 'Disconnect Google Drive?', message: 'Are you sure you want to disconnect this Google Drive account?', confirmLabel: 'Disconnect' })) {
             setIntegrationsSettings(prev => ({
                 ...prev,
                 gdrive_refresh_token: '',
@@ -332,6 +335,7 @@ export default function ConnectPage() {
     return (
         <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
             <ToastHost toast={toast} onDismiss={dismissToast} />
+            <ConfirmDialog {...confirmDialogProps} />
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
                 <div>

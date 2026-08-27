@@ -2,6 +2,10 @@ import { useState, useEffect } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { Shield, CheckCircle, XCircle, UserCheck, Trash2, UserPlus, Check, Users, Search } from 'lucide-react'
 import apiClient from '../api/client'
+import { useToast } from '../hooks/useToast'
+import ToastHost from '../components/shared/ToastHost'
+import { useConfirm } from '../hooks/useConfirm'
+import ConfirmDialog from '../components/shared/ConfirmDialog'
 
 const CANDIDATE_FIELDS = [
     { key: 'full_name', label: 'Name' },
@@ -24,6 +28,8 @@ const CANDIDATE_FIELDS = [
 
 export default function AdminPage() {
     const { user, onUpdateUser } = useOutletContext()
+    const { toast, showToast, dismissToast } = useToast()
+    const { confirm, confirmDialogProps } = useConfirm()
     const [activeTab, setActiveTab] = useState('requests') // requests | users | matrix
     const [requests, setRequests] = useState([])
     const [users, setUsers] = useState([])
@@ -82,7 +88,7 @@ export default function AdminPage() {
             await apiClient.post(`/api/admin/requests/${id}/approve`)
             fetchRequests()
         } catch (err) {
-            alert(err.response?.data?.detail || 'Failed to approve request')
+            showToast(err.response?.data?.detail || 'Failed to approve request', 'error')
         }
     }
 
@@ -91,7 +97,7 @@ export default function AdminPage() {
             await apiClient.post(`/api/admin/requests/${id}/reject`)
             fetchRequests()
         } catch (err) {
-            alert(err.response?.data?.detail || 'Failed to reject request')
+            showToast(err.response?.data?.detail || 'Failed to reject request', 'error')
         }
     }
 
@@ -100,9 +106,12 @@ export default function AdminPage() {
         if (!targetUser) return
 
         if (targetUser.username === user.username && field === 'is_admin' && currentValue === 1) {
-            if (!window.confirm("WARNING: If you remove your Admin permission, you will lose access to the Admin Portal. Are you sure you want to proceed?")) {
-                return
-            }
+            const ok = await confirm({
+                title: 'Remove your own admin access?',
+                message: 'If you remove your Admin permission, you will lose access to the Admin Portal. Are you sure you want to proceed?',
+                confirmLabel: 'Remove admin access',
+            })
+            if (!ok) return
         }
 
         let isHrValue = targetUser.is_hr
@@ -152,7 +161,7 @@ export default function AdminPage() {
             }
             fetchUsers()
         } catch (err) {
-            alert(err.response?.data?.detail || 'Failed to update user permissions')
+            showToast(err.response?.data?.detail || 'Failed to update user permissions', 'error')
         }
     }
 
@@ -169,17 +178,17 @@ export default function AdminPage() {
             })
             fetchUsers()
         } catch (err) {
-            alert(err.response?.data?.detail || 'Failed to update user hidden fields')
+            showToast(err.response?.data?.detail || 'Failed to update user hidden fields', 'error')
         }
     }
 
     const handleDeleteUser = async (id, username) => {
-        if (!window.confirm(`Are you sure you want to delete user "${username}"?`)) return
+        if (!await confirm({ title: 'Delete user?', message: `Are you sure you want to delete user "${username}"?`, confirmLabel: 'Delete' })) return
         try {
             await apiClient.delete(`/api/admin/users/${id}`)
             fetchUsers()
         } catch (err) {
-            alert(err.response?.data?.detail || 'Failed to delete user')
+            showToast(err.response?.data?.detail || 'Failed to delete user', 'error')
         }
     }
 
@@ -211,7 +220,7 @@ export default function AdminPage() {
     }
 
     const handleDeleteKeyword = async (kw) => {
-        if (!window.confirm(`Are you sure you want to remove "${kw}" from masked keywords?`)) return
+        if (!await confirm({ title: 'Remove masked keyword?', message: `Are you sure you want to remove "${kw}" from masked keywords?`, confirmLabel: 'Remove' })) return
         setError(null)
         try {
             await apiClient.delete(`/api/admin/masked-keywords/${encodeURIComponent(kw)}`, { headers: { 'x-user-username': user?.username } })
@@ -268,7 +277,7 @@ export default function AdminPage() {
     }
 
     const handleDeleteTeamMember = async (id, name) => {
-        if (!window.confirm(`Are you sure you want to remove "${name}" from the recruiter persona matrix?`)) return
+        if (!await confirm({ title: 'Remove team member?', message: `Are you sure you want to remove "${name}" from the recruiter persona matrix?`, confirmLabel: 'Remove' })) return
         setError(null)
         try {
             await apiClient.delete(`/api/team-members/${id}`, { headers: { 'x-user-username': user?.username } })
@@ -663,6 +672,8 @@ export default function AdminPage() {
                     </div>
                 </div>
             )}
+            <ToastHost toast={toast} onDismiss={dismissToast} />
+            <ConfirmDialog {...confirmDialogProps} />
         </div>
     )
 }

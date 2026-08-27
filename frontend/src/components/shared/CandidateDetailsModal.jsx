@@ -5,6 +5,8 @@ import alamaticzLogo from '../../assets/alamaticz-logo.jpg'
 import ResumePreview, { getResumeHtml } from '../ResumePreview'
 import ResumeEditor from './ResumeEditor'
 import { formatDate } from '../../utils/formatters'
+import { useToast } from '../../hooks/useToast'
+import ToastHost from './ToastHost'
 
 /**
  * Full candidate details modal: profile fields, matched/selected jobs
@@ -77,6 +79,7 @@ export default function CandidateDetailsModal({
     showFormattedToggle,
     defaultResumeTemplate = 'alamaticz',
 }) {
+    const { toast, showToast, dismissToast } = useToast();
     const canEdit = editable !== undefined ? editable : Boolean(onToggleStatus);
     const canExportDocx = showExportDocx !== undefined ? showExportDocx : Boolean(onToggleStatus);
     const canToggleFormatted = showFormattedToggle !== undefined ? showFormattedToggle : !onToggleStatus;
@@ -138,7 +141,7 @@ export default function CandidateDetailsModal({
                 setFormattedData(res.data);
             } catch (err) {
                 console.error("Failed to load Alamaticz format data", err);
-                alert("Failed to load Alamaticz format data");
+                showToast("Failed to load Alamaticz format data", "error");
                 setShowAlamaticz(false);
             } finally {
                 setLoadingFormatted(false);
@@ -162,7 +165,7 @@ export default function CandidateDetailsModal({
             }
         } catch (err) {
             console.error("Failed to save formatted resume", err);
-            alert("Failed to save edited resume: " + (err.response?.data?.detail || err.message));
+            showToast("Failed to save edited resume: " + (err.response?.data?.detail || err.message), "error");
         } finally {
             setSavingEdited(false);
         }
@@ -175,7 +178,7 @@ export default function CandidateDetailsModal({
             printWindow.document.write(getResumeHtml(formattedData, candidate, alamaticzLogo, resumeTemplate));
             printWindow.document.close();
         } else {
-            alert('Please allow popups to print/export PDF.');
+            showToast('Please allow popups to print/export PDF.', 'error');
         }
     };
 
@@ -190,7 +193,7 @@ export default function CandidateDetailsModal({
             link.click();
             link.parentNode.removeChild(link);
         } catch (err) {
-            alert('Failed to download Alamaticz resume.');
+            showToast('Failed to download Alamaticz resume.', 'error');
         }
     };
 
@@ -801,6 +804,9 @@ export default function CandidateDetailsModal({
                         )}
                     </div>
                 )}
+            </div>
+            <div onClick={e => e.stopPropagation()}>
+                <ToastHost toast={toast} onDismiss={dismissToast} />
             </div>
         </div>
     );

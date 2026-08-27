@@ -11,6 +11,10 @@ import apiClient, { getStaticUrl } from '../api/client'
 import CandidateDetailsModal from '../components/shared/CandidateDetailsModal'
 import CellTextModal from '../components/shared/CellTextModal'
 import SkillBadges from '../components/shared/SkillBadges'
+import { useToast } from '../hooks/useToast'
+import ToastHost from '../components/shared/ToastHost'
+import { useConfirm } from '../hooks/useConfirm'
+import ConfirmDialog from '../components/shared/ConfirmDialog'
 
 const COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)']
 
@@ -22,6 +26,8 @@ export default function DashboardPage() {
     // `ReferenceError: user is not defined` whenever a candidate was deleted
     // from the Dashboard. Fixed by adopting the same established pattern.
     const { user } = useOutletContext()
+    const { toast, showToast, dismissToast } = useToast()
+    const { confirm, confirmDialogProps } = useConfirm()
     const [candidates, setCandidates] = useState(() => {
         try {
             return JSON.parse(sessionStorage.getItem('cached_candidates')) || [];
@@ -67,21 +73,21 @@ export default function DashboardPage() {
             setNewColLabel('');
             setNewColDesc('');
         } catch (e) {
-            alert('Failed to add column: ' + (e.response?.data?.detail || e.message));
+            showToast('Failed to add column: ' + (e.response?.data?.detail || e.message), 'error');
         } finally {
             setAddingCol(false);
         }
     }
 
     const handleDeleteCandidate = async (id, name) => {
-        if (!window.confirm(`Are you sure you want to delete ${name || 'this candidate'}?`)) return;
+        if (!await confirm({ title: 'Delete candidate?', message: `Are you sure you want to delete ${name || 'this candidate'}?`, confirmLabel: 'Delete' })) return;
         try {
             await apiClient.delete(`/api/candidates/${id}`, {
                 headers: { 'x-user-username': user?.username }
             });
             setCandidates(prev => prev.filter(c => c.id !== id));
         } catch (e) {
-            alert('Failed to delete candidate: ' + (e.response?.data?.detail || e.message));
+            showToast('Failed to delete candidate: ' + (e.response?.data?.detail || e.message), 'error');
         }
     }
 
@@ -362,7 +368,7 @@ export default function DashboardPage() {
                                                                         await apiClient.put(`/api/candidates/${c.id}`, { candidate_status: newVal });
                                                                         setCandidates(prev => prev.map((cand) => cand.id === c.id ? { ...cand, candidate_status: newVal } : cand));
                                                                     } catch (err) {
-                                                                        alert('Save failed: ' + (err.response?.data?.detail || err.message));
+                                                                        showToast('Save failed: ' + (err.response?.data?.detail || err.message), 'error');
                                                                     }
                                                                     setEditStatusCell(null);
                                                                 }}
@@ -524,11 +530,13 @@ export default function DashboardPage() {
 
             {/* Cell Text Modal */}
             {selectedCellText && (
-                <CellTextModal 
-                    data={selectedCellText} 
-                    onClose={() => setSelectedCellText(null)} 
+                <CellTextModal
+                    data={selectedCellText}
+                    onClose={() => setSelectedCellText(null)}
                 />
             )}
+            <ToastHost toast={toast} onDismiss={dismissToast} />
+            <ConfirmDialog {...confirmDialogProps} />
         </div>
     )
 }
