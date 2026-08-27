@@ -92,6 +92,7 @@ export default function FilterModal({
                                     />
                                     <button
                                         onClick={() => setCustomFilters(p => p.filter((_, idx) => idx !== i))}
+                                        aria-label="Remove filter"
                                         style={{ background: 'none', border: 'none', color: 'var(--danger-fg)', cursor: 'pointer', padding: '0 4px', display: 'flex' }}>
                                         <X size={14} />
                                     </button>

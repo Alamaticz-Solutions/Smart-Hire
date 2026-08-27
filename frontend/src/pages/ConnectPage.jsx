@@ -539,6 +539,7 @@ export default function ConnectPage() {
                                                         const updated = kws.filter(x => x !== kw).join(', ');
                                                         setIntegrationsSettings(prev => ({ ...prev, keywords: updated }));
                                                     }}
+                                                    aria-label={`Remove keyword "${kw}"`}
                                                     style={{ border: 'none', background: 'none', color: 'var(--sky-dim)', cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center' }}
                                                 >
                                                     <X size={12} />

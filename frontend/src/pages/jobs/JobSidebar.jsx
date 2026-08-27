@@ -79,6 +79,9 @@ export default function JobSidebar({
                                         setActiveDropdownJobId(activeDropdownJobId === job.id ? null : job.id);
                                         setShowDropdown(false);
                                     }}
+                                    aria-label="Job options"
+                                    aria-haspopup="menu"
+                                    aria-expanded={activeDropdownJobId === job.id}
                                     style={{
                                         background: 'var(--navy-dark)', border: '1px solid var(--border)', color: 'var(--text)',
                                         cursor: 'pointer', padding: '6px', display: 'flex',

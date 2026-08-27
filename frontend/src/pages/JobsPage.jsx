@@ -9,6 +9,7 @@ import { useToast } from '../hooks/useToast';
 import ToastHost from '../components/shared/ToastHost';
 import { useConfirm } from '../hooks/useConfirm';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
+import { useModalA11y } from '../hooks/useModalA11y';
 import { computeTableWidth } from '../utils/tableWidth';
 import { applySavedColumnOrder } from '../utils/columnOrder';
 import { useInlineCellEdit } from '../hooks/useInlineCellEdit';
@@ -101,6 +102,7 @@ export default function JobsPage() {
     const [isSavingEdit, setIsSavingEdit] = useState(false);
     const [statusFilter, setStatusFilter] = useState('All');
     const [viewingPdf, setViewingPdf] = useState(null);
+    const resumeViewerModalRef = useModalA11y(!!viewingPdf, () => setViewingPdf(null));
     const [selectedCandidateForDetails, setSelectedCandidateForDetails] = useState(null);
     const [isEditingJdInline, setIsEditingJdInline] = useState(false);
     const [jdInlineValue, setJdInlineValue] = useState('');
@@ -841,7 +843,7 @@ export default function JobsPage() {
             {/* Resume Viewer Modal */}
             {viewingPdf && (
                 <div className="modal-overlay" onClick={() => setViewingPdf(null)}>
-                    <div className="card" onClick={e => e.stopPropagation()} style={{
+                    <div ref={resumeViewerModalRef} className="card" role="dialog" aria-modal="true" aria-labelledby="jobs-resume-viewer-title" onClick={e => e.stopPropagation()} style={{
                         width: '95%', maxWidth: 1000, height: '90vh',
                         display: 'flex', flexDirection: 'column', padding: 0,
                         overflow: 'hidden'
@@ -850,10 +852,10 @@ export default function JobsPage() {
                             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                             padding: '20px 24px', background: 'rgba(var(--navy-dark-rgb), 0.4)', borderBottom: '1px solid var(--border)'
                         }}>
-                            <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', display: 'flex', alignItems: 'center', gap: 10, fontSize: '1.05rem' }}>
-                                <span style={{fontSize: '1.2rem', opacity: 0.8}}>📄</span> {viewingPdf.name}
+                            <h3 id="jobs-resume-viewer-title" style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', display: 'flex', alignItems: 'center', gap: 10, fontSize: '1.05rem' }}>
+                                {viewingPdf.name}
                             </h3>
-                            <button onClick={() => setViewingPdf(null)} style={{
+                            <button onClick={() => setViewingPdf(null)} aria-label="Close" style={{
                                 background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
                                 color: 'var(--gold)', cursor: 'pointer', padding: 6, borderRadius: '8px',
                                 display: 'flex', transition: 'all 0.2s'

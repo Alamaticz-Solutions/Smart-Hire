@@ -271,7 +271,7 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
                                     <Activity size={20} color="var(--gold)" />
                                     <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)' }}>Activity Feed</h3>
                                 </div>
-                                <button onClick={() => setShowActivitySidebar(false)} style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer' }}>
+                                <button onClick={() => setShowActivitySidebar(false)} aria-label="Close activity feed" style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer' }}>
                                     <X size={20} />
                                 </button>
                             </div>

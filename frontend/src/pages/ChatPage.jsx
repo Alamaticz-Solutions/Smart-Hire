@@ -226,7 +226,7 @@ export default function ChatPage() {
                             onChange={e => setInput(e.target.value)}
                             onKeyDown={handleKeyDown}
                         />
-                        <button className="chat-send-btn" onClick={() => sendMessage()} disabled={!input.trim() || loading}>
+                        <button className="chat-send-btn" onClick={() => sendMessage()} disabled={!input.trim() || loading} aria-label="Send message">
                             {loading ? <div className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} /> : <Send size={17} />}
                         </button>
                     </div>
