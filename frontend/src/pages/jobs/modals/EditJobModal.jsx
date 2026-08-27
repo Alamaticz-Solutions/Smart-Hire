@@ -16,8 +16,8 @@ export default function EditJobModal({
     if (!editingJob) return null;
 
     return (
-        <div className="modal-overlay" onClick={() => setEditingJob(null)}>
-            <div ref={modalRef} className="card" role="dialog" aria-modal="true" aria-labelledby="edit-job-modal-title" onClick={e => e.stopPropagation()} style={{ width: '850px', padding: '2.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div className="modal-overlay">
+            <div ref={modalRef} className="card" role="dialog" aria-modal="true" aria-labelledby="edit-job-modal-title" style={{ width: '850px', padding: '2.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxHeight: '90vh', overflowY: 'auto' }}>
                 <h3 id="edit-job-modal-title" style={{ color: 'var(--gold)', margin: 0, fontFamily: 'var(--fh)', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem', fontSize: '1.5rem', fontWeight: 800 }}>Edit Job Description</h3>
 
                 <div className="form-section-title">

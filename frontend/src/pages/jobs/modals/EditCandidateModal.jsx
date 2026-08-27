@@ -31,8 +31,8 @@ export default function EditCandidateModal({
     if (!editingCandidate) return null;
 
     return (
-        <div className="modal-overlay" onClick={() => setEditingCandidate(null)}>
-            <div ref={modalRef} className="card" role="dialog" aria-modal="true" aria-labelledby="edit-candidate-modal-title" onClick={e => e.stopPropagation()} style={{ width: '500px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div className="modal-overlay">
+            <div ref={modalRef} className="card" role="dialog" aria-modal="true" aria-labelledby="edit-candidate-modal-title" style={{ width: '500px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxHeight: '90vh', overflowY: 'auto' }}>
                 <h3 id="edit-candidate-modal-title" style={{ color: 'var(--gold)', margin: 0, fontFamily: 'var(--fh)', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem' }}>Edit Candidate & Match Details</h3>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>

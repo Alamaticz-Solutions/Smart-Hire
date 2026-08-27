@@ -16,7 +16,35 @@ import ToastHost from '../components/shared/ToastHost'
 import { useConfirm } from '../hooks/useConfirm'
 import ConfirmDialog from '../components/shared/ConfirmDialog'
 
-const COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)']
+const CHART_VAR_NAMES = ['--chart-1', '--chart-2', '--chart-3', '--chart-4', '--chart-5', '--text-muted']
+
+// Recharts renders bars/axis text as literal SVG attribute strings, not CSS
+// - passing 'var(--chart-1)' relies on the browser resolving a custom
+// property inside a presentational attribute, which isn't guaranteed the
+// way a real stylesheet rule is. Reading the resolved values with
+// getComputedStyle and re-reading them whenever the theme toggles (watched
+// via a MutationObserver on documentElement's data-theme) gives Recharts
+// literal hex strings that are correct in both themes.
+function useChartColors() {
+    const [colors, setColors] = useState(() => readChartColors())
+
+    useEffect(() => {
+        const update = () => setColors(readChartColors())
+        update()
+        const observer = new MutationObserver(update)
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+        return () => observer.disconnect()
+    }, [])
+
+    return colors
+}
+
+function readChartColors() {
+    const style = getComputedStyle(document.documentElement)
+    const out = {}
+    CHART_VAR_NAMES.forEach(name => { out[name] = style.getPropertyValue(name).trim() })
+    return out
+}
 
 export default function DashboardPage() {
     // `Layout.jsx` provides `user` via `<Outlet context={{ user, onUpdateUser }} />`;
@@ -28,6 +56,7 @@ export default function DashboardPage() {
     const { user } = useOutletContext()
     const { toast, showToast, dismissToast } = useToast()
     const { confirm, confirmDialogProps } = useConfirm()
+    const chartColors = useChartColors()
     const [candidates, setCandidates] = useState(() => {
         try {
             return JSON.parse(sessionStorage.getItem('cached_candidates')) || [];
@@ -203,12 +232,12 @@ export default function DashboardPage() {
                             <ResponsiveContainer width="100%" height={300}>
                                 <BarChart data={expChartData} margin={{ top: 5, right: 10, bottom: 20, left: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                                    <XAxis dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} angle={-30} textAnchor="end" />
-                                    <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} unit=" yr" />
+                                    <XAxis dataKey="name" tick={{ fill: chartColors['--text-muted'], fontSize: 12 }} angle={-30} textAnchor="end" />
+                                    <YAxis tick={{ fill: chartColors['--text-muted'], fontSize: 12 }} unit=" yr" />
                                     <Tooltip content={<CustomTooltip />} />
-                                    <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: 13 }} />
-                                    <Bar dataKey="Total Exp" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
-                                    <Bar dataKey="Pega Exp" fill="var(--chart-2)" radius={[4, 4, 0, 0]} />
+                                    <Legend wrapperStyle={{ color: chartColors['--text-muted'], fontSize: 13 }} />
+                                    <Bar dataKey="Total Exp" fill={chartColors['--chart-1']} radius={[4, 4, 0, 0]} />
+                                    <Bar dataKey="Pega Exp" fill={chartColors['--chart-2']} radius={[4, 4, 0, 0]} />
                                 </BarChart>
                             </ResponsiveContainer>
                         </div>
@@ -218,14 +247,14 @@ export default function DashboardPage() {
                             <ResponsiveContainer width="100%" height={300}>
                                 <BarChart data={noticeData} margin={{ top: 5, right: 10, bottom: 20, left: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                                    <XAxis dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} angle={-30} textAnchor="end" />
-                                    <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} allowDecimals={false} />
+                                    <XAxis dataKey="name" tick={{ fill: chartColors['--text-muted'], fontSize: 12 }} angle={-30} textAnchor="end" />
+                                    <YAxis tick={{ fill: chartColors['--text-muted'], fontSize: 12 }} allowDecimals={false} />
                                     <Tooltip contentStyle={{
                                         background: 'var(--input-bg)',
                                         border: '1px solid rgba(var(--gold-rgb), 0.3)', borderRadius: 10, color: 'var(--text)'
                                     }} />
                                     <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                                        {noticeData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                                        {noticeData.map((_, i) => <Cell key={i} fill={chartColors[CHART_VAR_NAMES[i % 5]]} />)}
                                     </Bar>
                                 </BarChart>
                             </ResponsiveContainer>

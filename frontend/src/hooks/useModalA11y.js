@@ -13,6 +13,15 @@ const FOCUSABLE = 'a[href], button:not([disabled]), textarea:not([disabled]), in
 export function useModalA11y(isOpen, onClose) {
     const containerRef = useRef(null)
     const triggerRef = useRef(null)
+    // onClose is an inline arrow at nearly every call site, so it gets a new
+    // identity on every parent render (including a render caused by typing
+    // into the modal's own form fields). Keeping it out of the effect's dep
+    // array - via a ref updated on every render, read only from inside
+    // handlers - means the effect (and the initial-focus/trigger-capture it
+    // runs) only re-fires when the modal actually opens or closes, not on
+    // every keystroke.
+    const onCloseRef = useRef(onClose)
+    useEffect(() => { onCloseRef.current = onClose })
 
     useEffect(() => {
         if (!isOpen) return
@@ -24,7 +33,7 @@ export function useModalA11y(isOpen, onClose) {
         const handleKeyDown = (e) => {
             if (e.key === 'Escape') {
                 e.stopPropagation()
-                onClose?.()
+                onCloseRef.current?.()
                 return
             }
             if (e.key !== 'Tab' || !containerRef.current) return
@@ -46,7 +55,7 @@ export function useModalA11y(isOpen, onClose) {
             document.removeEventListener('keydown', handleKeyDown, true)
             triggerRef.current?.focus?.()
         }
-    }, [isOpen, onClose])
+    }, [isOpen])
 
     return containerRef
 }
