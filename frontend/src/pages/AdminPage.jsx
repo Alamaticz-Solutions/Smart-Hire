@@ -54,6 +54,16 @@ export default function AdminPage() {
     const [showHiddenFieldsModal, setShowHiddenFieldsModal] = useState(false)
     const hiddenFieldsModalRef = useModalA11y(showHiddenFieldsModal, () => setShowHiddenFieldsModal(false))
 
+    // S7.3: capture an optional reason before rejecting a pending request.
+    const [rejectingRequestId, setRejectingRequestId] = useState(null)
+    const [rejectReason, setRejectReason] = useState('')
+    const rejectModalRef = useModalA11y(!!rejectingRequestId, () => setRejectingRequestId(null))
+    const submitReject = async () => {
+        await handleReject(rejectingRequestId, rejectReason.trim())
+        setRejectingRequestId(null)
+        setRejectReason('')
+    }
+
     useEffect(() => {
         if (activeTab === 'requests') {
             fetchRequests()
@@ -101,9 +111,9 @@ export default function AdminPage() {
         }
     }
 
-    const handleReject = async (id) => {
+    const handleReject = async (id, reason) => {
         try {
-            await apiClient.post(`/api/admin/requests/${id}/reject`)
+            await apiClient.post(`/api/admin/requests/${id}/reject`, reason ? { reason } : {})
             fetchRequests()
         } catch (err) {
             showToast(err.response?.data?.detail || 'Failed to reject request', 'error')
@@ -420,7 +430,7 @@ export default function AdminPage() {
                                     <button className="btn btn-primary" style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '0.5rem' }} onClick={() => handleApprove(req.id)}>
                                         <CheckCircle size={16} /> Approve
                                     </button>
-                                    <button className="btn btn-danger" style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '0.5rem' }} onClick={() => handleReject(req.id)}>
+                                    <button className="btn btn-danger" style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '0.5rem' }} onClick={() => { setRejectingRequestId(req.id); setRejectReason('') }}>
                                         <XCircle size={16} /> Reject
                                     </button>
                                 </div>
@@ -778,6 +788,61 @@ export default function AdminPage() {
                     </div>
                 </div>
             )}
+
+            {rejectingRequestId && (
+                <div className="modal-overlay" onClick={() => setRejectingRequestId(null)}>
+                    <div ref={rejectModalRef} className="card" role="dialog" aria-modal="true" aria-labelledby="reject-reason-title" onClick={e => e.stopPropagation()} style={{
+                        width: '90%', maxWidth: '440px', padding: 0
+                    }}>
+                        <div style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            padding: '20px 24px', background: 'rgba(var(--navy-dark-rgb), 0.4)',
+                            borderBottom: '1px solid var(--border)'
+                        }}>
+                            <h3 id="reject-reason-title" style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 800 }}>
+                                Reject request
+                            </h3>
+                            <button onClick={() => setRejectingRequestId(null)} aria-label="Close" style={{
+                                background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
+                                color: 'var(--gold)', cursor: 'pointer', padding: 6, borderRadius: '8px',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            }}>
+                                <XCircle size={18} />
+                            </button>
+                        </div>
+                        <div style={{ padding: '20px 24px' }}>
+                            <label className="modern-label" htmlFor="reject-reason-input" style={{ fontSize: '0.8rem', display: 'block', marginBottom: 8 }}>
+                                Reason (optional)
+                            </label>
+                            <textarea
+                                id="reject-reason-input"
+                                rows={3}
+                                autoFocus
+                                value={rejectReason}
+                                onChange={e => setRejectReason(e.target.value)}
+                                placeholder="Why is this request being rejected?"
+                                style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', fontSize: '0.85rem', resize: 'vertical' }}
+                            />
+                            <p style={{ margin: '8px 0 0', fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
+                                Recorded on the request for later reference. There's no email/notification channel yet, so the requester won't be told automatically.
+                            </p>
+                        </div>
+                        <div style={{
+                            padding: '16px 24px', borderTop: '1px solid var(--border)',
+                            display: 'flex', justifyContent: 'flex-end', gap: '12px',
+                            background: 'rgba(var(--navy-rgb), 0.3)'
+                        }}>
+                            <button onClick={() => setRejectingRequestId(null)} className="btn btn-secondary" style={{ padding: '6px 16px', fontSize: '0.8rem' }}>
+                                Cancel
+                            </button>
+                            <button onClick={submitReject} className="btn btn-danger" style={{ padding: '6px 18px', fontSize: '0.8rem' }}>
+                                Reject
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <ToastHost toast={toast} onDismiss={dismissToast} onPause={pauseToast} onResume={resumeToast} />
             <ConfirmDialog {...confirmDialogProps} />
         </div>

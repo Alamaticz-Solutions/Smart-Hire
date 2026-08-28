@@ -78,6 +78,10 @@ class MaskedKeywordCreate(BaseModel):
     keyword: str
 
 
+class ChangeRequestReject(BaseModel):
+    reason: Optional[str] = None
+
+
 def _log_activity_db(username: str, action: str) -> None:
     if not username:
         username = "unknown"
@@ -525,13 +529,15 @@ def approve_change_request(request_id: int, request: Request, background_tasks: 
 
 
 @router.post("/api/admin/requests/{request_id}/reject")
-def reject_change_request(request_id: int, request: Request):
+def reject_change_request(request_id: int, request: Request, body: Optional[ChangeRequestReject] = None):
     username = request.headers.get("x-user-username")
     if not is_user_approved(username):
         raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
     role = get_user_role(username)
     if role != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")
+
+    reason = (body.reason if body else None) or None
 
     with get_db_connection() as conn:
         cur = conn.cursor()
@@ -546,7 +552,12 @@ def reject_change_request(request_id: int, request: Request):
         if action_type == "approve_user":
             cur.execute("DELETE FROM users WHERE LOWER(username) = LOWER(?)", (target_id,))
 
-        cur.execute("UPDATE change_requests SET status = 'rejected' WHERE id = ?", (request_id,))
+        # S7.3: capture why a request was rejected - there was previously no
+        # way to record a reason, so a rejection gave the requester (and any
+        # admin reviewing history later) no explanation at all. There's still
+        # no notification channel to actually deliver this to the requester
+        # (same gap as the OTP-delivery issue) - it's recorded, not sent.
+        cur.execute("UPDATE change_requests SET status = 'rejected', rejection_reason = ? WHERE id = ?", (reason, request_id))
         conn.commit()
 
     return {"status": "rejected"}

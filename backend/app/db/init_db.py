@@ -106,6 +106,7 @@ def init_db():
             payload TEXT,
             description TEXT,
             status TEXT DEFAULT 'pending',
+            rejection_reason TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -127,6 +128,7 @@ def init_db():
         'payload': 'TEXT',
         'description': 'TEXT',
         'status': "TEXT DEFAULT 'pending'",
+        'rejection_reason': 'TEXT',
         'created_at': 'DATETIME DEFAULT CURRENT_TIMESTAMP',
     }
     for col, dtype in cr_migrate_cols.items():
