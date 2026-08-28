@@ -498,11 +498,12 @@ export default function AdminPage() {
                                                 <td style={{ padding: '1rem', textAlign: 'center' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                                                         <label className="switch-container">
-                                                            <input 
-                                                                type="checkbox" 
+                                                            <input
+                                                                type="checkbox"
                                                                 className="switch-input"
                                                                 checked={u.is_hr === 1}
                                                                 disabled={isSelf}
+                                                                aria-label={`HR access for ${u.full_name || u.username}`}
                                                                 onChange={() => togglePermission(u.id, 'is_hr', u.is_hr)}
                                                             />
                                                             <span className="switch-slider"></span>
@@ -515,11 +516,12 @@ export default function AdminPage() {
                                                 <td style={{ padding: '1rem', textAlign: 'center' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                                                         <label className="switch-container">
-                                                            <input 
-                                                                type="checkbox" 
+                                                            <input
+                                                                type="checkbox"
                                                                 className="switch-input"
                                                                 checked={u.is_admin === 1}
                                                                 disabled={isSelf}
+                                                                aria-label={`Admin access for ${u.full_name || u.username}`}
                                                                 onChange={() => togglePermission(u.id, 'is_admin', u.is_admin)}
                                                             />
                                                             <span className="switch-slider"></span>
@@ -532,11 +534,12 @@ export default function AdminPage() {
                                                 <td style={{ padding: '1rem', textAlign: 'center' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                                                         <label className="switch-container">
-                                                            <input 
-                                                                type="checkbox" 
+                                                            <input
+                                                                type="checkbox"
                                                                 className="switch-input"
                                                                 checked={u.is_external === 1}
                                                                 disabled={isSelf}
+                                                                aria-label={`External access for ${u.full_name || u.username}`}
                                                                 onChange={() => togglePermission(u.id, 'is_external', u.is_external)}
                                                             />
                                                             <span className="switch-slider"></span>
@@ -624,32 +627,38 @@ export default function AdminPage() {
                                 <XCircle size={18} />
                             </button>
                         </div>
+                        <p style={{ margin: '0 24px 12px', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                            Uncheck a field to hide it from this user's candidate view.
+                        </p>
                         <div style={{
-                            flex: 1, padding: '24px', overflowY: 'auto',
+                            flex: 1, padding: '0 24px 24px', overflowY: 'auto',
                             display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px'
                         }}>
                             {CANDIDATE_FIELDS.map(f => {
-                                const isChecked = tempHiddenFields.includes(f.key);
+                                // checked = "visible to this user" (S7.4: checkbox semantics
+                                // matched their visual weight - checked+red used to mean
+                                // "hidden", which read as the field being flagged/enabled).
+                                const isVisible = !tempHiddenFields.includes(f.key);
                                 return (
                                     <label key={f.key} style={{
                                         display: 'flex', alignItems: 'center', gap: '8px',
-                                        fontSize: '0.88rem', color: isChecked ? 'var(--danger-fg)' : 'var(--text)',
+                                        fontSize: '0.88rem', color: isVisible ? 'var(--text)' : 'var(--warning-fg)',
                                         cursor: 'pointer', padding: '8px 12px', borderRadius: '6px',
-                                        background: isChecked ? 'var(--danger-bg)' : 'var(--surface-2)',
-                                        border: `1px solid ${isChecked ? 'rgba(var(--red-rgb), 0.2)' : 'transparent'}`,
+                                        background: isVisible ? 'var(--surface-2)' : 'var(--warning-bg)',
+                                        border: `1px solid ${isVisible ? 'transparent' : 'rgba(var(--gold-rgb), 0.3)'}`,
                                         transition: 'all 0.15s'
                                     }}>
                                         <input
                                             type="checkbox"
-                                            checked={isChecked}
+                                            checked={isVisible}
                                             onChange={() => {
-                                                setTempHiddenFields(prev => 
-                                                    prev.includes(f.key) 
-                                                        ? prev.filter(k => k !== f.key) 
+                                                setTempHiddenFields(prev =>
+                                                    prev.includes(f.key)
+                                                        ? prev.filter(k => k !== f.key)
                                                         : [...prev, f.key]
                                                 );
                                             }}
-                                            style={{ cursor: 'pointer', accentColor: 'var(--danger-fg)' }}
+                                            style={{ cursor: 'pointer' }}
                                         />
                                         {f.label}
                                     </label>
