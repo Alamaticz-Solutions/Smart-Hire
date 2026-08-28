@@ -51,6 +51,7 @@ export default function CandidatesTable({
     columnFilters,
     setColumnFilters,
     setShowFilter,
+    activeFilterCount,
     showAddCandidate,
     setShowAddCandidate,
     newCandidateForm,
@@ -310,6 +311,13 @@ export default function CandidatesTable({
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', alignSelf: 'flex-start', marginTop: '10px' }}>
                     <button className="btn btn-secondary" onClick={() => setShowFilter(true)} style={{ gap: 6, color: 'var(--sky)', borderColor: 'rgba(var(--sky-rgb), 0.3)' }}>
                         <Filter size={14} /> Filter
+                        {activeFilterCount > 0 && (
+                            <span style={{
+                                background: 'var(--gold)', color: 'var(--action-fg)', borderRadius: '999px',
+                                fontSize: '0.68rem', fontWeight: 800, minWidth: 16, height: 16, padding: '0 4px',
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+                            }}>{activeFilterCount}</span>
+                        )}
                     </button>
 
                     <ColumnVisibilityPopover
@@ -351,8 +359,12 @@ export default function CandidatesTable({
                         onClick={() => { load(); loadCols(); }}
                         style={{ gap: 6 }}
                         disabled={loadingCandidates}
+                        aria-busy={loadingCandidates}
                     >
-                        <RefreshCw size={14} className={loadingCandidates ? 'spin' : ''} /> {loadingCandidates ? 'Refreshing...' : 'Refresh'}
+                        {/* S4.9: label used to swap to "Refreshing..." alongside the
+                            spinning icon - two simultaneous progress signals, and the
+                            button's width jumped every click. The icon alone is enough. */}
+                        <RefreshCw size={14} className={loadingCandidates ? 'spin' : ''} /> Refresh
                     </button>
 
                 </div>
@@ -387,17 +399,36 @@ export default function CandidatesTable({
                                     }}
                                 >Clear</button>
                             </div>
-                            <button
-                                onClick={bulkDelete}
-                                className="btn btn-danger"
-                                style={{
-                                    display: 'flex', alignItems: 'center', gap: 6,
-                                    padding: '8px 18px', fontSize: '0.85rem', fontWeight: 700,
-                                    borderRadius: 8
-                                }}
-                            >
-                                <Trash2 size={16} /> Delete Selected ({selectedIds.size})
-                            </button>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                {/* S4.6: bulk selection previously had only one action
+                                    (delete) - the other operation a recruiter actually
+                                    does at volume with a selection is exporting it. */}
+                                <button
+                                    onClick={() => exportToExcel(
+                                        formatCandidatesForExcel(filteredCandidates.filter(c => selectedIds.has(c.id)), activeCols.filter(c => c.key !== '_actions')),
+                                        'selected_candidates.xlsx'
+                                    )}
+                                    className="btn btn-secondary"
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: 6,
+                                        padding: '8px 18px', fontSize: '0.85rem', fontWeight: 700,
+                                        borderRadius: 8
+                                    }}
+                                >
+                                    <Download size={16} /> Export Selected
+                                </button>
+                                <button
+                                    onClick={bulkDelete}
+                                    className="btn btn-danger"
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: 6,
+                                        padding: '8px 18px', fontSize: '0.85rem', fontWeight: 700,
+                                        borderRadius: 8
+                                    }}
+                                >
+                                    <Trash2 size={16} /> Delete Selected ({selectedIds.size})
+                                </button>
+                            </div>
                         </div>
                     )}
 
@@ -439,6 +470,21 @@ export default function CandidatesTable({
                         anyone who never has more than one page's worth of candidates. */}
                     {typeof totalCandidates === 'number' && candidates.length < totalCandidates && (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '14px 0 4px' }}>
+                            {/* S4.4: filters/search only ever apply to the candidates
+                                already loaded into `candidates`, so once a second page
+                                exists a filtered result silently reads as "everything
+                                matching" when it's really "everything matching among
+                                what's loaded so far". Say that explicitly rather than
+                                let it look like a complete result.
+                                Deliberately broader than the Filter button's own badge
+                                (activeFilterCount, modal filters only): this notice also
+                                covers the inline per-column filter row, since either one
+                                subsets the loaded rows the same way. */}
+                            {(activeFilterCount > 0 || Object.values(columnFilters).some(Boolean)) && (
+                                <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--warning-fg)', textAlign: 'center' }}>
+                                    Filters only search the {candidates.length.toLocaleString()} candidates loaded so far, not all {totalCandidates.toLocaleString()} — load more to search everyone.
+                                </p>
+                            )}
                             <button
                                 className="btn btn-secondary"
                                 onClick={loadMore}

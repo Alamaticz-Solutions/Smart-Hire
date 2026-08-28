@@ -140,6 +140,16 @@ export default function UploadPage() {
         return true;
     });
 
+    // S4.5: the Filter modal (min experience, certs, custom column filters)
+    // had no persistent summary of what's active - the trigger button read
+    // "Filter" whether 0 or 4 filters were applied. This count only covers
+    // the modal's own filters, not the inline per-column filter row, which
+    // already shows its active values directly in the table header.
+    const activeFilterCount =
+        (filters.minTotalExp !== '' ? 1 : 0) +
+        (filters.minPegaExp !== '' ? 1 : 0) +
+        (filters.certs.length > 0 ? 1 : 0) +
+        customFilters.filter(cf => cf.col && cf.val).length
 
     // Pagination: GET /api/candidates used to always return every visible
     // candidate in one unbounded response, hit by this page's own 20s
@@ -345,8 +355,22 @@ export default function UploadPage() {
                     }
                 })
                 setProgress(p => p.map((x, idx) => idx === i ? { ...x, status: 'done', percent: 100 } : x))
-            } catch {
-                setProgress(p => p.map((x, idx) => idx === i ? { ...x, status: 'error', percent: 0 } : x))
+            } catch (e) {
+                // S4.3: this used to discard the error entirely on a failed
+                // POST /api/upload (bad file type rejected, network drop,
+                // server error) - the badge just said "Error" with nothing
+                // to act on. Note this only covers the upload request
+                // itself; actual resume parsing runs in a backend
+                // BackgroundTask *after* this call already resolved, so a
+                // parse failure doesn't come through this catch - it shows
+                // up later as its own candidate row (resume_processing.py
+                // sets candidate_status="Error", full_name="❌ Processing
+                // Failed: ..." on the placeholder row), which the polling
+                // table picks up separately. Reconciling that async result
+                // back into this per-file progress list needs a backend
+                // channel keyed on placeholder_id and is out of scope here.
+                const detail = e.response?.data?.detail || e.message || 'Upload failed'
+                setProgress(p => p.map((x, idx) => idx === i ? { ...x, status: 'error', percent: 0, error: detail } : x))
             }
         }
         load()
@@ -454,6 +478,7 @@ export default function UploadPage() {
                 columnFilters={columnFilters}
                 setColumnFilters={setColumnFilters}
                 setShowFilter={setShowFilter}
+                activeFilterCount={activeFilterCount}
                 showAddCandidate={showAddCandidate}
                 setShowAddCandidate={setShowAddCandidate}
                 newCandidateForm={newCandidateForm}
