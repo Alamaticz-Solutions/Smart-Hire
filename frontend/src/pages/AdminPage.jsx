@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { Shield, CheckCircle, XCircle, UserCheck, Trash2, UserPlus, Check, Users, Search, EyeOff } from 'lucide-react'
+import { Shield, CheckCircle, XCircle, UserCheck, Trash2, UserPlus, Check, Users, Search, EyeOff, ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import apiClient from '../api/client'
 import { useToast } from '../hooks/useToast'
 import ToastHost from '../components/shared/ToastHost'
@@ -40,6 +40,12 @@ export default function AdminPage() {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState(null)
     const [userSearchQuery, setUserSearchQuery] = useState('')
+    // S7.6: sort/filter/pagination for the user table - it had none, which
+    // the audit flagged as unusable past ~50 users.
+    const [userRoleFilter, setUserRoleFilter] = useState('all') // all | admin | hr | external | plain
+    const [userSort, setUserSort] = useState({ key: 'full_name', dir: 'asc' })
+    const [userPage, setUserPage] = useState(1)
+    const USER_PAGE_SIZE = 20
     const [keywords, setKeywords] = useState([])
     const [newKeyword, setNewKeyword] = useState('')
     
@@ -298,6 +304,43 @@ export default function AdminPage() {
         }
     }
 
+    const roleOf = (u) => u.is_admin === 1 ? 'admin' : u.is_hr === 1 ? 'hr' : u.is_external === 1 ? 'external' : 'plain'
+
+    const handleUserSort = (key) => {
+        setUserSort(prev => prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' })
+        setUserPage(1)
+    }
+
+    const filteredSortedUsers = users
+        .filter(u =>
+            u.username.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+            u.full_name.toLowerCase().includes(userSearchQuery.toLowerCase()))
+        .filter(u => userRoleFilter === 'all' || roleOf(u) === userRoleFilter)
+        .slice()
+        .sort((a, b) => {
+            let av, bv
+            if (userSort.key === 'role') { av = roleOf(a); bv = roleOf(b) }
+            else { av = (a[userSort.key] || '').toString().toLowerCase(); bv = (b[userSort.key] || '').toString().toLowerCase() }
+            const cmp = av < bv ? -1 : av > bv ? 1 : 0
+            return userSort.dir === 'asc' ? cmp : -cmp
+        })
+    const userTotalPages = Math.max(1, Math.ceil(filteredSortedUsers.length / USER_PAGE_SIZE))
+    const userPageClamped = Math.min(userPage, userTotalPages)
+    const pagedUsers = filteredSortedUsers.slice((userPageClamped - 1) * USER_PAGE_SIZE, userPageClamped * USER_PAGE_SIZE)
+
+    const SortableTh = ({ sortKey, children, ...rest }) => (
+        <th {...rest}>
+            <button
+                type="button"
+                onClick={() => handleUserSort(sortKey)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', font: 'inherit', padding: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            >
+                {children}
+                {userSort.key === sortKey && (userSort.dir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />)}
+            </button>
+        </th>
+    )
+
     return (
         <div className="page-container">
             <div className="page-header">
@@ -437,16 +480,31 @@ export default function AdminPage() {
                                 <h3 style={{ margin: 0, fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 700 }}>Registered Users</h3>
                                 <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-dim)' }}>Update permissions and manage access credentials.</p>
                             </div>
-                            <div style={{ position: 'relative', width: '260px' }}>
-                                <input
-                                    type="text"
+                            <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                                <select
                                     className="form-input"
-                                    placeholder="Search users..."
-                                    style={{ margin: 0, paddingLeft: '34px', fontSize: '0.85rem' }}
-                                    value={userSearchQuery}
-                                    onChange={e => setUserSearchQuery(e.target.value)}
-                                />
-                                <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)', opacity: 0.7 }} />
+                                    style={{ margin: 0, fontSize: '0.85rem', width: 150 }}
+                                    value={userRoleFilter}
+                                    onChange={e => { setUserRoleFilter(e.target.value); setUserPage(1) }}
+                                    aria-label="Filter users by role"
+                                >
+                                    <option value="all">All roles</option>
+                                    <option value="admin">Admin</option>
+                                    <option value="hr">HR</option>
+                                    <option value="external">External</option>
+                                    <option value="plain">No role</option>
+                                </select>
+                                <div style={{ position: 'relative', width: '260px' }}>
+                                    <input
+                                        type="text"
+                                        className="form-input"
+                                        placeholder="Search users..."
+                                        style={{ margin: 0, paddingLeft: '34px', fontSize: '0.85rem' }}
+                                        value={userSearchQuery}
+                                        onChange={e => { setUserSearchQuery(e.target.value); setUserPage(1) }}
+                                    />
+                                    <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)', opacity: 0.7 }} />
+                                </div>
                             </div>
                         </div>
 
@@ -454,7 +512,7 @@ export default function AdminPage() {
                             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                                 <thead style={{ background: 'rgba(var(--navy-rgb), 0.25)', borderBottom: '1px solid var(--border)' }}>
                                     <tr>
-                                        <th style={{ padding: '1rem 1.5rem', fontSize: '0.78rem' }}>User Profile</th>
+                                        <SortableTh sortKey="full_name" style={{ padding: '1rem 1.5rem', fontSize: '0.78rem' }}>User Profile</SortableTh>
                                         <th style={{ padding: '1rem', textAlign: 'center', fontSize: '0.78rem' }}>HR</th>
                                         <th style={{ padding: '1rem', textAlign: 'center', fontSize: '0.78rem' }}>Admin</th>
                                         <th style={{ padding: '1rem', textAlign: 'center', fontSize: '0.78rem' }}>External</th>
@@ -463,10 +521,7 @@ export default function AdminPage() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {users.filter(u => 
-                                        u.username.toLowerCase().includes(userSearchQuery.toLowerCase()) || 
-                                        u.full_name.toLowerCase().includes(userSearchQuery.toLowerCase())
-                                    ).map(u => {
+                                    {pagedUsers.map(u => {
                                         const isSelf = u.username.toLowerCase() === user.username.toLowerCase();
                                         
                                         // Generate beautiful initials and avatar colors
@@ -585,10 +640,7 @@ export default function AdminPage() {
                                             </tr>
                                         );
                                     })}
-                                                                    {users.filter(u => 
-                                        u.username.toLowerCase().includes(userSearchQuery.toLowerCase()) || 
-                                        u.full_name.toLowerCase().includes(userSearchQuery.toLowerCase())
-                                    ).length === 0 && (
+                                    {filteredSortedUsers.length === 0 && (
                                         <tr>
                                             <td colSpan="6" style={{ padding: '3rem 2rem', textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.9rem' }}>
                                                 No users found matching your search.
@@ -598,6 +650,41 @@ export default function AdminPage() {
                                 </tbody>
                             </table>
                         </div>
+
+                        {filteredSortedUsers.length > 0 && (
+                            <div style={{
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                padding: '0.9rem 1.5rem', borderTop: '1px solid var(--border)', fontSize: '0.8rem', color: 'var(--text-dim)'
+                            }}>
+                                <span>
+                                    Showing {(userPageClamped - 1) * USER_PAGE_SIZE + 1}
+                                    –{Math.min(userPageClamped * USER_PAGE_SIZE, filteredSortedUsers.length)} of {filteredSortedUsers.length}
+                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                    <button
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        style={{ padding: '4px 8px' }}
+                                        disabled={userPageClamped <= 1}
+                                        onClick={() => setUserPage(p => Math.max(1, p - 1))}
+                                        aria-label="Previous page"
+                                    >
+                                        <ChevronLeft size={14} />
+                                    </button>
+                                    <span>Page {userPageClamped} of {userTotalPages}</span>
+                                    <button
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        style={{ padding: '4px 8px' }}
+                                        disabled={userPageClamped >= userTotalPages}
+                                        onClick={() => setUserPage(p => Math.min(userTotalPages, p + 1))}
+                                        aria-label="Next page"
+                                    >
+                                        <ChevronRight size={14} />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
