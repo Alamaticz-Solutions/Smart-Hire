@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, MoreVertical, Share2, Edit, Trash2, Search, UserCheck } from 'lucide-react';
+import { Plus, MoreVertical, Share2, Edit, Trash2, Search, UserCheck, Building2 } from 'lucide-react';
 
 // Extracted from JobsPage.jsx: the left sidebar "Job List" section
 // (status filter select + scrollable job list with per-job actions dropdown).
@@ -154,7 +154,7 @@ export default function JobSidebar({
                             )}
                         {job.client_name && (
                             <div style={{ fontSize: '0.76rem', color: 'var(--sky-dim)', marginBottom: '6px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                🏢 Client: {job.client_name}
+                                <Building2 size={12} /> Client: {job.client_name}
                             </div>
                         )}
                         <div style={{ display: 'flex', gap: '15px', fontSize: '0.8rem', color: 'var(--text-dim)' }}>

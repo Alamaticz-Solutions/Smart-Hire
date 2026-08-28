@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Download, Trash2, FileText, X, Loader, Edit, Check, Eye, Plus } from 'lucide-react'
+import { Download, Trash2, FileText, X, Loader, Edit, Check, Eye, Plus, User, Briefcase, Mail } from 'lucide-react'
 import apiClient, { getStaticUrl } from '../../api/client'
 import alamaticzLogo from '../../assets/alamaticz-logo.jpg'
 import ResumePreview, { getResumeHtml } from '../ResumePreview'
@@ -379,10 +379,10 @@ export default function CandidateDetailsModal({
                                 borderBottom: `3px solid ${activeTab === 'profile' ? 'var(--gold)' : 'transparent'}`,
                                 color: activeTab === 'profile' ? 'var(--gold)' : 'var(--text-dim)',
                                 fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
-                                transition: 'all 0.2s', outline: 'none'
+                                transition: 'all 0.2s', outline: 'none', display: 'inline-flex', alignItems: 'center', gap: 6
                             }}
                         >
-                            👤 Profile Details
+                            <User size={15} /> Profile Details
                         </button>
                         <button
                             onClick={() => setActiveTab('jobs')}
@@ -391,10 +391,10 @@ export default function CandidateDetailsModal({
                                 borderBottom: `3px solid ${activeTab === 'jobs' ? 'var(--gold)' : 'transparent'}`,
                                 color: activeTab === 'jobs' ? 'var(--gold)' : 'var(--text-dim)',
                                 fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
-                                transition: 'all 0.2s', outline: 'none'
+                                transition: 'all 0.2s', outline: 'none', display: 'inline-flex', alignItems: 'center', gap: 6
                             }}
                         >
-                            💼 Matched & Selected Jobs ({jobs.length})
+                            <Briefcase size={15} /> Matched & Selected Jobs ({jobs.length})
                         </button>
                     </div>
 
@@ -469,10 +469,10 @@ export default function CandidateDetailsModal({
                                                 href={`https://mail.google.com/mail/?view=cm&fs=1&to=${candidate.email}`}
                                                 target="_blank"
                                                 rel="noreferrer"
-                                                style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--sky-dim)', textDecoration: 'underline', wordBreak: 'break-all' }}
+                                                style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--sky-dim)', textDecoration: 'underline', wordBreak: 'break-all', display: 'inline-flex', alignItems: 'center', gap: 6 }}
                                                 title="Click to compose in Gmail"
                                             >
-                                                ✉️ {candidate.email}
+                                                <Mail size={14} /> {candidate.email}
                                             </a>
                                         ) : '—'}
                                     </div>
@@ -524,7 +524,7 @@ export default function CandidateDetailsModal({
 
                                 {candidate.email_message && (
                                     <div>
-                                        <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>✉️ Imported Email Message</span>
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}><Mail size={13} /> Imported Email Message</span>
                                         <div style={{
                                             padding: '12px',
                                             background: 'rgba(var(--navy-dark-rgb), 0.5)',
@@ -628,8 +628,8 @@ export default function CandidateDetailsModal({
                                     borderBottom: '1px solid var(--border)',
                                     flexShrink: 0
                                 }}>
-                                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text)' }}>
-                                        {isEditingFormatted ? '✏️ Edit Alamaticz Resume' : '📄 Company Formatted Resume'}
+                                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                        {isEditingFormatted ? <><Edit size={14} /> Edit Alamaticz Resume</> : <><FileText size={14} /> Company Formatted Resume</>}
                                     </span>
                                     {!isEditingFormatted && (
                                         <div style={{ display: 'flex', gap: '8px', marginRight: 'auto', marginLeft: '20px' }}>

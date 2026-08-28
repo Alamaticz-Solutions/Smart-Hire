@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { Mail, Shield, Check, X, Plus, Trash2, Key, Folder, RefreshCw, Loader, ExternalLink } from 'lucide-react'
+import { Mail, Shield, Check, X, Plus, Trash2, Key, Folder, RefreshCw, Loader, ExternalLink, Link2, AlertCircle, Lock, Users } from 'lucide-react'
 import apiClient from '../api/client'
 import { useToast } from '../hooks/useToast'
 import ToastHost from '../components/shared/ToastHost'
@@ -340,7 +340,7 @@ export default function ConnectPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
                 <div>
                     <h1 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                        🔗 System Integrations
+                        <Link2 size={22} /> System Integrations
                     </h1>
                     <p style={{ color: 'var(--text-dim)', fontSize: '0.88rem', margin: '4px 0 0 0' }}>
                         Configure connection details for background email resume synchronization and Google Drive storage sync.
@@ -418,7 +418,7 @@ export default function ConnectPage() {
                             <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 16, background: 'rgba(0,0,0,0.1)' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                                     <h3 style={{ margin: 0, color: 'var(--gold)', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-                                        📧 Gmail Integration
+                                        <Mail size={16} /> Gmail Integration
                                     </h3>
                                     <label style={{ position: 'relative', display: 'inline-block', width: 40, height: 20, cursor: 'pointer' }}>
                                         <input 
@@ -465,7 +465,7 @@ export default function ConnectPage() {
                             <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 16, background: 'rgba(0,0,0,0.1)' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                                     <h3 style={{ margin: 0, color: 'var(--gold)', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-                                        📧 Outlook Integration
+                                        <Mail size={16} /> Outlook Integration
                                     </h3>
                                     <label style={{ position: 'relative', display: 'inline-block', width: 40, height: 20, cursor: 'pointer' }}>
                                         <input 
@@ -651,8 +651,8 @@ export default function ConnectPage() {
 
                             {/* Additional Mailboxes List */}
                             <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 16, background: 'rgba(0,0,0,0.1)' }}>
-                                <h3 style={{ margin: '0 0 10px 0', color: 'var(--gold)', fontSize: '0.95rem' }}>
-                                    👥 Additional HR/Sync Mailboxes ({getAdditionalEmailsCount()})
+                                <h3 style={{ margin: '0 0 10px 0', color: 'var(--gold)', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 7 }}>
+                                    <Users size={15} /> Additional HR/Sync Mailboxes ({getAdditionalEmailsCount()})
                                 </h3>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
                                     {getAdditionalEmailsList().map((mailbox, index) => (
@@ -719,7 +719,7 @@ export default function ConnectPage() {
 
                                 {/* Add Connection Card */}
                                 <div style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: 16 }}>
-                                    <h4 style={{ margin: '0 0 12px 0', color: 'var(--text)', fontSize: '0.85rem' }}>➕ Add New Shared Mailbox</h4>
+                                    <h4 style={{ margin: '0 0 12px 0', color: 'var(--text)', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 6 }}><Plus size={14} /> Add New Shared Mailbox</h4>
                                     <div style={{ marginBottom: 12 }}>
                                         <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-dim)', marginBottom: 6 }}>Email Provider</label>
                                         <div style={{ display: 'flex', gap: 8 }}>
@@ -867,8 +867,8 @@ export default function ConnectPage() {
                         </div>
                         
                         {!integrationsSettings.gdrive_refresh_token && (
-                            <div style={{ padding: '10px 14px', background: 'var(--danger-bg)', border: '1px solid rgba(var(--red-rgb), 0.3)', borderRadius: 8, fontSize: '0.78rem', color: 'var(--danger-fg)' }}>
-                                ⚠️ Google Drive is not authorized. Please complete the authorization process below before enabling sync.
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--danger-bg)', border: '1px solid rgba(var(--red-rgb), 0.3)', borderRadius: 8, fontSize: '0.78rem', color: 'var(--danger-fg)' }}>
+                                <AlertCircle size={15} style={{ flexShrink: 0 }} /> Google Drive is not authorized. Please complete the authorization process below before enabling sync.
                             </div>
                         )}
 
@@ -948,7 +948,7 @@ export default function ConnectPage() {
 
                         {/* Authorization Area */}
                         <div style={{ background: 'rgba(0, 0, 0, 0.2)', border: '1px solid var(--border)', borderRadius: 12, padding: 18 }}>
-                            <h4 style={{ margin: '0 0 16px 0', color: 'var(--gold)', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.04rem' }}>🔐 Google Drive Account Authorization</h4>
+                            <h4 style={{ margin: '0 0 16px 0', color: 'var(--gold)', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.04rem', display: 'flex', alignItems: 'center', gap: 8 }}><Lock size={14} /> Google Drive Account Authorization</h4>
                             
                             {integrationsSettings.gdrive_email ? (
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(74, 222, 128, 0.05)', border: '1px solid rgba(74, 222, 128, 0.3)', padding: '12px 16px', borderRadius: 8 }}>

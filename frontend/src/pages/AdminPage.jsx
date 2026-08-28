@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { Shield, CheckCircle, XCircle, UserCheck, Trash2, UserPlus, Check, Users, Search } from 'lucide-react'
+import { Shield, CheckCircle, XCircle, UserCheck, Trash2, UserPlus, Check, Users, Search, EyeOff } from 'lucide-react'
 import apiClient from '../api/client'
 import { useToast } from '../hooks/useToast'
 import ToastHost from '../components/shared/ToastHost'
@@ -542,15 +542,15 @@ export default function AdminPage() {
                                                 <td style={{ padding: '1rem', textAlign: 'center' }}>
                                                     <button 
                                                         className="btn btn-secondary" 
-                                                        style={{ padding: '4px 10px', fontSize: '0.75rem', borderColor: 'var(--border)', color: 'var(--text)' }}
+                                                        style={{ padding: '4px 10px', fontSize: '0.75rem', borderColor: 'var(--border)', color: 'var(--text)', display: 'inline-flex', alignItems: 'center', gap: 5 }}
                                                         onClick={() => {
                                                             setSelectedUserForHiddenFields(u);
                                                             setTempHiddenFields(u.hidden_fields ? u.hidden_fields.split(',').map(s => s.trim().toLowerCase()).filter(Boolean) : []);
                                                             setShowHiddenFieldsModal(true);
                                                         }}
                                                     >
-                                                        {u.hidden_fields && u.hidden_fields.split(',').filter(Boolean).length > 0 
-                                                            ? `🚫 ${u.hidden_fields.split(',').filter(Boolean).length} Hidden` 
+                                                        {u.hidden_fields && u.hidden_fields.split(',').filter(Boolean).length > 0
+                                                            ? <><EyeOff size={12} /> {u.hidden_fields.split(',').filter(Boolean).length} Hidden</>
                                                             : 'Configure'}
                                                     </button>
                                                 </td>

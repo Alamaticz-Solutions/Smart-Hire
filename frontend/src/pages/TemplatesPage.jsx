@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { FileText, Eye, Sparkles, Check, Info, Copy, Save, AlertCircle, Send, Loader } from 'lucide-react'
+import { FileText, Eye, Sparkles, Check, Info, Copy, Save, AlertCircle, AlertTriangle, Send, Loader, Mail, Pencil } from 'lucide-react'
 import apiClient from '../api/client'
 import { useToast } from '../hooks/useToast'
 import ToastHost from '../components/shared/ToastHost'
@@ -294,7 +294,7 @@ export default function TemplatesPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
                 <div>
                     <h1 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                        📝 Reply Templates
+                        <FileText size={22} /> Reply Templates
                     </h1>
                     <p style={{ color: 'var(--text-dim)', fontSize: '0.88rem', margin: '4px 0 0 0' }}>
                         Draft and customize automated email responses sent back to candidates upon receiving application logs.
@@ -333,9 +333,9 @@ export default function TemplatesPage() {
                                 color: 'var(--text)', outline: 'none', fontWeight: 600, fontSize: '0.88rem' 
                             }}
                         >
-                            <option value="alamaticz">📄 Alamaticz Format (Standard Layout)</option>
-                            <option value="modern">🎨 Modern Format (Sleek & Colorful)</option>
-                            <option value="classic">🏛️ Classic Format (Traditional Black & White)</option>
+                            <option value="alamaticz">Alamaticz Format (Standard Layout)</option>
+                            <option value="modern">Modern Format (Sleek & Colorful)</option>
+                            <option value="classic">Classic Format (Traditional Black & White)</option>
                         </select>
                         <p style={{ margin: '8px 0 0 0', fontSize: '0.75rem', color: 'var(--text-dim)' }}>
                             This template will be selected by default when viewing or exporting candidate resumes.
@@ -357,16 +357,16 @@ export default function TemplatesPage() {
                             }}
                         >
                             <option value="professional">
-                                💼 Professional Theme (Standard Recruiter Tone){mostlyUsedTheme === 'professional' ? ' (🔥 Mostly Chosen)' : ''}
+                                Professional Theme (Standard Recruiter Tone){mostlyUsedTheme === 'professional' ? ' (Mostly Chosen)' : ''}
                             </option>
                             <option value="creative">
-                                🚀 Creative & Enthusiastic Theme (Startup/Tech Tone){mostlyUsedTheme === 'creative' ? ' (🔥 Mostly Chosen)' : ''}
+                                Creative & Enthusiastic Theme (Startup/Tech Tone){mostlyUsedTheme === 'creative' ? ' (Mostly Chosen)' : ''}
                             </option>
                             <option value="warm">
-                                ❤️ Warm & Friendly Theme (Supportive Recruiter Tone){mostlyUsedTheme === 'warm' ? ' (🔥 Mostly Chosen)' : ''}
+                                Warm & Friendly Theme (Supportive Recruiter Tone){mostlyUsedTheme === 'warm' ? ' (Mostly Chosen)' : ''}
                             </option>
                             <option value="custom">
-                                ✏️ Custom Template (Fully Editable Editor){mostlyUsedTheme === 'custom' ? ' (🔥 Mostly Chosen)' : ''}
+                                Custom Template (Fully Editable Editor){mostlyUsedTheme === 'custom' ? ' (Mostly Chosen)' : ''}
                             </option>
                         </select>
                         {mostlyUsedTheme && (
@@ -383,7 +383,7 @@ export default function TemplatesPage() {
                                 color: 'var(--gold)',
                                 fontWeight: 500
                             }}>
-                                <span>🔥 <strong>Mostly Chosen Template:</strong> {mostlyUsedTheme === 'professional' ? 'Professional Theme' : mostlyUsedTheme === 'creative' ? 'Creative Theme' : mostlyUsedTheme === 'warm' ? 'Warm Theme' : 'Custom Template'}</span>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Sparkles size={13} /> <strong>Mostly Chosen Template:</strong> {mostlyUsedTheme === 'professional' ? 'Professional Theme' : mostlyUsedTheme === 'creative' ? 'Creative Theme' : mostlyUsedTheme === 'warm' ? 'Warm Theme' : 'Custom Template'}</span>
                             </div>
                         )}
                     </div>
@@ -397,8 +397,8 @@ export default function TemplatesPage() {
                         
                         {/* Title & Theme Banner */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                            <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--text)', fontWeight: 700, fontFamily: 'var(--fh)' }}>
-                                {integrationsSettings.reply_theme === 'custom' ? '✏️ Editing Custom Template' : '👁️ Viewing Preset Mode'}
+                            <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--text)', fontWeight: 700, fontFamily: 'var(--fh)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                {integrationsSettings.reply_theme === 'custom' ? <><Pencil size={15} /> Editing Custom Template</> : <><Eye size={15} /> Viewing Preset Mode</>}
                             </h3>
                             <span style={{ 
                                 fontSize: '0.72rem', background: 'rgba(var(--sky-rgb), 0.15)', 
@@ -466,7 +466,7 @@ export default function TemplatesPage() {
                                             borderBottom: editorTab === 'missing' ? '2px solid var(--gold)' : 'none'
                                         }}
                                     >
-                                        ⚠️ Missing Details Template
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><AlertTriangle size={13} /> Missing Details Template</span>
                                     </button>
                                     <button
                                         type="button"
@@ -479,7 +479,7 @@ export default function TemplatesPage() {
                                             borderBottom: editorTab === 'complete' ? '2px solid var(--gold)' : 'none'
                                         }}
                                     >
-                                        ✔️ Application Complete Template
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Check size={13} /> Application Complete Template</span>
                                     </button>
                                 </div>
                             </div>
@@ -539,8 +539,8 @@ export default function TemplatesPage() {
                                         </span>
                                     ))}
                                 </div>
-                                <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginTop: 8 }}>
-                                    💡 Click any chip above to copy. Paste it directly into your template subject or message body.
+                                <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginTop: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
+                                    <Info size={11} /> Click any chip above to copy. Paste it directly into your template subject or message body.
                                 </div>
                             </div>
 
@@ -599,7 +599,7 @@ export default function TemplatesPage() {
                             <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ff5f56' }}></div>
                             <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ffbd2e' }}></div>
                             <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#27c93f' }}></div>
-                            <div style={{ marginLeft: 12, fontSize: '0.75rem', color: '#6B6F94', fontFamily: 'monospace', letterSpacing: '0.02rem' }}>📧 mail-client-simulator.html</div>
+                            <div style={{ marginLeft: 12, fontSize: '0.75rem', color: '#6B6F94', fontFamily: 'monospace', letterSpacing: '0.02rem', display: 'flex', alignItems: 'center', gap: 5 }}><Mail size={11} /> mail-client-simulator.html</div>
                         </div>
 
                         {/* Email headers */}

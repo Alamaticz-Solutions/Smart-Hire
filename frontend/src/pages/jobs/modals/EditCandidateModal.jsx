@@ -1,4 +1,5 @@
 import React from 'react';
+import { Bot } from 'lucide-react';
 import { useModalA11y } from '../../../hooks/useModalA11y';
 
 // Extracted from JobsPage.jsx: the "Edit Candidate & Match Details" modal
@@ -93,7 +94,7 @@ export default function EditCandidateModal({
                     </div>
 
                     <div>
-                        <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}>🤖 AI Match Reason</label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '6px' }}><Bot size={14} /> AI Match Reason</label>
                         <textarea
                             value={editReason}
                             onChange={e => setEditReason(e.target.value)}
