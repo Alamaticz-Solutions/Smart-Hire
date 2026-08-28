@@ -78,7 +78,6 @@ export default function CandidatesTable({
     showToast,
     confirm,
     setSelectedCandidateForDetails,
-    del,
     loadingCandidates,
     load,
     loadCols,
@@ -158,29 +157,6 @@ export default function CandidatesTable({
                 {ri + 1}
             </td>
             {activeCols.map(({ key }) => {
-                /* ── Actions column ── */
-                if (key === '_actions') return (
-                    <td
-                        key={key}
-                        style={{
-                            ...TD_BASE, textAlign: 'center', position: 'sticky', right: 0, zIndex: 10,
-                            background: ri % 2 === 0 ? 'var(--input-bg)' : 'var(--card-bg)',
-                            boxShadow: '-3px 0 6px rgba(0,0,0,0.15)', overflow: 'visible'
-                        }}
-                    >
-                        <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
-                            <button
-                                className="btn btn-danger"
-                                style={{ padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.75rem' }}
-                                onClick={() => del(row.id)}
-                                title="Delete Candidate"
-                            >
-                                <Trash2 size={14} /> Delete
-                            </button>
-                        </div>
-                    </td>
-                )
-
                 const isEditing = editCell?.row === ri && editCell?.col === key
                 const val = row[key] ?? ''
                 const isExp = key === 'total_experience' || key === 'pega_experience' || key === 'cdh_exp'

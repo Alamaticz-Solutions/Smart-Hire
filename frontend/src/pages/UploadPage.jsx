@@ -244,13 +244,13 @@ export default function UploadPage() {
     const loadCols = () => apiClient.get(`/api/columns`).then(r => {
         const base = (r.data.base || []).map(c => ({ key: c.col_key, label: c.col_label, pct: getColumnWidth(c.col_key), col_key: c.col_key, col_label: c.col_label }))
         const custom = (r.data.custom || []).map(c => ({ key: c.col_key, label: c.col_label, pct: '120px', col_key: c.col_key, col_label: c.col_label, isCustom: true }))
-        // 100px used to be exactly wide enough to clip the Delete button's
-        // own padding against the vertical scrollbar this table always
-        // shows (maxHeight+overflowY:auto in DataTable.jsx) - the sticky
-        // right:0 column sat right under the scrollbar track instead of
-        // beside it, reading as a stray gray overlap. Widened, and see
-        // DataTable.jsx's scrollbar-gutter fix for the other half of this.
-        const allLoaded = [...base, ...custom, { key: '_actions', label: 'Actions', pct: '132px' }]
+        // No more '_actions' column: it only ever held a single per-row
+        // Delete button, which was also the sticky-right column that kept
+        // visually overlapping the scrollbar (see DataTable.jsx's
+        // scrollbar-gutter fix). Deleting is now checkbox-select +
+        // "Delete Selected" only, matching the pattern this table already
+        // used for bulk delete/export - one delete affordance, not two.
+        const allLoaded = [...base, ...custom]
 
         setCols(applySavedColumnOrder(allLoaded, 'hire_ai_col_order'))
     }).catch(() => {
@@ -511,7 +511,6 @@ export default function UploadPage() {
                 showToast={showToast}
                 confirm={confirm}
                 setSelectedCandidateForDetails={setSelectedCandidateForDetails}
-                del={del}
                 loadingCandidates={loadingCandidates}
                 load={load}
                 loadCols={loadCols}
