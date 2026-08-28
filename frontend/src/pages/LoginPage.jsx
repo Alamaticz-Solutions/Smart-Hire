@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Eye, EyeOff, Check, LogIn, UserPlus, Send, KeyRound, ArrowLeft, Loader2 } from 'lucide-react'
 import apiClient from '../api/client'
-import alamaticzLogo from '../assets/alamaticz-logo.jpg'
+import alamaticzMark from '../assets/alamaticz-mark.png'
 import { auth } from '../firebase'
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth'
 
@@ -271,11 +271,10 @@ export default function LoginPage({ onLogin }) {
             <div className="login-card">
                 {/* Brand */}
                 <div className="login-brand">
-                    {/* Exact Alamaticz Solutions logo image */}
                     <img
-                        src={alamaticzLogo}
+                        src={alamaticzMark}
                         alt="Alamaticz Solutions"
-                        style={{ width: 90, height: 90, objectFit: 'contain', marginBottom: 4 }}
+                        style={{ width: 76, height: 76, objectFit: 'contain', marginBottom: 4 }}
                     />
                     <div className="login-title">Hire AI</div>
                     <div className="login-subtitle">

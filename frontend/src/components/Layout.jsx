@@ -1,8 +1,8 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import axios from 'axios'
-import { LayoutDashboard, Upload, MessageSquare, LogOut, Sun, Moon, Monitor, Briefcase, Shield, Users, Download, Activity, X, Link, FileText, AlertTriangle, ChevronDown, PanelLeftClose, PanelLeft, Menu } from 'lucide-react'
-import alamaticzLogo from '../assets/alamaticz-logo.jpg'
+import { LayoutDashboard, Upload, MessageSquare, LogOut, Sun, Moon, Monitor, Briefcase, Shield, Users, Download, Activity, X, Link, FileText, AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, Menu } from 'lucide-react'
+import alamaticzMark from '../assets/alamaticz-mark.png'
 
 // Ref S2.1/G-26: the topbar used to show the company name on every screen
 // ("Alamaticz Solutions", repeated below the sidebar's own brand mark) with
@@ -177,11 +177,10 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
             {/* Sidebar */}
             <aside className={`sidebar${effectiveCollapsed ? ' collapsed' : ''}${mobileSidebarOpen ? ' mobile-open' : ''}`}>
                 <div className="sidebar-brand">
-                    {/* Exact Alamaticz Solutions logo image */}
                     <img
-                        src={alamaticzLogo}
+                        src={alamaticzMark}
                         alt="Alamaticz Solutions"
-                        style={{ width: 42, height: 42, objectFit: 'contain', flexShrink: 0 }}
+                        style={{ width: 32, height: 32, objectFit: 'contain', flexShrink: 0 }}
                     />
                     {!effectiveCollapsed && <span className="sidebar-brand-name">Hire AI</span>}
                 </div>
@@ -230,23 +229,23 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
                     )}
                 </nav>
 
-                <div className="sidebar-footer">
-                    {/* Below 1024px rail mode is automatic (isTabletWidth) and
-                        the manual toggle can't override it, so hide a control
-                        that would otherwise visibly do nothing. */}
-                    {!isTabletWidth && (
-                        <button
-                            type="button"
-                            className="sidebar-collapse-btn"
-                            onClick={() => setSidebarCollapsed(c => !c)}
-                            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                        >
-                            {sidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
-                            {!sidebarCollapsed && <span>Collapse</span>}
-                        </button>
-                    )}
-                </div>
+                {/* Below 1024px rail mode is automatic (isTabletWidth) and the
+                    manual toggle can't override it, so hide a control that
+                    would otherwise visibly do nothing. Moved from a full-width
+                    footer button to a small tab on the sidebar's own edge -
+                    doesn't compete with the nav for vertical space, and stays
+                    reachable regardless of how tall the nav list gets. */}
+                {!isTabletWidth && (
+                    <button
+                        type="button"
+                        className="sidebar-collapse-edge-btn"
+                        onClick={() => setSidebarCollapsed(c => !c)}
+                        aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                        title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                    >
+                        {sidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+                    </button>
+                )}
             </aside>
 
             {/* Main */}
