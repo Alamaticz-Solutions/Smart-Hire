@@ -17,6 +17,7 @@ export function useConfirm() {
                 confirmLabel: opts.confirmLabel || 'Confirm',
                 cancelLabel: opts.cancelLabel || 'Cancel',
                 danger: opts.danger ?? true,
+                confirmText: opts.confirmText,
             })
         })
     }, [])

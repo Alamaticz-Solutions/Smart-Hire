@@ -185,7 +185,12 @@ export default function AdminPage() {
     }
 
     const handleDeleteUser = async (id, username) => {
-        if (!await confirm({ title: 'Delete user?', message: `Are you sure you want to delete user "${username}"?`, confirmLabel: 'Delete' })) return
+        if (!await confirm({
+            title: 'Delete user?',
+            message: `This permanently removes "${username}"'s account, including their access history and any candidates or jobs attributed to them. This cannot be undone.`,
+            confirmLabel: 'Delete',
+            confirmText: username,
+        })) return
         try {
             await apiClient.delete(`/api/admin/users/${id}`)
             fetchUsers()

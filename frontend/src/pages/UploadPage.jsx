@@ -299,7 +299,19 @@ export default function UploadPage() {
 
     const handleDeleteCol = async (col_key, col_label) => {
         const label = col_label || col_key;
-        if (!await confirm({ title: 'Delete column?', message: `Are you sure you want to delete the "${label}" column?`, confirmLabel: 'Delete' })) return
+        // G-25: name the blast radius rather than a bare "are you sure" -
+        // this destroys the extracted value for every candidate that has
+        // one, not just the column header.
+        const valueCount = candidates.filter(c => String(c[col_key] || '').trim()).length;
+        const blastRadius = valueCount > 0
+            ? ` This removes the extracted "${label}" value from ${valueCount} candidate${valueCount === 1 ? '' : 's'}.`
+            : '';
+        if (!await confirm({
+            title: 'Delete column?',
+            message: `This permanently deletes the "${label}" column.${blastRadius} This cannot be undone.`,
+            confirmLabel: 'Delete',
+            confirmText: label,
+        })) return
         try {
             await apiClient.delete(`/api/columns/${col_key}`, { headers: { 'x-user-username': user?.username } })
             showToast('Column deleted')
@@ -358,7 +370,7 @@ export default function UploadPage() {
         isAdmin, certificationsMessage: "Only Admins and HR users can view or edit certifications.",
     });
     const del = async (id) => {
-        if (!await confirm({ title: 'Delete candidate?', message: 'Are you sure you want to delete this candidate?', confirmLabel: 'Delete' })) return
+        if (!await confirm({ title: 'Delete candidate?', message: 'This permanently removes this candidate from the database. This cannot be undone.', confirmLabel: 'Delete' })) return
         try {
             await apiClient.delete(`/api/candidates/${id}`, {
                 headers: { 'x-user-username': user?.username }
@@ -387,7 +399,12 @@ export default function UploadPage() {
     }
     const bulkDelete = async () => {
         if (selectedIds.size === 0) return
-        if (!await confirm({ title: 'Delete selected candidates?', message: `Are you sure you want to delete ${selectedIds.size} selected candidate(s)?`, confirmLabel: 'Delete' })) return
+        if (!await confirm({
+            title: 'Delete selected candidates?',
+            message: `This permanently removes ${selectedIds.size} candidate${selectedIds.size === 1 ? '' : 's'} from the database. This cannot be undone.`,
+            confirmLabel: 'Delete',
+            confirmText: selectedIds.size > 4 ? String(selectedIds.size) : undefined,
+        })) return
         try {
             await apiClient.post(`/api/candidates/bulk-delete`, { ids: [...selectedIds] }, {
                 headers: { 'x-user-username': user?.username }

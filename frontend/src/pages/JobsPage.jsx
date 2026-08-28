@@ -428,7 +428,13 @@ export default function JobsPage() {
     }
 
     const handleDeleteJob = async (jobId) => {
-        if (!await confirm({ title: 'Delete job?', message: 'Are you sure you want to delete this job?', confirmLabel: 'Delete' })) return;
+        const job = jobs.find(j => j.id === jobId);
+        const matched = (job?.matched_count || 0) + (job?.selected_count || 0);
+        if (!await confirm({
+            title: 'Delete job?',
+            message: `This permanently deletes "${job?.title || 'this job'}"${matched > 0 ? ` and its matching for ${matched} candidate${matched === 1 ? '' : 's'}` : ''}. This cannot be undone.`,
+            confirmLabel: 'Delete',
+        })) return;
         try {
             await apiClient.delete(`/api/jobs/${jobId}`, {
                 headers: { 'x-user-username': user?.username }
