@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { FileText, Eye, Sparkles, Check, Info, Copy, Save, AlertCircle, AlertTriangle, Send, Loader, Mail, Pencil } from 'lucide-react'
 import apiClient from '../api/client'
 import { useToast } from '../hooks/useToast'
 import ToastHost from '../components/shared/ToastHost'
+import { useConfirm } from '../hooks/useConfirm'
+import ConfirmDialog from '../components/shared/ConfirmDialog'
 
 const THEME_PRESETS = {
   professional: {
@@ -101,11 +103,13 @@ Alamaticz Solutions`
 export default function TemplatesPage() {
     const { user } = useOutletContext()
     const { toast, showToast, dismissToast, pauseToast, resumeToast } = useToast()
+    const { confirm, confirmDialogProps } = useConfirm()
     const [saving, setSaving] = useState(false)
     const [editorTab, setEditorTab] = useState('missing') // 'missing' | 'complete'
     const [previewType, setPreviewType] = useState('missing') // 'missing' | 'complete'
     const [testEmail, setTestEmail] = useState('')
     const [isTestingEmail, setIsTestingEmail] = useState(false)
+    const bodyTextareaRef = useRef(null)
     
     const [integrationsSettings, setIntegrationsSettings] = useState({
         email_enabled: 0, imap_host: 'imap.gmail.com', imap_port: 993,
@@ -202,7 +206,21 @@ export default function TemplatesPage() {
         }
     }
 
-    const handleThemeChange = (newTheme) => {
+    const handleThemeChange = async (newTheme) => {
+        // S9.3: switching to a preset used to silently overwrite whatever
+        // subject/body text was already there. Warn first when there's
+        // content that would actually be lost.
+        if (newTheme !== 'custom' && newTheme !== integrationsSettings.reply_theme) {
+            const hasContent = Boolean(integrationsSettings.reply_subject || integrationsSettings.reply_body_missing || integrationsSettings.reply_body_complete);
+            if (hasContent) {
+                const ok = await confirm({
+                    title: 'Switch template preset?',
+                    message: "This replaces the current subject and body text with the preset's text. Any edits you haven't saved will be lost.",
+                    confirmLabel: 'Switch preset',
+                });
+                if (!ok) return;
+            }
+        }
         if (newTheme !== 'custom') {
             const preset = THEME_PRESETS[newTheme];
             setIntegrationsSettings(prev => ({
@@ -257,9 +275,25 @@ export default function TemplatesPage() {
         }));
     };
 
-    const handleCopyVariable = (variable) => {
-        navigator.clipboard.writeText(variable);
-        showToast(`Copied ${variable} to clipboard!`, 'info');
+    // S9.2: insert the variable at the cursor when the body editor has
+    // focus, instead of only copying it to the clipboard for a manual paste.
+    const handleInsertVariable = (variable) => {
+        const ta = bodyTextareaRef.current;
+        if (ta && document.activeElement === ta && integrationsSettings.reply_theme === 'custom') {
+            const start = ta.selectionStart ?? ta.value.length;
+            const end = ta.selectionEnd ?? ta.value.length;
+            const current = activeBodyValue || '';
+            handleBodyTextChange(current.slice(0, start) + variable + current.slice(end));
+            requestAnimationFrame(() => {
+                ta.focus();
+                const pos = start + variable.length;
+                ta.setSelectionRange(pos, pos);
+            });
+            showToast(`Inserted ${variable}`, 'info');
+        } else {
+            navigator.clipboard.writeText(variable);
+            showToast(`Copied ${variable} to clipboard!`, 'info');
+        }
     };
 
     // Auto-align preview tab when editor tab changes for intuitive UX
@@ -494,7 +528,8 @@ export default function TemplatesPage() {
                                         {editorTab === 'missing' ? 'Sent when profile fields are missing.' : 'Sent when application is complete.'}
                                     </span>
                                 </div>
-                                <textarea 
+                                <textarea
+                                    ref={bodyTextareaRef}
                                     value={activeBodyValue || ''}
                                     onChange={e => handleBodyTextChange(e.target.value)}
                                     disabled={integrationsSettings.reply_theme !== 'custom'}
@@ -521,10 +556,10 @@ export default function TemplatesPage() {
                                         { key: '{subject}', desc: 'Original Email Subject' },
                                         { key: '{ref}', desc: 'Candidate ID Reference' }
                                     ].map(variable => (
-                                        <span 
-                                            key={variable.key} 
-                                            title={`Click to copy: ${variable.desc}`}
-                                            onClick={() => handleCopyVariable(variable.key)}
+                                        <span
+                                            key={variable.key}
+                                            title={`${variable.desc} — click to insert into the focused body editor, or copy`}
+                                            onClick={() => handleInsertVariable(variable.key)}
                                             style={{
                                                 fontSize: '0.72rem', fontFamily: 'monospace', background: 'rgba(var(--sky-rgb), 0.12)',
                                                 color: 'var(--sky-dim)', border: '1px solid rgba(var(--sky-rgb), 0.25)',
@@ -666,6 +701,7 @@ export default function TemplatesPage() {
                 </div>
 
             </div>
+            <ConfirmDialog {...confirmDialogProps} />
         </div>
     )
 }
