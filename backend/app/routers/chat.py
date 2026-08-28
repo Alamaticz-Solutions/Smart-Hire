@@ -31,7 +31,7 @@ from pydantic import BaseModel
 from app.core.logging import get_logger
 from app.db.row_helpers import dict_row_factory
 from app.db.session import get_db_connection
-from app.services.auth import is_admin_or_hr, is_user_approved
+from app.services.auth import get_user_info, is_admin_or_hr, is_user_approved
 from app.services.ai_clients import get_models, peek_models
 
 router = APIRouter()
@@ -256,13 +256,10 @@ def chat(body: ChatRequest, request: Request):
             "answer": "Your account access is currently pending administrator approval. Please contact your system administrator to view and query candidate data.",
         }
 
-    with get_db_connection() as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT is_admin, role FROM users WHERE LOWER(username) = LOWER(?)", (username,))
-        user_row = cur.fetchone()
+    user_row = get_user_info(username)
     is_user_admin = False
     if user_row:
-        is_user_admin = (user_row[0] == 1 or user_row[1] == "admin" or is_admin_or_hr(username))
+        is_user_admin = (user_row["is_admin"] == 1 or user_row["role"] == "admin" or is_admin_or_hr(username))
 
     embeddings, llm, loading = peek_models()
     if embeddings is None or llm is None:

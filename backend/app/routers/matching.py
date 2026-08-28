@@ -30,7 +30,7 @@ from app.core.logging import get_logger
 from app.db.row_helpers import dict_row_factory
 from app.db.session import get_db_connection
 from app.dependencies import assert_owns_or_admin, require_approved_user
-from app.services.auth import is_admin_or_hr, is_user_approved
+from app.services.auth import get_user_info, is_admin_or_hr, is_user_approved
 from app.services.json_parsing import parse_llm_json
 from app.services.ai_clients import get_models
 from app.services.matching import match_candidates_for_job
@@ -69,10 +69,9 @@ def match_jd(req: JDMatchRequest, request: Request):
             cur = conn.cursor()
 
             if username:
-                cur.execute("SELECT is_admin, role FROM users WHERE LOWER(username) = LOWER(?)", (username,))
-                row = cur.fetchone()
+                row = get_user_info(username)
                 if row:
-                    is_user_admin = (row[0] == 1 or row[1] == "admin" or is_admin_or_hr(username))
+                    is_user_admin = (row["is_admin"] == 1 or row["role"] == "admin" or is_admin_or_hr(username))
 
             cur.execute("SELECT COUNT(*) FROM langchain_pg_embedding")
             has_vectors = (cur.fetchone()[0] > 0)

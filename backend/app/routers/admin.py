@@ -58,7 +58,7 @@ from pydantic import BaseModel
 from app.core.logging import get_logger
 from app.db.row_helpers import dict_row_factory
 from app.db.session import get_db_connection
-from app.services.auth import get_user_role, is_admin_or_hr, is_user_approved
+from app.services.auth import get_user_role, is_admin_or_hr, is_user_approved, invalidate_user_cache
 from app.services.matching import match_candidate_to_all_jobs, match_candidates_for_job
 
 logger = get_logger(__name__)
@@ -173,7 +173,15 @@ def update_user_permissions_endpoint(user_id: int, body: UserPermissionsUpdate, 
                 "UPDATE users SET is_hr = ?, is_admin = ?, is_external = ?, role = ?, hidden_fields = ? WHERE id = ?",
                 (is_hr_val, is_admin_val, is_external_val, new_role, hidden_fields_val, user_id),
             )
+        cur.execute("SELECT username FROM users WHERE id = ?", (user_id,))
+        target_row = cur.fetchone()
         conn.commit()
+    # The is_user_approved/get_user_role/is_admin_or_hr cache (app.services.auth)
+    # would otherwise keep serving this user's pre-update permissions for up
+    # to its TTL - invalidate immediately so a permission change (including
+    # the self-demotion / approval path) takes effect on the very next request.
+    if target_row:
+        invalidate_user_cache(target_row[0])
     return {"status": "updated"}
 
 
@@ -257,6 +265,7 @@ def delete_user_endpoint(user_id: int, request: Request):
 
         conn.commit()
 
+    invalidate_user_cache(deleted_username)
     _log_activity_db(username, f"completely deleted user '{deleted_username}' from system")
     return {"status": "deleted"}
 
@@ -465,6 +474,7 @@ def _approve_reset_all(cur, target_id, payload, background_tasks):
 def _approve_approve_user(cur, target_id, payload, background_tasks):
     target_username = target_id
     cur.execute("UPDATE users SET is_approved = 1 WHERE LOWER(username) = LOWER(?)", (target_username,))
+    invalidate_user_cache(target_username)
 
 
 # action_type -> handler registry. See module docstring for rationale.

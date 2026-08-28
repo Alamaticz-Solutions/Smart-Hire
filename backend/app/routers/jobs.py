@@ -31,7 +31,7 @@ from app.core.logging import get_logger
 from app.db.row_helpers import dict_row_factory, row_to_dict
 from app.db.session import get_db_connection
 from app.dependencies import assert_owns_or_admin, require_approved_user
-from app.services.auth import apply_user_hidden_fields, get_user_role, is_admin_or_hr, is_user_approved
+from app.services.auth import apply_user_hidden_fields, get_user_role, get_user_info, is_admin_or_hr, is_user_approved
 from app.services.matching import match_candidates_for_job
 
 router = APIRouter()
@@ -155,11 +155,14 @@ def list_jobs(request: Request):
         is_external = False
         is_user_admin = False
         if username:
-            cur.execute("SELECT is_external, is_admin, role FROM users WHERE LOWER(username) = LOWER(?)", (username,))
-            row = cur.fetchone()
-            if row:
-                is_external = (row["is_external"] == 1)
-                is_user_admin = (row["is_admin"] == 1 or row["role"] == "admin" or is_admin_or_hr(username))
+            # Was its own raw query here on top of is_user_approved() above
+            # (itself a users lookup) plus is_admin_or_hr()'s own query below -
+            # three round trips for permission info alone. get_user_info()
+            # shares one cached row across all of them.
+            info = get_user_info(username)
+            if info:
+                is_external = (info["is_external"] == 1)
+                is_user_admin = (info["is_admin"] == 1 or info["role"] == "admin" or is_admin_or_hr(username))
 
         if is_external:
             cur.execute(
@@ -350,8 +353,7 @@ def get_job_candidates(job_id: int, username: str = Depends(require_approved_use
             raise HTTPException(status_code=404, detail="Job not found")
         job_creator = job_row["created_by"]
 
-        cur.execute("SELECT is_external, is_admin, role, full_name FROM users WHERE LOWER(username) = LOWER(?)", (username,))
-        user_row = cur.fetchone()
+        user_row = get_user_info(username)
         is_external = False
         is_user_admin = False
         if user_row:
@@ -424,8 +426,7 @@ def get_unmatched_candidates(job_id: int, request: Request, username: str = Depe
             raise HTTPException(status_code=404, detail="Job not found")
         job_creator = job_row["created_by"]
 
-        cur.execute("SELECT is_external, is_admin, role FROM users WHERE LOWER(username) = LOWER(?)", (username,))
-        user_row = cur.fetchone()
+        user_row = get_user_info(username)
         is_external = False
         is_user_admin = False
         if user_row:

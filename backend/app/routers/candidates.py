@@ -70,7 +70,7 @@ from app.core.logging import get_logger
 from app.db.row_helpers import dict_row_factory
 from app.db.session import get_db_connection
 from app.dependencies import assert_owns_or_admin, require_approved_user
-from app.services.auth import apply_user_hidden_fields, is_admin_or_hr, is_user_approved
+from app.services.auth import apply_user_hidden_fields, get_user_info, is_admin_or_hr, is_user_approved
 from app.services.matching import match_candidate_to_all_jobs
 from app.services.resume_processing import format_candidate_resume
 
@@ -247,17 +247,11 @@ def list_candidates(request: Request, limit: Optional[int] = None, offset: int =
     is_external = False
     is_admin_or_hr_flag = False
     if username:
-        with get_db_connection() as conn:
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT is_external, is_admin, role, is_hr FROM users WHERE LOWER(username) = LOWER(?)",
-                (username,),
-            )
-            row = cur.fetchone()
+        row = get_user_info(username)
         if row:
-            is_external = row[0] == 1
-            is_admin_or_hr_flag = row[1] == 1 or row[3] == 1
-            is_user_admin = row[1] == 1 or row[2] == "admin" or is_admin_or_hr_flag
+            is_external = row["is_external"] == 1
+            is_admin_or_hr_flag = row["is_admin"] == 1 or row["is_hr"] == 1
+            is_user_admin = row["is_admin"] == 1 or row["role"] == "admin" or is_admin_or_hr_flag
             if is_external:
                 raise HTTPException(status_code=403, detail="Forbidden")
 
