@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
-import { Send, Bot, User, RotateCcw } from 'lucide-react'
+import { Send, Bot, User, RotateCcw, Trash2 } from 'lucide-react'
 import apiClient from '../api/client'
 import SkillBadges from '../components/shared/SkillBadges'
+import { useConfirm } from '../hooks/useConfirm'
+import ConfirmDialog from '../components/shared/ConfirmDialog'
 
 const SUGGESTIONS = [
     'Show all candidates',
@@ -149,6 +151,7 @@ export default function ChatPage() {
     const [loading, setLoading] = useState(false)
     const bottomRef = useRef(null)
     const textareaRef = useRef(null)
+    const { confirm, confirmDialogProps } = useConfirm()
 
     useEffect(() => {
         if (user?.username) {
@@ -157,6 +160,25 @@ export default function ChatPage() {
     }, [messages, user])
 
     useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading])
+
+    // S6.5: auto-grow the textarea up to the CSS max-height (120px) instead
+    // of scrolling inside a fixed 24px box.
+    useEffect(() => {
+        const el = textareaRef.current
+        if (!el) return
+        el.style.height = 'auto'
+        el.style.height = `${Math.min(el.scrollHeight, 120)}px`
+    }, [input])
+
+    const handleClearChat = async () => {
+        if (!await confirm({
+            title: 'Clear conversation?',
+            message: 'This deletes every message in this chat. It cannot be undone.',
+            confirmLabel: 'Clear',
+        })) return
+        setMessages([])
+        if (user?.username) localStorage.removeItem(`hire_ai_chat_msgs_${user.username}`)
+    }
 
     const sendMessage = async (text) => {
         const content = (text || input).trim()
@@ -188,6 +210,18 @@ export default function ChatPage() {
     return (
         <div className="chat-layout" style={{ padding: 0, flex: 1, minHeight: 0 }}>
             <div className="chat-main">
+                {messages.length > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0.75rem 2rem 0' }}>
+                        <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{ fontSize: '0.78rem', padding: '5px 10px', gap: 6, display: 'inline-flex', alignItems: 'center' }}
+                            onClick={handleClearChat}
+                        >
+                            <Trash2 size={13} /> Clear conversation
+                        </button>
+                    </div>
+                )}
                 {/* Messages */}
                 <div className="chat-messages">
                     {messages.length === 0 && !loading ? (
@@ -205,8 +239,9 @@ export default function ChatPage() {
                     <div ref={bottomRef} />
                 </div>
 
-                {/* Suggestion Chips */}
-                {messages.length === 0 && (
+                {/* Suggestion Chips - kept visible past the first message (S6.3)
+                    so they stay discoverable, not just at zero state. */}
+                {!loading && (
                     <div className="suggestion-chips">
                         {SUGGESTIONS.map(s => (
                             <button key={s} className="chip" onClick={() => sendMessage(s)}>{s}</button>
@@ -235,6 +270,7 @@ export default function ChatPage() {
                     </p>
                 </div>
             </div>
+            <ConfirmDialog {...confirmDialogProps} />
         </div>
     )
 }
