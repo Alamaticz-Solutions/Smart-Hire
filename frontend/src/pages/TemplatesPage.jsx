@@ -218,7 +218,14 @@ export default function TemplatesPage() {
                     message: "This replaces the current subject and body text with the preset's text. Any edits you haven't saved will be lost.",
                     confirmLabel: 'Switch preset',
                 });
-                if (!ok) return;
+                if (!ok) {
+                    // The <select> already shows newTheme in the DOM (native
+                    // behavior fires before we get a chance to intervene).
+                    // Since reply_theme in state hasn't changed, React won't
+                    // re-render on its own to snap it back - force one.
+                    setIntegrationsSettings(prev => ({ ...prev }));
+                    return;
+                }
             }
         }
         if (newTheme !== 'custom') {
