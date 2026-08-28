@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { Mail, Shield, Check, X, Plus, Trash2, Key, Folder, RefreshCw, Loader, ExternalLink, Link2, AlertCircle, Lock, Users, Eye, EyeOff } from 'lucide-react'
+import { Mail, Shield, Check, X, Plus, Trash2, Key, Folder, RefreshCw, Loader, ExternalLink, AlertCircle, Lock, Users, Eye, EyeOff } from 'lucide-react'
 import apiClient from '../api/client'
 import { useToast } from '../hooks/useToast'
 import ToastHost from '../components/shared/ToastHost'
@@ -340,15 +340,8 @@ export default function ConnectPage() {
             <ToastHost toast={toast} onDismiss={dismissToast} onPause={pauseToast} onResume={resumeToast} />
             <ConfirmDialog {...confirmDialogProps} />
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
-                <div>
-                    <h1 className="page-title"><Link2 size={22} color="var(--gold)" /> System Integrations</h1>
-                    <p className="page-subtitle">
-                        Configure connection details for background email resume synchronization and Google Drive storage sync.
-                    </p>
-                </div>
-                
-                <button 
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '24px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
+                <button
                     onClick={() => saveIntegrationsSettings(true)} 
                     className="btn" 
                     style={{ background: 'var(--gold)', color: 'var(--action-fg)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 8, border: 'none', cursor: 'pointer' }}

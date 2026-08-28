@@ -540,10 +540,42 @@ body,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem 2rem;
+  padding: 18px 32px;
   border-bottom: 1px solid var(--border);
   background: var(--topbar-bg);
   flex-shrink: 0;
+  gap: 16px;
+}
+
+/* The page heading (icon + title + subtitle) now lives here instead of
+   being repeated a second time in the page body below - see the
+   .page-title/.page-subtitle comment further down for why that
+   duplication existed in the first place. */
+.topbar-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.topbar-heading-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.topbar-heading .page-title {
+  font-size: 1.3rem;
+}
+
+/* Keep the topbar a fixed height regardless of subtitle length (some
+   run long, e.g. Integrations') - truncate rather than let it wrap and
+   push the topbar taller on narrower viewports. */
+.topbar-heading .page-subtitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* AdminPage (and, inline, ConnectPage/TemplatesPage) used
@@ -587,21 +619,6 @@ body,
   font-weight: 400;
   color: var(--text-muted);
   margin: 6px 0 0;
-}
-
-/* Nav-bar/page-title redesign: the topbar label and each page's own
-   <h1 className="page-title"> used to be near-identical weight (both
-   bold, both ~1.3rem+), so every screen showed two competing headings
-   stacked directly on top of each other ("Administration" then "Admin
-   Portal"). This is now a quiet wayfinding label - smaller, medium
-   weight, muted color - so it reads as "you are here" context rather
-   than a second title fighting the real one below it. */
-.topbar-title {
-  font-family: var(--fh);
-  font-size: var(--fs-4);
-  font-weight: 600;
-  color: var(--text-muted);
-  letter-spacing: 0.01em;
 }
 
 .profile-chip {

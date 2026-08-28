@@ -353,13 +353,6 @@ export default function AdminPage() {
 
     return (
         <div className="page-container">
-            <div className="page-header">
-                <div>
-                    <h1 className="page-title"><Shield size={22} color="var(--gold)" />Admin Portal</h1>
-                    <p className="page-subtitle">Manage system changes, user roles, and access control.</p>
-                </div>
-            </div>
-
             {/* Tabs */}
             <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', borderBottom: '1px solid var(--border)' }}>
                 <button 

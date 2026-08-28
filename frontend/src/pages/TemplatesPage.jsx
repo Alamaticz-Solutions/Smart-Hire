@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { FileText, Eye, Sparkles, Check, Info, Copy, Save, AlertCircle, AlertTriangle, Send, Loader, Mail, Pencil } from 'lucide-react'
+import { Eye, Sparkles, Check, Info, Copy, Save, AlertCircle, AlertTriangle, Send, Loader, Mail, Pencil } from 'lucide-react'
 import apiClient from '../api/client'
 import { useToast } from '../hooks/useToast'
 import ToastHost from '../components/shared/ToastHost'
@@ -374,15 +374,8 @@ export default function TemplatesPage() {
             <ToastHost toast={toast} onDismiss={dismissToast} onPause={pauseToast} onResume={resumeToast} />
 
             {/* Header section */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
-                <div>
-                    <h1 className="page-title"><FileText size={22} color="var(--gold)" /> Reply Templates</h1>
-                    <p className="page-subtitle">
-                        Draft and customize automated email responses sent back to candidates upon receiving application logs.
-                    </p>
-                </div>
-                
-                <button 
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '24px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
+                <button
                     onClick={saveIntegrationsSettings} 
                     className="btn" 
                     style={{ background: 'var(--gold)', color: 'var(--action-fg)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 8, border: 'none', cursor: 'pointer' }}

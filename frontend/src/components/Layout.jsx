@@ -8,15 +8,24 @@ import alamaticzLogo from '../assets/alamaticz-logo.jpg'
 // ("Alamaticz Solutions", repeated below the sidebar's own brand mark) with
 // no page title at all - so the user never saw where they were. Nav labels
 // here match the renamed items from G-26 (Job Description -> Jobs, etc.)
-const PAGE_TITLES = {
-    '/': 'Dashboard',
-    '/jobs': 'Jobs',
-    '/upload': 'Candidates',
-    '/chat': 'Assistant',
-    '/connect': 'Integrations',
-    '/templates': 'Email Templates',
-    '/admin': 'Administration',
+//
+// The icon+title+subtitle used to be duplicated a second time in the page
+// body on Admin/Connect/Templates (and only those three - the rest of the
+// app never had one), which is what actually read as "messy, different
+// font sizes, header too big": that per-page heading was a completely
+// unstyled <h1> with no relation to the app's type scale. It now lives
+// once, here, so every route gets the same real heading treatment instead
+// of three different ad hoc ones.
+const PAGE_META = {
+    '/': { title: 'Dashboard', subtitle: 'Overview of your recruiting pipeline and candidate insights.', Icon: LayoutDashboard },
+    '/jobs': { title: 'Jobs', subtitle: 'Track open roles and their candidate funnel status.', Icon: Briefcase },
+    '/upload': { title: 'Candidates', subtitle: 'Upload resumes and manage your candidate database.', Icon: Users },
+    '/chat': { title: 'Assistant', subtitle: 'Ask questions about your candidates in natural language.', Icon: MessageSquare },
+    '/connect': { title: 'Integrations', subtitle: 'Configure connection details for background email resume synchronization and Google Drive storage sync.', Icon: Link },
+    '/templates': { title: 'Email Templates', subtitle: 'Draft and customize automated email responses sent back to candidates upon receiving application logs.', Icon: FileText },
+    '/admin': { title: 'Administration', subtitle: 'Manage system changes, user roles, and access control.', Icon: Shield },
 }
+const PAGE_TITLES = Object.fromEntries(Object.entries(PAGE_META).map(([path, { title }]) => [path, title]))
 
 const THEME_OPTIONS = [
     { value: 'light', label: 'Light', Icon: Sun },
@@ -74,7 +83,8 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
     useEffect(() => { if (!isMobileWidth) setMobileSidebarOpen(false); }, [isMobileWidth]);
     const effectiveCollapsed = mobileSidebarOpen ? false : (sidebarCollapsed || isTabletWidth);
     const location = useLocation();
-    const pageTitle = PAGE_TITLES[location.pathname] || 'Hire AI';
+    const pageMeta = PAGE_META[location.pathname];
+    const pageTitle = pageMeta?.title || 'Hire AI';
 
     useEffect(() => {
         document.title = `${pageTitle} · Hire AI`;
@@ -254,7 +264,17 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
                         >
                             <Menu size={18} />
                         </button>
-                        <span className="topbar-title">{pageTitle}</span>
+                        <div className="topbar-heading">
+                            {pageMeta?.Icon && (
+                                <span className="topbar-heading-icon">
+                                    <pageMeta.Icon size={22} color="var(--gold)" />
+                                </span>
+                            )}
+                            <div style={{ minWidth: 0 }}>
+                                <h1 className="page-title">{pageTitle}</h1>
+                                {pageMeta?.subtitle && <p className="page-subtitle">{pageMeta.subtitle}</p>}
+                            </div>
+                        </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                         {/* S2.9: was a single 36px toggle with no visible label and no
