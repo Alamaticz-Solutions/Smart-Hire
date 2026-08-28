@@ -6,6 +6,7 @@ import apiClient from '../api/client'
 import SkillBadges from '../components/shared/SkillBadges'
 import { useConfirm } from '../hooks/useConfirm'
 import ConfirmDialog from '../components/shared/ConfirmDialog'
+import CandidateDetailsModal from '../components/shared/CandidateDetailsModal'
 
 const SUGGESTIONS = [
     'Show all candidates',
@@ -15,22 +16,66 @@ const SUGGESTIONS = [
     'List candidates with no Pega experience',
 ]
 
-/* Column config: key → [label, % width] */
+/* Column config: key → [label, % width]. Keys are the actual
+   candidate_metadata column names /api/chat returns (S6.2 fix: this
+   previously read `name`/`organization`, which don't exist on the row -
+   full_name/current_organization do - so those two columns always
+   rendered "—" no matter what the backend sent back). */
 const COL_CONFIG = [
-    { key: 'name', label: 'Name', pct: '14%' },
+    { key: 'full_name', label: 'Name', pct: '14%' },
     { key: 'total_experience', label: 'Total Exp', pct: '8%' },
     { key: 'pega_experience', label: 'Pega Exp', pct: '8%' },
     { key: 'skills', label: 'Skills', pct: '24%' },
     { key: 'ctc', label: 'CTC', pct: '7%' },
     { key: 'notice_period', label: 'Notice', pct: '9%' },
-    { key: 'organization', label: 'Organization', pct: '14%' },
+    { key: 'current_organization', label: 'Organization', pct: '14%' },
     { key: 'email', label: 'Email', pct: '16%' },
 ]
 
-function CandidateTable({ rows }) {
+function toCsvValue(v) {
+    const s = v == null ? '' : String(v)
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+
+function exportRowsToCsv(rows) {
+    const header = COL_CONFIG.map(c => c.label).join(',')
+    const lines = rows.map(row => COL_CONFIG.map(c => toCsvValue(row[c.key])).join(','))
+    const csv = [header, ...lines].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `chat-results-${Date.now()}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+}
+
+function CandidateTable({ rows, onSelectCandidate }) {
+    const [sort, setSort] = useState({ key: null, dir: 'asc' })
     if (!rows?.length) return null
+
+    const sortedRows = sort.key ? [...rows].sort((a, b) => {
+        const av = a[sort.key], bv = b[sort.key]
+        const cmp = (av == null ? '' : av) < (bv == null ? '' : bv) ? -1 : (av == null ? '' : av) > (bv == null ? '' : bv) ? 1 : 0
+        return sort.dir === 'asc' ? cmp : -cmp
+    }) : rows
+
+    const toggleSort = (key) => setSort(prev => prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' })
+
     return (
         <div style={{ width: '100%', marginTop: '0.8rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+                <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.72rem', padding: '4px 9px' }}
+                    onClick={() => exportRowsToCsv(sortedRows)}
+                >
+                    Export CSV
+                </button>
+            </div>
             <table style={{
                 width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse',
                 fontSize: '0.82rem', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden',
@@ -46,13 +91,25 @@ function CandidateTable({ rows }) {
                                 fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.74rem',
                                 color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.04rem',
                                 borderBottom: '1px solid var(--border)',
-                            }}>{c.label}</th>
+                            }}>
+                                <button
+                                    type="button"
+                                    onClick={() => toggleSort(c.key)}
+                                    style={{ background: 'none', border: 'none', color: 'inherit', font: 'inherit', textTransform: 'inherit', letterSpacing: 'inherit', cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                                >
+                                    {c.label}{sort.key === c.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}
+                                </button>
+                            </th>
                         ))}
                     </tr>
                 </thead>
                 <tbody>
-                    {rows.map((row, i) => (
-                        <tr key={i} style={{ background: i % 2 === 0 ? 'rgba(var(--navy-rgb), 0.3)' : 'transparent' }}>
+                    {sortedRows.map((row, i) => (
+                        <tr
+                            key={row.id ?? i}
+                            onClick={() => onSelectCandidate?.(row)}
+                            style={{ background: i % 2 === 0 ? 'rgba(var(--navy-rgb), 0.3)' : 'transparent', cursor: onSelectCandidate ? 'pointer' : 'default' }}
+                        >
                             {COL_CONFIG.map(({ key }) => {
                                 const val = row[key]
                                 const isExp = key === 'total_experience' || key === 'pega_experience'
@@ -61,9 +118,9 @@ function CandidateTable({ rows }) {
                                         padding: '9px 10px',
                                         borderBottom: '1px solid rgba(var(--sky-rgb), 0.08)',
                                         verticalAlign: 'top',
-                                        color: key === 'name' ? 'var(--gold)' : key === 'email' ? 'var(--sky-dim)' : 'var(--text)',
-                                        fontWeight: key === 'name' ? 600 : undefined,
-                                        wordBreak: key === 'email' || key === 'organization' ? 'break-all' : 'normal',
+                                        color: key === 'full_name' ? 'var(--gold)' : key === 'email' ? 'var(--sky-dim)' : 'var(--text)',
+                                        fontWeight: key === 'full_name' ? 600 : undefined,
+                                        wordBreak: key === 'email' || key === 'current_organization' ? 'break-all' : 'normal',
                                         whiteSpace: key === 'skills' ? 'normal' : 'normal',
                                     }}>
                                         {key === 'skills'
@@ -83,7 +140,7 @@ function CandidateTable({ rows }) {
 }
 
 
-function Message({ msg, onRetry }) {
+function Message({ msg, onRetry, onSelectCandidate }) {
     const isUser = msg.role === 'user'
     const isTable = msg.type === 'table'
     const isError = msg.type === 'error'
@@ -112,7 +169,7 @@ function Message({ msg, onRetry }) {
                         <div style={{ marginBottom: '0.5rem', color: 'var(--text-dim)', fontSize: '0.88rem' }}>
                             {msg.answer}
                         </div>
-                        <CandidateTable rows={msg.rows} />
+                        <CandidateTable rows={msg.rows} onSelectCandidate={onSelectCandidate} />
                     </>
                 ) : (
                     <ReactMarkdown>{msg.content}</ReactMarkdown>
@@ -152,6 +209,7 @@ export default function ChatPage() {
     const bottomRef = useRef(null)
     const textareaRef = useRef(null)
     const { confirm, confirmDialogProps } = useConfirm()
+    const [viewingCandidate, setViewingCandidate] = useState(null)
 
     useEffect(() => {
         if (user?.username) {
@@ -233,7 +291,7 @@ export default function ChatPage() {
                             </div>
                         </div>
                     ) : (
-                        messages.map((msg, i) => <Message key={i} msg={msg} onRetry={sendMessage} />)
+                        messages.map((msg, i) => <Message key={i} msg={msg} onRetry={sendMessage} onSelectCandidate={setViewingCandidate} />)
                     )}
                     {loading && <TypingIndicator />}
                     <div ref={bottomRef} />
@@ -271,6 +329,9 @@ export default function ChatPage() {
                 </div>
             </div>
             <ConfirmDialog {...confirmDialogProps} />
+            {viewingCandidate && (
+                <CandidateDetailsModal candidate={viewingCandidate} onClose={() => setViewingCandidate(null)} />
+            )}
         </div>
     )
 }
