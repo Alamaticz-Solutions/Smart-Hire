@@ -63,15 +63,18 @@ export default function JobsPage() {
         } catch { return null; }
     });
 
-    // G-15: below 900px the fixed 320px job list + detail panel no longer
-    // fit side by side, so collapse to one visible pane at a time - list by
-    // default, switching to the detail panel once a job is selected (same
-    // matchMedia pattern as Layout.jsx's sidebar breakpoints).
+    // G-15: below 1100px the fixed 320px job list + detail panel (which
+    // itself needs room for a KPI card row) no longer fit side by side
+    // without visibly crowding/clipping, so collapse to one visible pane
+    // at a time - list by default, switching to the detail panel once a
+    // job is selected (same matchMedia pattern as Layout.jsx's sidebar
+    // breakpoints). Raised from an earlier 900px cutoff after screenshots
+    // at ~950-1000px still showed the detail pane's KPI row overflowing.
     const [isNarrowWidth, setIsNarrowWidth] = useState(() =>
-        typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches
+        typeof window !== 'undefined' && window.matchMedia('(max-width: 1100px)').matches
     );
     useEffect(() => {
-        const mq = window.matchMedia('(max-width: 900px)');
+        const mq = window.matchMedia('(max-width: 1100px)');
         const handler = (e) => setIsNarrowWidth(e.matches);
         mq.addEventListener('change', handler);
         return () => mq.removeEventListener('change', handler);

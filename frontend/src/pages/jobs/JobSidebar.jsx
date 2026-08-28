@@ -23,10 +23,10 @@ export default function JobSidebar({
     style,
 }) {
     return (
-        <div style={{ width: '320px', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', background: 'var(--sidebar-bg)', ...style }}>
-            <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontFamily: 'var(--fh)', fontSize: '1.2rem', fontWeight: 800, color: 'var(--gold)' }}>
-                    Job Descriptions
+        <div style={{ width: '320px', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', background: 'var(--surface-2)', ...style }}>
+            <div style={{ padding: '1.2rem 1.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontFamily: 'var(--fh)', fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>
+                    Job List
                 </div>
                 {!isExternal && (
                     <button className="btn btn-primary" style={{ padding: '6px 12px' }} onClick={() => setShowNewForm(true)}>

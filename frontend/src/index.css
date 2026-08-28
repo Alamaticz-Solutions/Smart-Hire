@@ -571,11 +571,21 @@ body,
 
 /* Keep the topbar a fixed height regardless of subtitle length (some
    run long, e.g. Integrations') - truncate rather than let it wrap and
-   push the topbar taller on narrower viewports. */
+   push the topbar taller on narrower viewports. Below 1100px (pages
+   like Jobs need every pixel they can get for their own 320px job-list
+   panel + main content), drop the subtitle from the topbar entirely
+   rather than fight it for space - the title alone still answers
+   "where am I". */
 .topbar-heading .page-subtitle {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .topbar-heading .page-subtitle {
+    display: none;
+  }
 }
 
 /* AdminPage (and, inline, ConnectPage/TemplatesPage) used
