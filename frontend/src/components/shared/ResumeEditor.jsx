@@ -170,7 +170,7 @@ export default function ResumeEditor({ formData, setFormData }) {
         border: '1px solid rgba(239, 68, 68, 0.3)',
         borderRadius: '6px',
         padding: '4px 8px',
-        fontSize: '0.72rem',
+        fontSize: 'var(--fs-2)',
         cursor: 'pointer',
         fontWeight: 600,
         display: 'flex',
@@ -332,7 +332,7 @@ export default function ResumeEditor({ formData, setFormData }) {
                             </button>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '10px' }}>
                                 <div>
-                                    <label style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Degree</label>
+                                    <label style={{ fontSize: 'var(--fs-2)', color: 'var(--text-dim)' }}>Degree</label>
                                     <input
                                         type="text"
                                         value={edu.degree || ''}
@@ -342,7 +342,7 @@ export default function ResumeEditor({ formData, setFormData }) {
                                     />
                                 </div>
                                 <div>
-                                    <label style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Field of Study</label>
+                                    <label style={{ fontSize: 'var(--fs-2)', color: 'var(--text-dim)' }}>Field of Study</label>
                                     <input
                                         type="text"
                                         value={edu.field || ''}
@@ -352,7 +352,7 @@ export default function ResumeEditor({ formData, setFormData }) {
                                     />
                                 </div>
                                 <div style={{ gridColumn: 'span 2' }}>
-                                    <label style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>School/University</label>
+                                    <label style={{ fontSize: 'var(--fs-2)', color: 'var(--text-dim)' }}>School/University</label>
                                     <input
                                         type="text"
                                         value={edu.school || ''}
@@ -362,7 +362,7 @@ export default function ResumeEditor({ formData, setFormData }) {
                                     />
                                 </div>
                                 <div style={{ gridColumn: 'span 2' }}>
-                                    <label style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Years</label>
+                                    <label style={{ fontSize: 'var(--fs-2)', color: 'var(--text-dim)' }}>Years</label>
                                     <input
                                         type="text"
                                         value={edu.years || ''}
@@ -399,7 +399,7 @@ export default function ResumeEditor({ formData, setFormData }) {
                             </button>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '10px' }}>
                                 <div>
-                                    <label style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Company Name</label>
+                                    <label style={{ fontSize: 'var(--fs-2)', color: 'var(--text-dim)' }}>Company Name</label>
                                     <input
                                         type="text"
                                         value={exp.company || ''}
@@ -409,7 +409,7 @@ export default function ResumeEditor({ formData, setFormData }) {
                                     />
                                 </div>
                                 <div>
-                                    <label style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Employment Dates</label>
+                                    <label style={{ fontSize: 'var(--fs-2)', color: 'var(--text-dim)' }}>Employment Dates</label>
                                     <input
                                         type="text"
                                         value={exp.dates || ''}
@@ -419,7 +419,7 @@ export default function ResumeEditor({ formData, setFormData }) {
                                     />
                                 </div>
                                 <div style={{ gridColumn: 'span 2' }}>
-                                    <label style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Role/Designation</label>
+                                    <label style={{ fontSize: 'var(--fs-2)', color: 'var(--text-dim)' }}>Role/Designation</label>
                                     <input
                                         type="text"
                                         value={exp.role || ''}
@@ -429,7 +429,7 @@ export default function ResumeEditor({ formData, setFormData }) {
                                     />
                                 </div>
                                 <div style={{ gridColumn: 'span 2' }}>
-                                    <label style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Key Accomplishments (One per line)</label>
+                                    <label style={{ fontSize: 'var(--fs-2)', color: 'var(--text-dim)' }}>Key Accomplishments (One per line)</label>
                                     <textarea
                                         value={Array.isArray(exp.bullets) ? exp.bullets.join('\n') : ''}
                                         onChange={(e) => handleUpdateWorkExpBullets(idx, e.target.value)}
@@ -465,7 +465,7 @@ export default function ResumeEditor({ formData, setFormData }) {
                             </button>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '10px' }}>
                                 <div>
-                                    <label style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Date</label>
+                                    <label style={{ fontSize: 'var(--fs-2)', color: 'var(--text-dim)' }}>Date</label>
                                     <input
                                         type="text"
                                         value={rec.date || ''}
@@ -475,7 +475,7 @@ export default function ResumeEditor({ formData, setFormData }) {
                                     />
                                 </div>
                                 <div style={{ gridColumn: 'span 2' }}>
-                                    <label style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Description</label>
+                                    <label style={{ fontSize: 'var(--fs-2)', color: 'var(--text-dim)' }}>Description</label>
                                     <input
                                         type="text"
                                         value={rec.description || ''}
