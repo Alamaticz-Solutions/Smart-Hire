@@ -129,25 +129,39 @@ export default function TemplatesPage() {
         default_resume_template: 'alamaticz'
     })
 
+    // S9.3: snapshot of the last-saved (or last-loaded) values, used to warn
+    // before an in-page navigation or tab close discards unsaved edits.
+    const savedSnapshotRef = useRef(null)
+    const snapshotOf = (s) => JSON.stringify({
+        reply_theme: s.reply_theme, reply_subject: s.reply_subject,
+        reply_body_missing: s.reply_body_missing, reply_body_complete: s.reply_body_complete,
+        default_resume_template: s.default_resume_template,
+    })
+
     const fetchIntegrationsSettings = useCallback(async () => {
         try {
             const res = await apiClient.get('/api/integrations', {
                 headers: { 'x-user-username': user?.username }
             })
             setIntegrationsSettings(res.data)
-            
+            savedSnapshotRef.current = snapshotOf(res.data)
+
             // Sync default preview state with initial theme config
             if (res.data.reply_theme) {
                 // If it is professional/warm/creative and missing body configs are empty in DB, load preset values
                 const currentTheme = res.data.reply_theme;
                 if (currentTheme !== 'custom' && THEME_PRESETS[currentTheme]) {
                     const preset = THEME_PRESETS[currentTheme];
-                    setIntegrationsSettings(prev => ({
-                        ...prev,
-                        reply_subject: prev.reply_subject || preset.subject,
-                        reply_body_missing: prev.reply_body_missing || preset.body_missing,
-                        reply_body_complete: prev.reply_body_complete || preset.body_complete
-                    }));
+                    setIntegrationsSettings(prev => {
+                        const next = {
+                            ...prev,
+                            reply_subject: prev.reply_subject || preset.subject,
+                            reply_body_missing: prev.reply_body_missing || preset.body_missing,
+                            reply_body_complete: prev.reply_body_complete || preset.body_complete
+                        };
+                        savedSnapshotRef.current = snapshotOf(next);
+                        return next;
+                    });
                 }
             }
         } catch (err) {
@@ -161,6 +175,23 @@ export default function TemplatesPage() {
             fetchIntegrationsSettings()
         }
     }, [fetchIntegrationsSettings, user])
+
+    // S9.3: warn on a tab close/refresh with unsaved edits. This app uses
+    // <BrowserRouter> (confirmed: React Router's non-data-router future-flag
+    // warnings appear in the console), so useBlocker - which needs a data
+    // router - isn't available for catching in-app navigation away from this
+    // page; beforeunload is the part of this that's actually implementable
+    // here.
+    useEffect(() => {
+        const handler = (e) => {
+            if (savedSnapshotRef.current !== null && snapshotOf(integrationsSettings) !== savedSnapshotRef.current) {
+                e.preventDefault()
+                e.returnValue = ''
+            }
+        }
+        window.addEventListener('beforeunload', handler)
+        return () => window.removeEventListener('beforeunload', handler)
+    }, [integrationsSettings])
 
     const saveIntegrationsSettings = async () => {
         setSaving(true)
@@ -271,9 +302,20 @@ export default function TemplatesPage() {
         return { subject, body };
     }
 
-    const activeBodyValue = editorTab === 'missing' 
-        ? integrationsSettings.reply_body_missing 
+    const activeBodyValue = editorTab === 'missing'
+        ? integrationsSettings.reply_body_missing
         : integrationsSettings.reply_body_complete;
+
+    // S9.2: flag any {variable} that isn't one of the four the backend
+    // actually substitutes - catches a typo like {jobTitle} vs {subject}
+    // before it fails silently at send time instead of after.
+    const KNOWN_VARIABLES = ['candidate_name', 'missing_fields', 'subject', 'ref'];
+    const unknownVariables = [...new Set(
+        [...`${integrationsSettings.reply_subject || ''}\n${integrationsSettings.reply_body_missing || ''}\n${integrationsSettings.reply_body_complete || ''}`
+            .matchAll(/\{([a-zA-Z_]+)\}/g)]
+            .map(m => m[1])
+            .filter(v => !KNOWN_VARIABLES.includes(v))
+    )];
 
     const handleBodyTextChange = (text) => {
         setIntegrationsSettings(prev => ({
@@ -550,6 +592,20 @@ export default function TemplatesPage() {
                                     }}
                                 />
                             </div>
+
+                            {unknownVariables.length > 0 && (
+                                <div style={{
+                                    display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 14px',
+                                    background: 'var(--warning-bg)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
+                                    borderRadius: 8, fontSize: '0.78rem', color: 'var(--warning-fg)'
+                                }}>
+                                    <AlertCircle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
+                                    <span>
+                                        Unrecognized variable{unknownVariables.length > 1 ? 's' : ''}: {unknownVariables.map(v => `{${v}}`).join(', ')}.
+                                        {' '}These won't be replaced and will show up literally in the sent email.
+                                    </span>
+                                </div>
+                            )}
 
                             {/* Variables Reference Micro-chips */}
                             <div style={{ background: 'rgba(var(--navy-dark-rgb), 0.2)', padding: 14, borderRadius: 8, border: '1px solid var(--border)' }}>
