@@ -308,9 +308,17 @@ export default function CandidatesTable({
                                 type="button"
                                 onClick={() => setSelectedCandidateForDetails(row)}
                                 style={{
-                                    display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--gold)',
+                                    /* A long name wraps to 2 lines inside this narrow column - as
+                                       inline-flex with alignItems:center, the icon centered itself
+                                       against the full wrapped-block height (floating between the
+                                       lines) while the text's own box, sized to its unwrapped
+                                       preferred width, drifted right of the icon instead of
+                                       staying flush left under it. display:flex + width:100% +
+                                       alignItems:flex-start pins the icon to line 1's top and
+                                       keeps both wrapped lines left-aligned under it. */
+                                    display: 'flex', width: '100%', alignItems: 'flex-start', gap: '6px', color: 'var(--gold)',
                                     textDecoration: 'underline', cursor: 'pointer', fontWeight: 700, transition: 'color 0.2s',
-                                    background: 'none', border: 'none', padding: 0, font: 'inherit',
+                                    background: 'none', border: 'none', padding: 0, font: 'inherit', textAlign: 'left',
                                 }}
                                 title="View Candidate Details"
                             >

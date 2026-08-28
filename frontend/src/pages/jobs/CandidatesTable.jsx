@@ -397,9 +397,12 @@ export default function CandidatesTable({
                                     type="button"
                                     onClick={() => setSelectedCandidateForDetails(row)}
                                     style={{
-                                        display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--gold)',
+                                        /* See upload/CandidatesTable.jsx's identical fix: inline-flex +
+                                           alignItems:center misaligned icon vs. text once a long name
+                                           wrapped to 2 lines within this column. */
+                                        display: 'flex', width: '100%', alignItems: 'flex-start', gap: '6px', color: 'var(--gold)',
                                         textDecoration: 'underline', cursor: 'pointer', fontWeight: 700, transition: 'color 0.2s',
-                                        background: 'none', border: 'none', padding: 0, font: 'inherit',
+                                        background: 'none', border: 'none', padding: 0, font: 'inherit', textAlign: 'left',
                                     }}
                                     title="View Candidate Profile & Jobs"
                                 >
