@@ -284,13 +284,21 @@ export default function JobsPage() {
             const r = await apiClient.get(`/api/jobs`, { headers: { 'x-user-username': user?.username } });
             setJobs(r.data);
             sessionStorage.setItem('cached_jobs', JSON.stringify(r.data));
-            if (selectedJob) {
-                const updated = r.data.find(j => j.id === selectedJob.id);
-                if (updated) {
-                    setSelectedJob(updated);
-                    sessionStorage.setItem('cached_selected_job', JSON.stringify(updated));
-                }
-            }
+            // "Back to Jobs" bug: this closes over `selectedJob` as of whenever
+            // loadJobs() was called. Several call sites fire it from an async
+            // callback (job edit/share/delete), so by the time the response
+            // lands the user may have already clicked "Back to Jobs" in a
+            // later render - but this stale closure still saw the old
+            // non-null selectedJob and re-selected it right out from under
+            // them, one tick after they navigated away. The functional-update
+            // form reads the CURRENT state instead of the captured closure,
+            // same fix already applied to pollForJobMatches below.
+            setSelectedJob(prev => {
+                if (!prev) return prev;
+                const updated = r.data.find(j => j.id === prev.id);
+                if (updated) sessionStorage.setItem('cached_selected_job', JSON.stringify(updated));
+                return updated || prev;
+            });
         } catch (e) {
             console.error(e);
         }
@@ -398,8 +406,14 @@ export default function JobsPage() {
                 sessionStorage.setItem('cached_jobs', JSON.stringify(r.data));
                 updated = r.data.find(j => j.id === jobId) || null;
                 if (updated) {
-                    setSelectedJob(prev => (prev && prev.id === jobId ? updated : prev));
-                    sessionStorage.setItem('cached_selected_job', JSON.stringify(updated));
+                    // Same stale-write bug as loadJobs() above: only touch
+                    // sessionStorage when we're actually keeping this job
+                    // selected, not unconditionally on every poll tick.
+                    setSelectedJob(prev => {
+                        if (!(prev && prev.id === jobId)) return prev;
+                        sessionStorage.setItem('cached_selected_job', JSON.stringify(updated));
+                        return updated;
+                    });
                 }
                 loadCandidates(jobId);
             } catch (e) {
