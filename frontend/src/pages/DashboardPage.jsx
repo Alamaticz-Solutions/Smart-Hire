@@ -3,7 +3,7 @@ import { useOutletContext, useNavigate } from 'react-router-dom'
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, ResponsiveContainer
 } from 'recharts'
-import { Users, Briefcase, ListChecks, Send, Timer, BarChart3, Activity as ActivityIcon } from 'lucide-react'
+import { Users, Briefcase, ListChecks, Send, Timer, BarChart3, Activity as ActivityIcon, Mail, Upload, Check } from 'lucide-react'
 import apiClient from '../api/client'
 import { useToast } from '../hooks/useToast'
 import ToastHost from '../components/shared/ToastHost'
@@ -73,17 +73,31 @@ export default function DashboardPage() {
     const [candidates, setCandidates] = useState([])
     const [jobs, setJobs] = useState([])
     const [activities, setActivities] = useState([])
+    const [mailboxConnected, setMailboxConnected] = useState(null) // null = unknown (non-admin can't check)
     const [loading, setLoading] = useState(true)
+
+    // G-28: the empty dashboard used to be a dead end for a brand-new
+    // approved user - no next step, just "No Data Yet". /api/integrations
+    // is admin-only, so a non-admin gets `mailboxConnected` left at null
+    // (unknown) rather than a wrong "not connected" claim.
+    const canSeeIntegrations = user?.role === 'admin' || user?.is_admin === 1 || user?.is_hr === 1
 
     useEffect(() => {
         Promise.all([
             apiClient.get('/api/candidates'),
             apiClient.get('/api/jobs', { headers: { 'x-user-username': user?.username } }),
             apiClient.get('/api/activity'),
-        ]).then(([candRes, jobsRes, activityRes]) => {
+            canSeeIntegrations
+                ? apiClient.get('/api/integrations', { headers: { 'x-user-username': user?.username } }).catch(() => null)
+                : Promise.resolve(null),
+        ]).then(([candRes, jobsRes, activityRes, integrationsRes]) => {
             setCandidates(candRes.data)
             setJobs(jobsRes.data)
             setActivities(activityRes.data.slice(0, 8))
+            if (integrationsRes) {
+                const s = integrationsRes.data
+                setMailboxConnected(!!(s.email_enabled || s.gmail_enabled || s.outlook_enabled))
+            }
         }).catch(() => {
             // G-20: this used to fail silently (.catch(() => {})), so a
             // backend hiccup rendered as an empty dashboard indistinguishable
@@ -156,10 +170,42 @@ export default function DashboardPage() {
             </div>
 
             {candidates.length === 0 && jobs.length === 0 ? (
-                <div className="card" style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-dim)' }}>
-                    <BarChart3 size={40} style={{ marginBottom: '1rem', color: 'var(--text-dim)' }} />
-                    <p style={{ fontSize: '1.1rem', fontFamily: 'var(--fh)', color: 'var(--gold)' }}>No Data Yet</p>
-                    <p style={{ marginTop: '0.5rem' }}>Upload resumes and create jobs to see pipeline insights here.</p>
+                <div className="card" style={{ padding: '2.5rem' }}>
+                    <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+                        <BarChart3 size={40} style={{ marginBottom: '1rem', color: 'var(--text-dim)' }} />
+                        <p style={{ fontSize: '1.1rem', fontFamily: 'var(--fh)', color: 'var(--gold)' }}>No Data Yet</p>
+                        <p style={{ marginTop: '0.5rem', color: 'var(--text-dim)' }}>Get started in three steps:</p>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '460px', margin: '0 auto' }}>
+                        {[
+                            { key: 'mailbox', label: 'Connect a mailbox', Icon: Mail, done: canSeeIntegrations ? mailboxConnected : null, to: '/connect' },
+                            { key: 'upload', label: 'Upload resumes', Icon: Upload, done: candidates.length > 0, to: '/upload' },
+                            { key: 'job', label: 'Create a job', Icon: Briefcase, done: jobs.length > 0, to: '/jobs' },
+                        ].map((step, i) => (
+                            <button
+                                key={step.key}
+                                type="button"
+                                onClick={() => navigate(step.to)}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: '14px', textAlign: 'left',
+                                    padding: '14px 16px', borderRadius: 'var(--r-md)', border: '1px solid var(--border)',
+                                    background: 'var(--surface)', cursor: 'pointer', font: 'inherit', color: 'var(--text)',
+                                }}
+                            >
+                                <div style={{
+                                    width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.8rem',
+                                    background: step.done ? 'var(--st-hired-bg)' : 'var(--surface-sunken)',
+                                    color: step.done ? 'var(--st-hired-text)' : 'var(--text-dim)',
+                                }}>
+                                    {step.done ? <Check size={15} /> : i + 1}
+                                </div>
+                                <step.Icon size={16} style={{ color: 'var(--gold)', flexShrink: 0 }} />
+                                <span style={{ flex: 1, fontWeight: 600 }}>{step.label}</span>
+                                {step.done === false && <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>To do</span>}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             ) : (
                 <div className="charts-grid dashboard-charts-grid" style={{ alignItems: 'stretch' }}>
