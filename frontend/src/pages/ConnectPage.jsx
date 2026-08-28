@@ -652,7 +652,7 @@ export default function ConnectPage() {
                             {/* Additional Mailboxes List */}
                             <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 16, background: 'rgba(0,0,0,0.1)' }}>
                                 <h3 style={{ margin: '0 0 10px 0', color: 'var(--gold)', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 7 }}>
-                                    <Users size={15} /> Additional HR/Sync Mailboxes ({getAdditionalEmailsCount()})
+                                    <Users size={14} /> Additional HR/Sync Mailboxes ({getAdditionalEmailsCount()})
                                 </h3>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
                                     {getAdditionalEmailsList().map((mailbox, index) => (
@@ -868,7 +868,7 @@ export default function ConnectPage() {
                         
                         {!integrationsSettings.gdrive_refresh_token && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--danger-bg)', border: '1px solid rgba(var(--red-rgb), 0.3)', borderRadius: 8, fontSize: '0.78rem', color: 'var(--danger-fg)' }}>
-                                <AlertCircle size={15} style={{ flexShrink: 0 }} /> Google Drive is not authorized. Please complete the authorization process below before enabling sync.
+                                <AlertCircle size={14} style={{ flexShrink: 0 }} /> Google Drive is not authorized. Please complete the authorization process below before enabling sync.
                             </div>
                         )}
 

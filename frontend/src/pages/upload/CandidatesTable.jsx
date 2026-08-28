@@ -242,8 +242,17 @@ export default function CandidatesTable({
                 }
 
                 /* ── Expandable (skills / certs) — td stays overflow:hidden ── */
+                // G-33: see jobs/CandidatesTable.jsx's identical comment - a
+                // single-value cell renders no ExpandableCell button at all,
+                // so this td needs its own keyboard path to startEdit.
                 if (isExpandable) return (
-                    <td key={key} style={{ ...TD_BASE }} onDoubleClick={() => startEdit(ri, key, val)}>
+                    <td
+                        key={key}
+                        tabIndex={0}
+                        style={{ ...TD_BASE }}
+                        onDoubleClick={() => startEdit(ri, key, val)}
+                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startEdit(ri, key, val) } }}
+                    >
                         <ExpandableCell value={val} onEdit={() => startEdit(ri, key, val)} />
                     </td>
                 )
@@ -265,13 +274,26 @@ export default function CandidatesTable({
                 } else {
                     display = (val !== '' && val != null ? val : '—');
                 }
+                // G-33: single-click vs double-click meant different things
+                // with no keyboard equivalent for either. Enter/Space now
+                // triggers whichever one this cell would otherwise need a
+                // mouse gesture for.
+                const activateCell = () => {
+                    if (key === 'full_name') return // has its own focusable control below
+                    startEdit(ri, key, val);
+                };
                 return (
-                    <td key={key} onClick={() => {
-                        if (key === 'candidate_status') startEdit(ri, key, val);
-                    }}
+                    <td
+                        key={key}
+                        tabIndex={key === 'full_name' ? undefined : 0}
+                        onClick={() => {
+                            if (key === 'candidate_status') startEdit(ri, key, val);
+                        }}
                         onDoubleClick={() => {
                             if (key !== 'candidate_status') startEdit(ri, key, val);
-                        }} style={{
+                        }}
+                        onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && key !== 'full_name') { e.preventDefault(); activateCell() } }}
+                        style={{
                             ...TD_BASE,
                             color: key === 'full_name' ? 'var(--gold)' : key === 'email' ? 'var(--sky-dim)' : 'var(--text)',
                             fontWeight: key === 'full_name' ? 700 : undefined,
@@ -497,7 +519,7 @@ export default function CandidatesTable({
                     )}
 
                     <p style={{ marginTop: '0.6rem', fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
-                        Click <strong style={{ color: 'var(--gold)' }}>+N</strong> to expand Skills / Certs · Double-click any cell to edit
+                        Click <strong style={{ color: 'var(--gold)' }}>+N</strong> to expand Skills / Certs · Double-click, or focus a cell and press Enter, to edit
                     </p>
                 </>
             )}

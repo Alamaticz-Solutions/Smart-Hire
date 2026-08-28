@@ -89,7 +89,7 @@ export default function JobDetailPanel({
                             onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.1)'}
                             title="Click to view shared users"
                         >
-                            <Share2 size={13} /> Shared with {selectedJob.shared_with.length} {selectedJob.shared_with.length === 1 ? 'user' : 'users'}
+                            <Share2 size={14} /> Shared with {selectedJob.shared_with.length} {selectedJob.shared_with.length === 1 ? 'user' : 'users'}
                         </div>
                     )}
                 </div>

@@ -383,7 +383,7 @@ export default function TemplatesPage() {
                                 color: 'var(--gold)',
                                 fontWeight: 500
                             }}>
-                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Sparkles size={13} /> <strong>Mostly Chosen Template:</strong> {mostlyUsedTheme === 'professional' ? 'Professional Theme' : mostlyUsedTheme === 'creative' ? 'Creative Theme' : mostlyUsedTheme === 'warm' ? 'Warm Theme' : 'Custom Template'}</span>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Sparkles size={14} /> <strong>Mostly Chosen Template:</strong> {mostlyUsedTheme === 'professional' ? 'Professional Theme' : mostlyUsedTheme === 'creative' ? 'Creative Theme' : mostlyUsedTheme === 'warm' ? 'Warm Theme' : 'Custom Template'}</span>
                             </div>
                         )}
                     </div>
@@ -398,7 +398,7 @@ export default function TemplatesPage() {
                         {/* Title & Theme Banner */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                             <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--text)', fontWeight: 700, fontFamily: 'var(--fh)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                                {integrationsSettings.reply_theme === 'custom' ? <><Pencil size={15} /> Editing Custom Template</> : <><Eye size={15} /> Viewing Preset Mode</>}
+                                {integrationsSettings.reply_theme === 'custom' ? <><Pencil size={14} /> Editing Custom Template</> : <><Eye size={14} /> Viewing Preset Mode</>}
                             </h3>
                             <span style={{ 
                                 fontSize: '0.72rem', background: 'rgba(var(--sky-rgb), 0.15)', 
@@ -466,7 +466,7 @@ export default function TemplatesPage() {
                                             borderBottom: editorTab === 'missing' ? '2px solid var(--gold)' : 'none'
                                         }}
                                     >
-                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><AlertTriangle size={13} /> Missing Details Template</span>
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><AlertTriangle size={14} /> Missing Details Template</span>
                                     </button>
                                     <button
                                         type="button"
@@ -479,7 +479,7 @@ export default function TemplatesPage() {
                                             borderBottom: editorTab === 'complete' ? '2px solid var(--gold)' : 'none'
                                         }}
                                     >
-                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Check size={13} /> Application Complete Template</span>
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Check size={14} /> Application Complete Template</span>
                                     </button>
                                 </div>
                             </div>

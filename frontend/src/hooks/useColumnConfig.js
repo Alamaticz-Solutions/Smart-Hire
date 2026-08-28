@@ -26,12 +26,22 @@ export const SHARED_BASE_WIDTHS = {
     skills: '220px', certifications: '200px', notescomments: '220px',
 };
 
-/** Shared `<th>` cell style — identical between JobsPage.jsx and UploadPage.jsx. */
+/**
+ * Shared `<th>` cell style — identical between JobsPage.jsx and UploadPage.jsx.
+ *
+ * G-7: was `color: 'var(--gold)'` — the same action-accent color as every
+ * primary button, link, and interactive icon in the app, applied to every
+ * one of the 32+ non-interactive column headers across both candidate
+ * tables. --action's own definition in index.css already says nothing
+ * non-interactive should use it; this was the one place still doing so.
+ * --text-muted is what index.css's own .card-title/.section-title already
+ * use for the equivalent non-interactive heading role.
+ */
 export const TH = {
     padding: '11px 10px',
     textAlign: 'left',
     fontFamily: 'var(--fh)', fontWeight: 800, fontSize: '0.73rem',
-    color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.05rem',
+    color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05rem',
     borderBottom: '2px solid var(--border)', background: 'rgba(var(--navy-rgb), 0.97)',
     /* prevent th text from overflowing into next header */
     overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',

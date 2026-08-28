@@ -7,6 +7,7 @@ import ToastHost from '../components/shared/ToastHost'
 import { useConfirm } from '../hooks/useConfirm'
 import ConfirmDialog from '../components/shared/ConfirmDialog'
 import { useModalA11y } from '../hooks/useModalA11y'
+import { SkeletonRows } from '../components/shared/Skeleton'
 
 const CANDIDATE_FIELDS = [
     { key: 'full_name', label: 'Name' },
@@ -333,7 +334,9 @@ export default function AdminPage() {
 
             </div>
 
-            {loading && <div style={{ textAlign: 'center', padding: '2rem' }}>Loading data...</div>}
+            {/* G-21: was plain "Loading data..." text - the one other loading
+                idiom besides Dashboard's spinner and Upload's button labels. */}
+            {loading && <div style={{ padding: '1.5rem 0' }} aria-busy="true" aria-label="Loading users"><SkeletonRows count={5} height={44} /></div>}
             {error && <div className="form-error" style={{ marginBottom: '1rem' }}>{error}</div>}
 
             {/* Requests Tab */}
@@ -571,7 +574,7 @@ export default function AdminPage() {
                                                                 style={{ padding: '0.45rem 0.9rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', borderRadius: '8px' }}
                                                                 onClick={() => handleDeleteUser(u.id, u.username)}
                                                             >
-                                                                <Trash2 size={13} /> Delete
+                                                                <Trash2 size={14} /> Delete
                                                             </button>
                                                         )}
                                                     </div>

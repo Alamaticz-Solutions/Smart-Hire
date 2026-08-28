@@ -7,6 +7,7 @@ import { Users, Briefcase, ListChecks, Send, Timer, BarChart3, Activity as Activ
 import apiClient from '../api/client'
 import { useToast } from '../hooks/useToast'
 import ToastHost from '../components/shared/ToastHost'
+import { SkeletonKPIRow, SkeletonBlock } from '../components/shared/Skeleton'
 
 // Reads resolved CSS custom property values via getComputedStyle rather than
 // handing Recharts literal 'var(--x)' strings - SVG presentation attributes
@@ -136,9 +137,16 @@ export default function DashboardPage() {
         { label: 'Immediate Joiners', value: immediateJoiners, Icon: Timer, onClick: () => navigate('/upload') },
     ]
 
+    // G-21: a single 40px spinner replacing the entire page caused a full
+    // layout shift the moment real content arrived. Mirroring the KPI row
+    // + charts shape here means arrival only swaps content in place.
     if (loading) return (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
-            <div className="spinner" style={{ width: 40, height: 40 }} />
+        <div style={{ padding: '2rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '1.5rem' }} aria-busy="true" aria-label="Loading dashboard">
+            <SkeletonKPIRow count={4} />
+            <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <SkeletonBlock width={180} height={20} />
+                <SkeletonBlock height={220} radius={10} />
+            </div>
         </div>
     )
 
@@ -198,7 +206,7 @@ export default function DashboardPage() {
                                     background: step.done ? 'var(--st-hired-bg)' : 'var(--surface-sunken)',
                                     color: step.done ? 'var(--st-hired-text)' : 'var(--text-dim)',
                                 }}>
-                                    {step.done ? <Check size={15} /> : i + 1}
+                                    {step.done ? <Check size={14} /> : i + 1}
                                 </div>
                                 <step.Icon size={16} style={{ color: 'var(--gold)', flexShrink: 0 }} />
                                 <span style={{ flex: 1, fontWeight: 600 }}>{step.label}</span>
@@ -210,7 +218,7 @@ export default function DashboardPage() {
             ) : (
                 <div className="charts-grid dashboard-charts-grid" style={{ alignItems: 'stretch' }}>
                     <div className="card">
-                        <div className="card-title"><BarChart3 size={17} /> Pipeline by Stage</div>
+                        <div className="card-title"><BarChart3 size={16} /> Pipeline by Stage</div>
                         <ResponsiveContainer width="100%" height={280}>
                             <BarChart data={pipelineData} margin={{ top: 5, right: 10, bottom: 20, left: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
@@ -225,7 +233,7 @@ export default function DashboardPage() {
                     </div>
 
                     <div className="card">
-                        <div className="card-title"><Timer size={17} /> Notice Period</div>
+                        <div className="card-title"><Timer size={16} /> Notice Period</div>
                         <ResponsiveContainer width="100%" height={280}>
                             <BarChart data={noticeData} margin={{ top: 5, right: 10, bottom: 20, left: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
@@ -240,7 +248,7 @@ export default function DashboardPage() {
                     </div>
 
                     <div className="card" style={{ display: 'flex', flexDirection: 'column', minHeight: 280 }}>
-                        <div className="card-title"><ActivityIcon size={17} /> Recent Activity</div>
+                        <div className="card-title"><ActivityIcon size={16} /> Recent Activity</div>
                         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px', maxHeight: 280 }}>
                             {activities.length === 0 ? (
                                 <div style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '2rem 0', fontSize: '0.85rem' }}>No activity logged yet.</div>

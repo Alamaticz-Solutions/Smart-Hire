@@ -382,7 +382,7 @@ export default function CandidateDetailsModal({
                                 transition: 'all 0.2s', outline: 'none', display: 'inline-flex', alignItems: 'center', gap: 6
                             }}
                         >
-                            <User size={15} /> Profile Details
+                            <User size={14} /> Profile Details
                         </button>
                         <button
                             onClick={() => setActiveTab('jobs')}
@@ -394,7 +394,7 @@ export default function CandidateDetailsModal({
                                 transition: 'all 0.2s', outline: 'none', display: 'inline-flex', alignItems: 'center', gap: 6
                             }}
                         >
-                            <Briefcase size={15} /> Matched & Selected Jobs ({jobs.length})
+                            <Briefcase size={14} /> Matched & Selected Jobs ({jobs.length})
                         </button>
                     </div>
 
@@ -524,7 +524,7 @@ export default function CandidateDetailsModal({
 
                                 {candidate.email_message && (
                                     <div>
-                                        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}><Mail size={13} /> Imported Email Message</span>
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}><Mail size={14} /> Imported Email Message</span>
                                         <div style={{
                                             padding: '12px',
                                             background: 'rgba(var(--navy-dark-rgb), 0.5)',

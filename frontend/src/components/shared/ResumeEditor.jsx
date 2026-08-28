@@ -205,7 +205,7 @@ export default function ResumeEditor({ formData, setFormData }) {
         }}>
             {/* Personal Details */}
             <div>
-                <h4 style={sectionHeaderStyle}><User size={15} /> Personal Details</h4>
+                <h4 style={sectionHeaderStyle}><User size={14} /> Personal Details</h4>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                     <div>
                         <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontWeight: 600 }}>Full Name</label>
@@ -232,7 +232,7 @@ export default function ResumeEditor({ formData, setFormData }) {
 
             {/* Profile Summary */}
             <div>
-                <h4 style={sectionHeaderStyle}><FileEdit size={15} /> Profile Summary</h4>
+                <h4 style={sectionHeaderStyle}><FileEdit size={14} /> Profile Summary</h4>
                 <div>
                     <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontWeight: 600 }}>Professional Summary</label>
                     <textarea
@@ -246,7 +246,7 @@ export default function ResumeEditor({ formData, setFormData }) {
 
             {/* Skills */}
             <div>
-                <h4 style={sectionHeaderStyle}><Wrench size={15} /> Technical & Domain Skills</h4>
+                <h4 style={sectionHeaderStyle}><Wrench size={14} /> Technical & Domain Skills</h4>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     <div>
                         <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontWeight: 600 }}>Domain Skills (Comma-separated)</label>
@@ -305,7 +305,7 @@ export default function ResumeEditor({ formData, setFormData }) {
 
             {/* Certifications */}
             <div>
-                <h4 style={sectionHeaderStyle}><Award size={15} /> Certifications</h4>
+                <h4 style={sectionHeaderStyle}><Award size={14} /> Certifications</h4>
                 <div>
                     <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontWeight: 600 }}>Certifications (Comma-separated)</label>
                     <textarea
@@ -319,7 +319,7 @@ export default function ResumeEditor({ formData, setFormData }) {
 
             {/* Education */}
             <div>
-                <h4 style={sectionHeaderStyle}><GraduationCap size={15} /> Education</h4>
+                <h4 style={sectionHeaderStyle}><GraduationCap size={14} /> Education</h4>
                 <div>
                     {(formData.education || []).map((edu, idx) => (
                         <div key={idx} style={groupContainerStyle}>
@@ -386,7 +386,7 @@ export default function ResumeEditor({ formData, setFormData }) {
 
             {/* Work Experience */}
             <div>
-                <h4 style={sectionHeaderStyle}><Briefcase size={15} /> Work Experience</h4>
+                <h4 style={sectionHeaderStyle}><Briefcase size={14} /> Work Experience</h4>
                 <div>
                     {(formData.work_experience || []).map((exp, idx) => (
                         <div key={idx} style={groupContainerStyle}>
@@ -452,7 +452,7 @@ export default function ResumeEditor({ formData, setFormData }) {
 
             {/* Recognitions */}
             <div>
-                <h4 style={sectionHeaderStyle}><Trophy size={15} /> Recognitions</h4>
+                <h4 style={sectionHeaderStyle}><Trophy size={14} /> Recognitions</h4>
                 <div>
                     {(formData.recognitions || []).map((rec, idx) => (
                         <div key={idx} style={groupContainerStyle}>

@@ -64,6 +64,16 @@
   /* Radius scale (G-11): 6/10/16/22/999px */
   --r-sm: 6px; --r-md: 10px; --r-lg: 16px; --r-xl: 22px; --r-full: 999px;
 
+  /* Spacing scale (G-12): 4px grid. New rules should use these; existing
+     per-file rem/px padding values (1.6rem 1.4rem, 13px 16px, 2.8rem
+     2.4rem, etc. - a different pair on nearly every card/table/nav-link)
+     are being migrated incrementally rather than all at once, same as
+     the G-10 type-scale rollout above. Icon sizes are separately
+     constrained to 14/16/20/24 at each call site (lucide `size` prop
+     isn't a CSS value these tokens can reach). */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-7: 32px; --sp-8: 40px;
+
   /* G-9: --fh/--fb used to be two independently-hardcoded 'Manrope' values,
      so a display/body distinction existed in name only. Aliasing --fh to
      --fb makes that explicit (one font, one source of truth) instead of
@@ -205,6 +215,25 @@
   }
 }
 
+/* ── Skeleton loaders (G-21) ──────────────────────────────
+   Was four different loading idioms and no skeleton anywhere: a single
+   spinner replacing the whole Dashboard (layout shift on arrival), plain
+   "Loading data..." text on Admin, mismatched "Refreshing..."/"Loading…"
+   strings on Upload. One shimmering block primitive, composed per page
+   into a placeholder that roughly mirrors the real layout, so arrival
+   doesn't reflow the page. Respects the reduced-motion override above
+   automatically (animation-duration caught by the `*` selector). */
+.skeleton-block {
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-sunken) 37%, var(--surface-2) 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
 html,
 body,
 #root {
@@ -212,7 +241,14 @@ body,
   font-family: var(--fb);
   background: var(--bg);
   color: var(--text);
-  overflow-x: auto;
+  /* G-15: was `overflow-x: auto` here too, so a wide table scrolled the
+     entire document sideways instead of just itself. .main-content below
+     already gives horizontal scroll its own, correctly-scoped boundary
+     for every routed page under Layout.jsx's <Outlet> - but /login (see
+     App.jsx) renders OUTSIDE Layout, with no .main-content ancestor, so
+     this can't be `overflow-x: hidden` (would silently clip login-card
+     content on a narrow viewport with no way to reach it) - just drop the
+     declaration and let it default to `visible`. */
 }
 
 /* ── Scrollbar (G-19) ─────────────────────────────────────
@@ -321,7 +357,7 @@ body,
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 13px 16px 13px 14px;
+  padding: var(--sp-3) var(--sp-4) var(--sp-3) var(--sp-3);
   border-radius: var(--r-md);
   color: var(--text-muted);
   font-weight: 500;
@@ -400,6 +436,64 @@ body,
 .sidebar-collapse-btn:hover {
   background: var(--surface-2);
   color: var(--text);
+}
+
+/* ── Responsive: sidebar (G-15) ───────────────────────────
+   Rail mode at <=1024px is handled entirely by Layout.jsx's isTabletWidth
+   auto-applying the existing .sidebar.collapsed class (its rules above
+   already cover that width) - real viewport tracking was needed there,
+   not a CSS-only rule, because nav-link/brand-name text is conditionally
+   *rendered*, not just visually hidden. What's CSS-only is the <=680px
+   off-canvas drawer treatment and the hamburger toggle that opens it. */
+.sidebar-mobile-toggle {
+  display: none;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text);
+  padding: 8px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 90;
+}
+
+@media (max-width: 680px) {
+  .sidebar-mobile-toggle {
+    display: inline-flex;
+  }
+  /* Was a permanent 61%-of-viewport column with no dismiss control at
+     this width. mobile-open is only ever toggled true by the hamburger
+     button above, which only renders (via the rule above) at this same
+     breakpoint - so this can't fire on desktop/tablet, where the sidebar
+     keeps its normal in-flow layout. */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    /* !important because .sidebar.collapsed (still applied here too, since
+       isTabletWidth is also true at this width whenever mobile-open is
+       false - see Layout.jsx's effectiveCollapsed) sets width: 72px and
+       would otherwise win. The drawer's *closed* state is consequently a
+       240px off-screen panel rendering rail-mode (icon-only) content -
+       harmless since it's fully off-canvas, but don't "simplify" this
+       !important away without accounting for that. Opening it flips
+       effectiveCollapsed back to false, so labels reappear correctly. */
+    width: 240px !important;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    z-index: 100;
+  }
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
 }
 
 /* ── Main Content ─────────────────────────────────────── */
@@ -591,7 +685,7 @@ body,
 }
 
 .btn-primary {
-  background: var(--gold);
+  background: var(--action);
   color: var(--action-fg);
 }
 

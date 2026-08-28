@@ -218,13 +218,13 @@ export default function JobsOverview({
                                     <div>
                                         <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.02rem' }}>Matched</span>
                                         <strong style={{ fontSize: '1.1rem', color: 'var(--text)', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-                                            <Search size={13} style={{ color: 'var(--gold)' }} /> {job.matched_count}
+                                            <Search size={14} style={{ color: 'var(--gold)' }} /> {job.matched_count}
                                         </strong>
                                     </div>
                                     <div style={{ borderLeft: '1px solid var(--border)' }}>
                                         <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.02rem' }}>Selected</span>
                                         <strong style={{ fontSize: '1.1rem', color: 'var(--text)', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-                                            <UserCheck size={13} style={{ color: 'var(--primary)' }} /> {job.selected_count}
+                                            <UserCheck size={14} style={{ color: 'var(--primary)' }} /> {job.selected_count}
                                         </strong>
                                     </div>
                                 </div>
@@ -264,7 +264,7 @@ export default function JobsOverview({
                                             }}
                                             title="Delete job description completely"
                                         >
-                                            <Trash2 size={15} />
+                                            <Trash2 size={14} />
                                         </button>
                                     )}
                                 </div>

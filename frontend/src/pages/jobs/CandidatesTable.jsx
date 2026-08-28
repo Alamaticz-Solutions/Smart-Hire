@@ -178,7 +178,7 @@ export default function CandidatesTable({
                                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                                 }}
                             >
-                                <MoreVertical size={15} />
+                                <MoreVertical size={14} />
                             </button>
                             {menuAnchor?.rowId === row.id && createPortal(
                                 <>
@@ -312,8 +312,20 @@ export default function CandidatesTable({
                 }
 
                 /* ── Expandable (skills / certs) ── */
+                // G-33: ExpandableCell's own "+N" button is already a real,
+                // keyboard-reachable control when a cell holds more than one
+                // value - but with exactly one value it renders no button at
+                // all, leaving double-click on this <td> as the only way in.
+                // tabIndex + Enter/Space here covers that single-value case
+                // without duplicating a control ExpandableCell already owns.
                 if (isExpandable) return (
-                    <td key={key} style={{ ...TD_BASE, verticalAlign: 'middle' }} onDoubleClick={() => startEdit(ri, key, val)}>
+                    <td
+                        key={key}
+                        tabIndex={0}
+                        style={{ ...TD_BASE, verticalAlign: 'middle' }}
+                        onDoubleClick={() => startEdit(ri, key, val)}
+                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startEdit(ri, key, val) } }}
+                    >
                         <ExpandableCell value={val} onEdit={() => startEdit(ri, key, val)} />
                     </td>
                 )
@@ -336,20 +348,30 @@ export default function CandidatesTable({
                     display = (val !== '' && val != null ? val : '—');
                 }
 
+                // G-33: double-click opened either the inline editor or the
+                // full-text modal with no keyboard equivalent at all, and
+                // single-click meant something different only for
+                // candidate_status. activateCell folds both mouse gestures
+                // into the one action Enter/Space now also triggers, so the
+                // interaction model is the same regardless of input device.
+                const activateCell = () => {
+                    if (key === 'candidate_status') { startEdit(ri, key, val); return }
+                    if (key === 'full_name') return // has its own focusable control below
+                    const colLabel = cols.find(c => c.key === key)?.label || key;
+                    if (String(val).length > 25 || key === 'ai_reason' || key === 'notescomments' || key === 'skills' || key === 'certifications') {
+                        setSelectedCellText({ title: colLabel, text: String(val || '') });
+                    } else {
+                        startEdit(ri, key, val);
+                    }
+                };
                 return (
-                    <td key={key} onClick={() => {
-                        if (key === 'candidate_status') startEdit(ri, key, val);
-                    }}
-                        onDoubleClick={() => {
-                            if (key !== 'candidate_status' && key !== 'full_name') {
-                                const colLabel = cols.find(c => c.key === key)?.label || key;
-                                if (String(val).length > 25 || key === 'ai_reason' || key === 'notescomments' || key === 'skills' || key === 'certifications') {
-                                    setSelectedCellText({ title: colLabel, text: String(val || '') });
-                                } else {
-                                    startEdit(ri, key, val);
-                                }
-                            }
-                        }} style={{
+                    <td
+                        key={key}
+                        tabIndex={key === 'full_name' ? undefined : 0}
+                        onClick={() => { if (key === 'candidate_status') startEdit(ri, key, val) }}
+                        onDoubleClick={activateCell}
+                        onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && key !== 'full_name') { e.preventDefault(); activateCell() } }}
+                        style={{
                             ...TD_BASE,
                             color: key === 'full_name' ? 'var(--gold)' : key === 'email' ? 'var(--sky-dim)' : 'var(--text)',
                             fontWeight: key === 'full_name' ? 700 : undefined,
@@ -505,7 +527,7 @@ export default function CandidatesTable({
                             renderRow={renderRow}
                         />
                         <p style={{ marginTop: '0.6rem', fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
-                            Click <strong style={{ color: 'var(--gold)' }}>+N</strong> to expand Skills / Certs · Double-click any cell to edit
+                            Click <strong style={{ color: 'var(--gold)' }}>+N</strong> to expand Skills / Certs · Double-click, or focus a cell and press Enter, to edit
                         </p>
                     </>
                 )}

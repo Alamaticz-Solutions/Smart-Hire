@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import axios from 'axios'
-import { LayoutDashboard, Upload, MessageSquare, LogOut, Sun, Moon, Monitor, Briefcase, Shield, Users, Download, Activity, X, Link, FileText, AlertTriangle, ChevronDown, PanelLeftClose, PanelLeft } from 'lucide-react'
+import { LayoutDashboard, Upload, MessageSquare, LogOut, Sun, Moon, Monitor, Briefcase, Shield, Users, Download, Activity, X, Link, FileText, AlertTriangle, ChevronDown, PanelLeftClose, PanelLeft, Menu } from 'lucide-react'
 import alamaticzLogo from '../assets/alamaticz-logo.jpg'
 
 // Ref S2.1/G-26: the topbar used to show the company name on every screen
@@ -43,12 +43,46 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
     useEffect(() => {
         localStorage.setItem('hire_ai_sidebar_collapsed', sidebarCollapsed ? '1' : '0');
     }, [sidebarCollapsed]);
+
+    // G-15: the 240px sidebar never gave any width back below desktop, and
+    // at phone width it ate ~61% of the viewport with no way to dismiss it.
+    // isTabletWidth auto-adopts the same rail-mode rendering the manual
+    // S2.2 toggle produces (nav-link/brand text isn't just CSS-hidden - it's
+    // conditionally rendered - so a real viewport check is needed here, not
+    // a CSS-only media query, matching the pattern App.jsx already uses for
+    // the 'system' theme's prefers-color-scheme listener). Below 680px the
+    // sidebar instead becomes a dismissible off-canvas drawer (mobileOpen),
+    // closed by default and toggled from a hamburger button in the topbar.
+    const [isTabletWidth, setIsTabletWidth] = useState(() => window.matchMedia('(max-width: 1024px)').matches);
+    const [isMobileWidth, setIsMobileWidth] = useState(() => window.matchMedia('(max-width: 680px)').matches);
+    const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+    useEffect(() => {
+        const tabletMq = window.matchMedia('(max-width: 1024px)');
+        const mobileMq = window.matchMedia('(max-width: 680px)');
+        const onTablet = e => setIsTabletWidth(e.matches);
+        const onMobile = e => setIsMobileWidth(e.matches);
+        tabletMq.addEventListener('change', onTablet);
+        mobileMq.addEventListener('change', onMobile);
+        return () => {
+            tabletMq.removeEventListener('change', onTablet);
+            mobileMq.removeEventListener('change', onMobile);
+        };
+    }, []);
+    // Resizing past the mobile breakpoint while the drawer is open would
+    // otherwise leave mobileSidebarOpen stuck true for the next time the
+    // viewport narrows again without an intervening navigation.
+    useEffect(() => { if (!isMobileWidth) setMobileSidebarOpen(false); }, [isMobileWidth]);
+    const effectiveCollapsed = mobileSidebarOpen ? false : (sidebarCollapsed || isTabletWidth);
     const location = useLocation();
     const pageTitle = PAGE_TITLES[location.pathname] || 'Hire AI';
 
     useEffect(() => {
         document.title = `${pageTitle} · Hire AI`;
     }, [pageTitle]);
+
+    // Close the mobile drawer on every navigation - otherwise it stays open
+    // over the new page's content after a nav-link click.
+    useEffect(() => { setMobileSidebarOpen(false); }, [location.pathname]);
 
     useEffect(() => {
         axios.get('/api/auth/status')
@@ -120,8 +154,18 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
 
     return (
         <div className="app-shell">
+            {/* G-15: backdrop for the mobile off-canvas drawer - click to
+                dismiss. Only meaningful (and only rendered) while the
+                drawer is actually open. */}
+            {mobileSidebarOpen && (
+                <div
+                    className="sidebar-backdrop"
+                    onClick={() => setMobileSidebarOpen(false)}
+                    aria-hidden="true"
+                />
+            )}
             {/* Sidebar */}
-            <aside className={`sidebar${sidebarCollapsed ? ' collapsed' : ''}`}>
+            <aside className={`sidebar${effectiveCollapsed ? ' collapsed' : ''}${mobileSidebarOpen ? ' mobile-open' : ''}`}>
                 <div className="sidebar-brand">
                     {/* Exact Alamaticz Solutions logo image */}
                     <img
@@ -129,7 +173,7 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
                         alt="Alamaticz Solutions"
                         style={{ width: 42, height: 42, objectFit: 'contain', flexShrink: 0 }}
                     />
-                    {!sidebarCollapsed && <span className="sidebar-brand-name">Hire AI</span>}
+                    {!effectiveCollapsed && <span className="sidebar-brand-name">Hire AI</span>}
                 </div>
 
                 <nav className="sidebar-nav" aria-label="Primary">
@@ -139,17 +183,17 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
                             to={to}
                             end={to === '/'}
                             className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
-                            title={sidebarCollapsed ? label : undefined}
-                            aria-label={sidebarCollapsed ? label : undefined}
+                            title={effectiveCollapsed ? label : undefined}
+                            aria-label={effectiveCollapsed ? label : undefined}
                         >
                             <Icon size={18} />
-                            {!sidebarCollapsed && label}
+                            {!effectiveCollapsed && label}
                         </NavLink>
                     ))}
 
                     {workspaceNavItems.length > 0 && (
                         <>
-                            {!sidebarCollapsed && (
+                            {!effectiveCollapsed && (
                                 <div style={{
                                     fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em',
                                     color: 'var(--text-dim)', padding: '18px 16px 6px'
@@ -163,11 +207,11 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
                                     to={to}
                                     end={to === '/'}
                                     className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
-                                    title={sidebarCollapsed ? label : undefined}
-                                    aria-label={sidebarCollapsed ? label : undefined}
+                                    title={effectiveCollapsed ? label : undefined}
+                                    aria-label={effectiveCollapsed ? label : undefined}
                                 >
                                     <Icon size={18} />
-                                    {!sidebarCollapsed && label}
+                                    {!effectiveCollapsed && label}
                                 </NavLink>
                             ))}
                         </>
@@ -175,23 +219,41 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
                 </nav>
 
                 <div className="sidebar-footer">
-                    <button
-                        type="button"
-                        className="sidebar-collapse-btn"
-                        onClick={() => setSidebarCollapsed(c => !c)}
-                        aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                        title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                    >
-                        {sidebarCollapsed ? <PanelLeft size={17} /> : <PanelLeftClose size={17} />}
-                        {!sidebarCollapsed && <span>Collapse</span>}
-                    </button>
+                    {/* Below 1024px rail mode is automatic (isTabletWidth) and
+                        the manual toggle can't override it, so hide a control
+                        that would otherwise visibly do nothing. */}
+                    {!isTabletWidth && (
+                        <button
+                            type="button"
+                            className="sidebar-collapse-btn"
+                            onClick={() => setSidebarCollapsed(c => !c)}
+                            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                        >
+                            {sidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
+                            {!sidebarCollapsed && <span>Collapse</span>}
+                        </button>
+                    )}
                 </div>
             </aside>
 
             {/* Main */}
             <main className="main-content">
                 <header className="topbar">
-                    <span className="topbar-title">{pageTitle}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        {/* G-15: only visible via CSS at <=680px (.sidebar-mobile-toggle's
+                            default display:none) - opens the off-canvas drawer above. */}
+                        <button
+                            type="button"
+                            className="sidebar-mobile-toggle"
+                            onClick={() => setMobileSidebarOpen(o => !o)}
+                            aria-label={mobileSidebarOpen ? 'Close navigation menu' : 'Open navigation menu'}
+                            aria-expanded={mobileSidebarOpen}
+                        >
+                            <Menu size={18} />
+                        </button>
+                        <span className="topbar-title">{pageTitle}</span>
+                    </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                         {/* S2.9: was a single 36px toggle with no visible label and no
                             System option, defaulting a fresh viewer to light regardless
@@ -224,7 +286,7 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
                                             color: selected ? 'var(--action-fg)' : 'var(--text-dim)',
                                         }}
                                     >
-                                        <Icon size={15} />
+                                        <Icon size={14} />
                                     </button>
                                 )
                             })}

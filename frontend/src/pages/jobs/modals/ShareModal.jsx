@@ -114,7 +114,7 @@ export default function ShareModal({
                                 className="btn btn-primary"
                                 style={{ padding: '6px 12px', fontSize: '0.8rem' }}
                             >
-                                <Edit size={13} /> Manage Shares
+                                <Edit size={14} /> Manage Shares
                             </button>
                             <button
                                 onClick={() => setViewingSharedList(null)}
