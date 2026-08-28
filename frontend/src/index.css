@@ -546,6 +546,49 @@ body,
   flex-shrink: 0;
 }
 
+/* AdminPage (and, inline, ConnectPage/TemplatesPage) used
+   className="page-container"/"page-header"/"page-title"/"page-subtitle"
+   or equivalent ad hoc inline styles for their page heading - none of
+   these classes had ANY CSS rule anywhere in this file, so the "title"
+   was a bare, unstyled <h1> at the browser's ~2em/bold default with no
+   relation to this app's --fs type scale, sitting flush against the
+   viewport edge (.page-container had no padding either). That's the
+   actual source of the "different font sizes, messy, header too big"
+   report - not a one-off AdminPage bug. Sized between .section-title
+   (1.2rem/800) and a true page-level heading; icon stays accented,
+   text does not, matching the G-7 discipline already applied to
+   .card-title/.section-title (nothing non-interactive is
+   action-colored - only the icon gets to be gold/action here). */
+.page-container {
+  padding: 24px 32px;
+  flex: 1;
+  min-width: 0;
+}
+
+.page-header {
+  margin-bottom: 24px;
+}
+
+.page-title {
+  font-family: var(--fh);
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--text);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  letter-spacing: -0.01em;
+}
+
+.page-subtitle {
+  font-family: var(--fb);
+  font-size: var(--fs-4);
+  font-weight: 400;
+  color: var(--text-muted);
+  margin: 6px 0 0;
+}
+
 /* Nav-bar/page-title redesign: the topbar label and each page's own
    <h1 className="page-title"> used to be near-identical weight (both
    bold, both ~1.3rem+), so every screen showed two competing headings

@@ -376,10 +376,8 @@ export default function TemplatesPage() {
             {/* Header section */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
                 <div>
-                    <h1 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <FileText size={22} /> Reply Templates
-                    </h1>
-                    <p style={{ color: 'var(--text-dim)', fontSize: '0.88rem', margin: '4px 0 0 0' }}>
+                    <h1 className="page-title"><FileText size={22} color="var(--gold)" /> Reply Templates</h1>
+                    <p className="page-subtitle">
                         Draft and customize automated email responses sent back to candidates upon receiving application logs.
                     </p>
                 </div>
