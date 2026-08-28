@@ -89,7 +89,6 @@
   --topbar-bg: var(--surface);
   --input-bg: var(--surface-2);
   --table-header-bg: var(--surface-2);
-  --nav-active-text: #fff;
   --profile-chip-bg: var(--surface-2);
   --login-card-bg: var(--surface);
   --border-gold: rgba(var(--action-rgb), 0.3);
@@ -164,8 +163,6 @@
   --white-rgb: 255, 255, 255;
   --red-rgb: 220, 38, 38;
   --green-rgb: 22, 130, 74;
-
-  --nav-active-text: #12173F;
 
   --st-new-bg: oklch(92% 0.01 260); --st-new-text: oklch(38% 0.02 260);
   --st-review-bg: oklch(92% 0.05 80); --st-review-text: oklch(40% 0.12 70);
@@ -266,6 +263,25 @@ body,
   padding: 0;
   position: relative;
   z-index: 10;
+  transition: width 0.18s ease;
+}
+
+/* S2.2: rail mode - returns 168px to the main content on a product whose
+   primary surface is routinely a wide table. */
+.sidebar.collapsed {
+  width: 72px;
+}
+
+.sidebar.collapsed .sidebar-brand {
+  justify-content: center;
+  padding-left: 0.6rem;
+  padding-right: 0.6rem;
+}
+
+.sidebar.collapsed .nav-link {
+  justify-content: center;
+  padding-left: 3px;
+  padding-right: 3px;
 }
 
 .sidebar-brand {
@@ -305,14 +321,18 @@ body,
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 13px 16px;
+  padding: 13px 16px 13px 14px;
   border-radius: var(--r-md);
   color: var(--text-muted);
   font-weight: 500;
   font-size: 0.9rem;
   cursor: pointer;
   transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
-  border: 1px solid transparent;
+  /* S2.3: the left edge is reserved for .active's solid indicator bar so it
+     doesn't shift layout when a link becomes active. */
+  border-style: solid;
+  border-width: 1px 1px 1px 3px;
+  border-color: transparent;
   text-decoration: none;
   background: transparent;
   width: 100%;
@@ -322,13 +342,23 @@ body,
 .nav-link:hover {
   background: rgba(var(--gold-rgb), 0.08);
   color: var(--gold);
-  border-color: var(--border-gold);
 }
 
+/* S2.3: active used to be a 14%-opacity fill + 30%-opacity border with hover
+   at 8% fill - close enough in weight that hover read as MORE selected than
+   active in light theme, with text color as the only reliable signal. Active
+   now gets a solid left bar + a full-strength surface fill + bold weight, a
+   combination hover never produces, so which one is "selected" is
+   unambiguous regardless of theme. */
 .nav-link.active {
-  background: rgba(var(--gold-rgb), 0.14);
-  color: var(--nav-active-text);
-  border-color: rgba(var(--gold-rgb), 0.3);
+  background: var(--surface-2);
+  color: var(--action);
+  font-weight: 700;
+  border-left-color: var(--action);
+}
+
+.nav-link.active:hover {
+  background: var(--surface-2);
 }
 
 .nav-link svg {
@@ -342,27 +372,34 @@ body,
   border-top: 1px solid var(--border);
 }
 
-.logout-btn {
+/* S2.7: the sidebar footer used to hold a second, gold-outlined LOGOUT
+   button (visually the second-most-prominent action in the app) duplicating
+   the one in the profile menu - removed, so this slot now holds the
+   sidebar's collapse/expand control (S2.2) instead. */
+.sidebar-collapse-btn {
   width: 100%;
   padding: 10px 16px;
   background: transparent;
-  border: 1px solid rgba(var(--gold-rgb), 0.4);
+  border: 1px solid var(--border);
   border-radius: var(--r-md);
-  color: var(--gold);
-  font-family: var(--fh);
-  font-weight: 700;
-  font-size: 0.85rem;
-  letter-spacing: 0.06rem;
+  color: var(--text-dim);
+  font-weight: 600;
+  font-size: 0.82rem;
   cursor: pointer;
-  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+  transition: background-color 0.2s ease, color 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
 }
 
-.logout-btn:hover {
-  background: rgba(var(--gold-rgb), 0.12);
+.sidebar.collapsed .sidebar-collapse-btn {
+  padding: 10px;
+}
+
+.sidebar-collapse-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
 }
 
 /* ── Main Content ─────────────────────────────────────── */
@@ -401,6 +438,10 @@ body,
   border: 1px solid var(--border-gold);
   border-radius: var(--r-full);
   padding: 6px 14px 6px 6px;
+  /* S2.6: was ~38px tall (below the 44px minimum target size) with no
+     affordance beyond cursor:pointer. */
+  min-height: 44px;
+  cursor: pointer;
 }
 
 .profile-avatar {
@@ -1270,6 +1311,13 @@ tbody tr:last-child td {
   flex-shrink: 0;
 }
 .toast-dismiss:hover { color: var(--text); }
+
+/* S2.8: was a <style> tag injected inline in Layout.jsx's JSX, re-created in
+   the DOM on every render the activity drawer was open for. */
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
 
 @keyframes slideIn {
   from {

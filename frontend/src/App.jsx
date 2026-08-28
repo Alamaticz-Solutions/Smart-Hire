@@ -35,14 +35,30 @@ export default function App() {
         } catch { return null }
     })
 
+    // S2.9: theme is 'light' | 'dark' | 'system' - 'system' defers to
+    // prefers-color-scheme rather than hardcoding 'light' for a viewer who
+    // never touched the toggle. `theme` (the raw preference, including
+    // 'system') is what's persisted and what the picker highlights;
+    // `resolvedTheme` (always 'light' or 'dark') is what's actually painted.
     const [theme, setTheme] = useState(() => {
-        return localStorage.getItem('hire_ai_theme') || 'light'
+        return localStorage.getItem('hire_ai_theme') || 'system'
     })
+    const [systemPrefersDark, setSystemPrefersDark] = useState(() =>
+        window.matchMedia('(prefers-color-scheme: dark)').matches
+    )
+    const resolvedTheme = theme === 'system' ? (systemPrefersDark ? 'dark' : 'light') : theme
 
     useEffect(() => {
-        document.documentElement.setAttribute('data-theme', theme)
+        const mq = window.matchMedia('(prefers-color-scheme: dark)')
+        const handler = (e) => setSystemPrefersDark(e.matches)
+        mq.addEventListener('change', handler)
+        return () => mq.removeEventListener('change', handler)
+    }, [])
+
+    useEffect(() => {
+        document.documentElement.setAttribute('data-theme', resolvedTheme)
         localStorage.setItem('hire_ai_theme', theme)
-    }, [theme])
+    }, [theme, resolvedTheme])
 
     useEffect(() => {
         // The backend derives the trusted identity from a signed session
@@ -63,7 +79,6 @@ export default function App() {
         }
     }, [user])
 
-    const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark')
 
     const login = (u) => { setUser(u); localStorage.setItem('hire_ai_user', JSON.stringify(u)) }
     // G-24: candidate/job data cached in sessionStorage (cached_candidates,
@@ -85,7 +100,7 @@ export default function App() {
             <Suspense fallback={<RouteLoadingFallback />}>
                 <Routes>
                     <Route path="/login" element={user ? <Navigate to="/" /> : <LoginPage onLogin={login} />} />
-                    <Route element={user ? <Layout user={user} onLogout={logout} theme={theme} toggleTheme={toggleTheme} onUpdateUser={updateUser} /> : <Navigate to="/login" />}>
+                    <Route element={user ? <Layout user={user} onLogout={logout} theme={theme} resolvedTheme={resolvedTheme} setTheme={setTheme} onUpdateUser={updateUser} /> : <Navigate to="/login" />}>
                         <Route path="/" element={<DashboardPage />} />
                         <Route path="/jobs" element={(user?.is_hr === 1 || user?.is_external === 1) ? <JobsPage /> : <Navigate to="/" />} />
                         <Route path="/upload" element={<UploadPage />} />
