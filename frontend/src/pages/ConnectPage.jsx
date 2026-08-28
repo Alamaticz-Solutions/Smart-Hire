@@ -397,23 +397,15 @@ export default function ConnectPage() {
                                 <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text)' }}>Enable Candidate Email Sync</div>
                                 <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>Polls Email unseen messages for attached resumes matching keywords.</div>
                             </div>
-                            <label style={{ position: 'relative', display: 'inline-block', width: 48, height: 24, cursor: 'pointer' }}>
+                            <label className="switch-container">
                                 <input
                                     type="checkbox"
+                                    className="switch-input"
                                     checked={integrationsSettings.email_enabled === 1}
                                     onChange={e => setIntegrationsSettings(prev => ({ ...prev, email_enabled: e.target.checked ? 1 : 0 }))}
                                     aria-label="Enable candidate email sync"
-                                    style={{ opacity: 0, width: 0, height: 0 }}
                                 />
-                                <span style={{
-                                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                                    backgroundColor: integrationsSettings.email_enabled === 1 ? 'var(--gold)' : 'var(--surface-2)',
-                                    transition: '0.3s', borderRadius: 24, display: 'block'
-                                }} />
-                                <span style={{
-                                    position: 'absolute', content: '""', height: 18, width: 18, left: integrationsSettings.email_enabled === 1 ? 26 : 4, bottom: 3,
-                                    backgroundColor: 'var(--surface)', transition: '0.3s', borderRadius: '50%'
-                                }} />
+                                <span className="switch-slider"></span>
                             </label>
                         </div>
 
@@ -424,23 +416,15 @@ export default function ConnectPage() {
                                     <h3 style={{ margin: 0, color: 'var(--gold)', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 8 }}>
                                         <Mail size={16} /> Gmail Integration
                                     </h3>
-                                    <label style={{ position: 'relative', display: 'inline-block', width: 40, height: 20, cursor: 'pointer' }}>
+                                    <label className="switch-container sm">
                                         <input
                                             type="checkbox"
+                                            className="switch-input"
                                             checked={integrationsSettings.gmail_enabled === 1}
                                             onChange={e => setIntegrationsSettings(prev => ({ ...prev, gmail_enabled: e.target.checked ? 1 : 0 }))}
                                             aria-label="Enable Gmail integration"
-                                            style={{ opacity: 0, width: 0, height: 0 }}
                                         />
-                                        <span style={{
-                                            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                                            backgroundColor: integrationsSettings.gmail_enabled === 1 ? 'var(--gold)' : 'var(--surface-2)',
-                                            transition: '0.3s', borderRadius: 20, display: 'block'
-                                        }} />
-                                        <span style={{
-                                            position: 'absolute', content: '""', height: 14, width: 14, left: integrationsSettings.gmail_enabled === 1 ? 22 : 3, bottom: 3,
-                                            backgroundColor: 'var(--surface)', transition: '0.3s', borderRadius: '50%'
-                                        }} />
+                                        <span className="switch-slider"></span>
                                     </label>
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, opacity: integrationsSettings.gmail_enabled === 1 ? 1 : 0.5, pointerEvents: integrationsSettings.gmail_enabled === 1 ? 'auto' : 'none' }}>
@@ -480,23 +464,15 @@ export default function ConnectPage() {
                                     <h3 style={{ margin: 0, color: 'var(--gold)', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 8 }}>
                                         <Mail size={16} /> Outlook Integration
                                     </h3>
-                                    <label style={{ position: 'relative', display: 'inline-block', width: 40, height: 20, cursor: 'pointer' }}>
+                                    <label className="switch-container sm">
                                         <input
                                             type="checkbox"
+                                            className="switch-input"
                                             checked={integrationsSettings.outlook_enabled === 1}
                                             onChange={e => setIntegrationsSettings(prev => ({ ...prev, outlook_enabled: e.target.checked ? 1 : 0 }))}
                                             aria-label="Enable Outlook integration"
-                                            style={{ opacity: 0, width: 0, height: 0 }}
                                         />
-                                        <span style={{
-                                            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                                            backgroundColor: integrationsSettings.outlook_enabled === 1 ? 'var(--gold)' : 'var(--surface-2)',
-                                            transition: '0.3s', borderRadius: 20, display: 'block'
-                                        }} />
-                                        <span style={{
-                                            position: 'absolute', content: '""', height: 14, width: 14, left: integrationsSettings.outlook_enabled === 1 ? 22 : 3, bottom: 3,
-                                            backgroundColor: 'var(--surface)', transition: '0.3s', borderRadius: '50%'
-                                        }} />
+                                        <span className="switch-slider"></span>
                                     </label>
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, opacity: integrationsSettings.outlook_enabled === 1 ? 1 : 0.5, pointerEvents: integrationsSettings.outlook_enabled === 1 ? 'auto' : 'none' }}>
@@ -874,25 +850,16 @@ export default function ConnectPage() {
                                 <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text)' }}>Enable Google Drive Sync</div>
                                 <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>Automatically upload processed candidate resumes to your Google Drive folder.</div>
                             </div>
-                            <label style={{ position: 'relative', display: 'inline-block', width: 48, height: 24, cursor: 'pointer' }}>
+                            <label className="switch-container" style={{ opacity: !integrationsSettings.gdrive_refresh_token ? 0.5 : 1, cursor: !integrationsSettings.gdrive_refresh_token ? 'not-allowed' : 'pointer' }}>
                                 <input
                                     type="checkbox"
+                                    className="switch-input"
                                     checked={integrationsSettings.drive_enabled === 1}
                                     disabled={!integrationsSettings.gdrive_refresh_token}
                                     onChange={e => setIntegrationsSettings(prev => ({ ...prev, drive_enabled: e.target.checked ? 1 : 0 }))}
                                     aria-label="Enable Google Drive sync"
-                                    style={{ opacity: 0, width: 0, height: 0 }}
                                 />
-                                <span style={{
-                                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                                    backgroundColor: integrationsSettings.drive_enabled === 1 ? 'var(--gold)' : 'var(--surface-2)',
-                                    transition: '0.3s', borderRadius: 24, display: 'block',
-                                    opacity: !integrationsSettings.gdrive_refresh_token ? 0.5 : 1
-                                }} />
-                                <span style={{
-                                    position: 'absolute', content: '""', height: 18, width: 18, left: integrationsSettings.drive_enabled === 1 ? 26 : 4, bottom: 3,
-                                    backgroundColor: 'var(--surface)', transition: '0.3s', borderRadius: '50%'
-                                }} />
+                                <span className="switch-slider"></span>
                             </label>
                         </div>
                         

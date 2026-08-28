@@ -1603,6 +1603,25 @@ tbody tr:last-child td {
   position: absolute;
 }
 
+/* S8.5: compact variant for switches nested inside a denser layout
+   (Connect's per-provider enable toggles), so those call sites can reuse
+   this component instead of hand-rolling their own smaller slider. */
+.switch-container.sm .switch-slider {
+  width: 40px;
+  height: 20px;
+}
+
+.switch-container.sm .switch-slider::before {
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 3px;
+}
+
+.switch-container.sm .switch-input:checked + .switch-slider::before {
+  transform: translateX(20px);
+}
+
 .switch-slider {
   width: 46px;
   height: 24px;
