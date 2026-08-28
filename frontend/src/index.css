@@ -64,8 +64,13 @@
   /* Radius scale (G-11): 6/10/16/22/999px */
   --r-sm: 6px; --r-md: 10px; --r-lg: 16px; --r-xl: 22px; --r-full: 999px;
 
-  --fh: 'Manrope', system-ui, sans-serif;
+  /* G-9: --fh/--fb used to be two independently-hardcoded 'Manrope' values,
+     so a display/body distinction existed in name only. Aliasing --fh to
+     --fb makes that explicit (one font, one source of truth) instead of
+     misleading the next person into thinking they can diverge safely.
+     Give --fh its own value here if/when a real display face ships. */
   --fb: 'Manrope', system-ui, sans-serif;
+  --fh: var(--fb);
   --fm: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
   --radius: var(--r-md);
   --shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
@@ -1577,12 +1582,15 @@ tbody tr:last-child td {
 }
 
 /* Modal Content Card override */
+/* G-18: .modal-overlay .card (specificity 0,2,0, declared after .card and
+   .card:hover) already outranks and overrides both on its own - the
+   !important here was never load-bearing, just defensive leftover. */
 .modal-overlay .card {
   position: relative;
-  background: var(--navy-dark) !important;
-  border: 1px solid rgba(var(--sky-rgb), 0.35) !important;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5) !important;
-  border-radius: var(--r-xl) !important;
+  background: var(--navy-dark);
+  border: 1px solid rgba(var(--sky-rgb), 0.35);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  border-radius: var(--r-xl);
   overflow: hidden;
   animation: modalScaleUp 0.18s ease-out;
 }
@@ -1592,9 +1600,9 @@ tbody tr:last-child td {
 }
 
 [data-theme="light"] .modal-overlay .card {
-  background: #FFFFFF !important;
-  border: 1px solid rgba(0, 0, 0, 0.1) !important;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.15) !important;
+  background: #FFFFFF;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.15);
 }
 
 @keyframes overlayFadeIn {
@@ -1804,22 +1812,25 @@ tbody tr:last-child td {
   z-index: 10;
 }
 
+/* G-18: no other rule in the file shares .modern-input's selectors or
+   beats its specificity, so the !important block below was never
+   load-bearing - removed. */
 .modern-input,
 .modern-select,
 .modern-textarea {
   width: 100%;
-  padding: 12px 14px 12px 42px !important;
-  border-radius: var(--r-md) !important;
-  border: 1px solid rgba(var(--sky-rgb), 0.25) !important;
-  background: var(--input-bg) !important;
-  color: var(--text) !important;
-  font-family: var(--fb) !important;
-  font-size: 0.9rem !important;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+  padding: 12px 14px 12px 42px;
+  border-radius: var(--r-md);
+  border: 1px solid rgba(var(--sky-rgb), 0.25);
+  background: var(--input-bg);
+  color: var(--text);
+  font-family: var(--fb);
+  font-size: 0.9rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .modern-textarea {
-  padding: 14px !important;
+  padding: 14px;
   resize: vertical;
 }
 
@@ -1830,14 +1841,14 @@ tbody tr:last-child td {
 .modern-input:focus,
 .modern-select:focus,
 .modern-textarea:focus {
-  border-color: var(--gold) !important;
-  box-shadow: 0 0 0 4px rgba(var(--gold-rgb), 0.12) !important;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 4px rgba(var(--gold-rgb), 0.12);
 }
 
 .modern-input:hover,
 .modern-select:hover,
 .modern-textarea:hover {
-  border-color: rgba(var(--sky-rgb), 0.5) !important;
+  border-color: rgba(var(--sky-rgb), 0.5);
 }
 
 .modern-label {
