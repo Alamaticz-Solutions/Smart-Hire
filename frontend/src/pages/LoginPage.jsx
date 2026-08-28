@@ -39,6 +39,22 @@ export default function LoginPage({ onLogin }) {
     const [fpNewPass2, setFpNewPass2] = useState('')
     const [simulatedOtp, setSimulatedOtp] = useState('')
     const [isSubmitting, setIsSubmitting] = useState(false)
+    const [fieldErrors, setFieldErrors] = useState({})
+
+    // Inline blur validation (S1.2) - lets people fix a password/confirm
+    // mismatch before they hit submit, instead of only finding out after.
+    const validateField = (key, value, compareValue) => {
+        let msg = ''
+        if (key === 'regPass' || key === 'fpPass') {
+            if (value && value.length < 8) msg = 'Password must be at least 8 characters.'
+        } else if (key === 'regPass2' || key === 'fpPass2') {
+            if (value && value !== compareValue) msg = 'Passwords do not match.'
+        }
+        setFieldErrors(prev => ({ ...prev, [key]: msg }))
+    }
+    const clearFieldError = (key) => {
+        if (fieldErrors[key]) setFieldErrors(prev => ({ ...prev, [key]: '' }))
+    }
 
     const changeMode = (newMode) => {
         setMode(newMode)
@@ -55,6 +71,7 @@ export default function LoginPage({ onLogin }) {
         setFpNewPass2('')
         setSimulatedOtp('')
         setIsSubmitting(false)
+        setFieldErrors({})
     }
 
     const handleLogin = async (e) => {
@@ -330,22 +347,28 @@ export default function LoginPage({ onLogin }) {
                             <div className="password-input-container">
                                 <input id="reg-password" className="form-input" type={showRegisterPass ? "text" : "password"} placeholder="At least 8 characters"
                                     autoComplete="new-password"
-                                    value={pass} onChange={e => setPass(e.target.value)} />
+                                    aria-invalid={!!fieldErrors.regPass} aria-describedby={fieldErrors.regPass ? 'reg-password-error' : undefined}
+                                    value={pass} onChange={e => { setPass(e.target.value); clearFieldError('regPass') }}
+                                    onBlur={e => validateField('regPass', e.target.value)} />
                                 <button type="button" className="password-toggle-btn" onClick={() => setShowRegisterPass(!showRegisterPass)} aria-label={showRegisterPass ? 'Hide password' : 'Show password'}>
                                     {showRegisterPass ? <EyeOff size={18} /> : <Eye size={18} />}
                                 </button>
                             </div>
+                            {fieldErrors.regPass && <div id="reg-password-error" className="form-error" style={{ marginTop: 4 }} role="alert">{fieldErrors.regPass}</div>}
                         </div>
                         <div className="form-group">
                             <label className="form-label" htmlFor="reg-password2">Confirm Password</label>
                             <div className="password-input-container">
                                 <input id="reg-password2" className="form-input" type={showRegisterPass2 ? "text" : "password"} placeholder="Repeat password"
                                     autoComplete="new-password"
-                                    value={pass2} onChange={e => setPass2(e.target.value)} />
+                                    aria-invalid={!!fieldErrors.regPass2} aria-describedby={fieldErrors.regPass2 ? 'reg-password2-error' : undefined}
+                                    value={pass2} onChange={e => { setPass2(e.target.value); clearFieldError('regPass2') }}
+                                    onBlur={e => validateField('regPass2', e.target.value, pass)} />
                                 <button type="button" className="password-toggle-btn" onClick={() => setShowRegisterPass2(!showRegisterPass2)} aria-label={showRegisterPass2 ? 'Hide password' : 'Show password'}>
                                     {showRegisterPass2 ? <EyeOff size={18} /> : <Eye size={18} />}
                                 </button>
                             </div>
+                            {fieldErrors.regPass2 && <div id="reg-password2-error" className="form-error" style={{ marginTop: 4 }} role="alert">{fieldErrors.regPass2}</div>}
                         </div>
                         <button type="submit" className="btn btn-primary btn-full" disabled={isSubmitting}>
                             {isSubmitting ? <Loader2 size={16} className="spin" /> : <UserPlus size={16} />}
@@ -408,12 +431,18 @@ export default function LoginPage({ onLogin }) {
                                 <div className="form-group">
                                     <label className="form-label" htmlFor="fp-newpass">New Password</label>
                                     <input id="fp-newpass" className="form-input" type="password" placeholder="At least 8 characters" autoComplete="new-password"
-                                        value={fpNewPass} onChange={e => setFpNewPass(e.target.value)} required />
+                                        aria-invalid={!!fieldErrors.fpPass} aria-describedby={fieldErrors.fpPass ? 'fp-newpass-error' : undefined}
+                                        value={fpNewPass} onChange={e => { setFpNewPass(e.target.value); clearFieldError('fpPass') }}
+                                        onBlur={e => validateField('fpPass', e.target.value)} required />
+                                    {fieldErrors.fpPass && <div id="fp-newpass-error" className="form-error" style={{ marginTop: 4 }} role="alert">{fieldErrors.fpPass}</div>}
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label" htmlFor="fp-newpass2">Confirm New Password</label>
                                     <input id="fp-newpass2" className="form-input" type="password" placeholder="Repeat new password" autoComplete="new-password"
-                                        value={fpNewPass2} onChange={e => setFpNewPass2(e.target.value)} required />
+                                        aria-invalid={!!fieldErrors.fpPass2} aria-describedby={fieldErrors.fpPass2 ? 'fp-newpass2-error' : undefined}
+                                        value={fpNewPass2} onChange={e => { setFpNewPass2(e.target.value); clearFieldError('fpPass2') }}
+                                        onBlur={e => validateField('fpPass2', e.target.value, fpNewPass)} required />
+                                    {fieldErrors.fpPass2 && <div id="fp-newpass2-error" className="form-error" style={{ marginTop: 4 }} role="alert">{fieldErrors.fpPass2}</div>}
                                 </div>
                                 <button type="submit" className="btn btn-primary btn-full" disabled={isSubmitting}>
                                     {isSubmitting ? <Loader2 size={16} className="spin" /> : <KeyRound size={16} />}
