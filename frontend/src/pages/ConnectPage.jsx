@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { Mail, Shield, Check, X, Plus, Trash2, Key, Folder, RefreshCw, Loader, ExternalLink, Link2, AlertCircle, Lock, Users } from 'lucide-react'
+import { Mail, Shield, Check, X, Plus, Trash2, Key, Folder, RefreshCw, Loader, ExternalLink, Link2, AlertCircle, Lock, Users, Eye, EyeOff } from 'lucide-react'
 import apiClient from '../api/client'
 import { useToast } from '../hooks/useToast'
 import ToastHost from '../components/shared/ToastHost'
@@ -18,6 +18,9 @@ export default function ConnectPage() {
     const [gdriveAuthCode, setGdriveAuthCode] = useState('')
     const [exchangingGdriveCode, setExchangingGdriveCode] = useState(false)
     const [loadingSettings, setLoadingSettings] = useState(false)
+    // S8.3: show/hide toggle for pasted credentials, keyed by field name.
+    const [showSecrets, setShowSecrets] = useState({})
+    const toggleSecretVisible = (field) => setShowSecrets(prev => ({ ...prev, [field]: !prev[field] }))
     
     const [integrationsSettings, setIntegrationsSettings] = useState({
         email_enabled: 0, imap_host: 'imap.gmail.com', imap_port: 993,
@@ -395,10 +398,11 @@ export default function ConnectPage() {
                                 <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>Polls Email unseen messages for attached resumes matching keywords.</div>
                             </div>
                             <label style={{ position: 'relative', display: 'inline-block', width: 48, height: 24, cursor: 'pointer' }}>
-                                <input 
-                                    type="checkbox" 
+                                <input
+                                    type="checkbox"
                                     checked={integrationsSettings.email_enabled === 1}
                                     onChange={e => setIntegrationsSettings(prev => ({ ...prev, email_enabled: e.target.checked ? 1 : 0 }))}
+                                    aria-label="Enable candidate email sync"
                                     style={{ opacity: 0, width: 0, height: 0 }}
                                 />
                                 <span style={{
@@ -421,10 +425,11 @@ export default function ConnectPage() {
                                         <Mail size={16} /> Gmail Integration
                                     </h3>
                                     <label style={{ position: 'relative', display: 'inline-block', width: 40, height: 20, cursor: 'pointer' }}>
-                                        <input 
-                                            type="checkbox" 
+                                        <input
+                                            type="checkbox"
                                             checked={integrationsSettings.gmail_enabled === 1}
                                             onChange={e => setIntegrationsSettings(prev => ({ ...prev, gmail_enabled: e.target.checked ? 1 : 0 }))}
+                                            aria-label="Enable Gmail integration"
                                             style={{ opacity: 0, width: 0, height: 0 }}
                                         />
                                         <span style={{
@@ -450,13 +455,21 @@ export default function ConnectPage() {
                                     </div>
                                     <div>
                                         <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>App Password</label>
-                                        <input 
-                                            type="password"
-                                            value={integrationsSettings.gmail_pass || ''}
-                                            onChange={e => setIntegrationsSettings(prev => ({ ...prev, gmail_pass: e.target.value }))}
-                                            placeholder={integrationsSettings.gmail_pass === '****' ? '                ' : '16-character app password'}
-                                            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
-                                        />
+                                        <div style={{ position: 'relative' }}>
+                                            <input
+                                                type={showSecrets.gmail_pass ? 'text' : 'password'}
+                                                value={integrationsSettings.gmail_pass || ''}
+                                                onChange={e => setIntegrationsSettings(prev => ({ ...prev, gmail_pass: e.target.value }))}
+                                                placeholder={integrationsSettings.gmail_pass === '****' ? '                ' : '16-character app password'}
+                                                style={{ width: '100%', padding: '10px 40px 10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                                            />
+                                            <button type="button" onClick={() => toggleSecretVisible('gmail_pass')}
+                                                aria-label={showSecrets.gmail_pass ? 'Hide app password' : 'Show app password'}
+                                                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', display: 'flex' }}>
+                                                {showSecrets.gmail_pass ? <EyeOff size={15} /> : <Eye size={15} />}
+                                            </button>
+                                        </div>
+                                        <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: 'var(--text-subtle)' }}>Stored encrypted. Once saved, this field shows as •••• and is never displayed again.</p>
                                     </div>
                                 </div>
                             </div>
@@ -468,10 +481,11 @@ export default function ConnectPage() {
                                         <Mail size={16} /> Outlook Integration
                                     </h3>
                                     <label style={{ position: 'relative', display: 'inline-block', width: 40, height: 20, cursor: 'pointer' }}>
-                                        <input 
-                                            type="checkbox" 
+                                        <input
+                                            type="checkbox"
                                             checked={integrationsSettings.outlook_enabled === 1}
                                             onChange={e => setIntegrationsSettings(prev => ({ ...prev, outlook_enabled: e.target.checked ? 1 : 0 }))}
+                                            aria-label="Enable Outlook integration"
                                             style={{ opacity: 0, width: 0, height: 0 }}
                                         />
                                         <span style={{
@@ -515,13 +529,21 @@ export default function ConnectPage() {
                                     </div>
                                     <div>
                                         <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Client Secret</label>
-                                        <input 
-                                            type="password"
-                                            value={integrationsSettings.ms_client_secret || ''}
-                                            onChange={e => setIntegrationsSettings(prev => ({ ...prev, ms_client_secret: e.target.value }))}
-                                            placeholder={integrationsSettings.ms_client_secret === '****' ? '                ' : 'Client Secret Value'}
-                                            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
-                                        />
+                                        <div style={{ position: 'relative' }}>
+                                            <input
+                                                type={showSecrets.ms_client_secret ? 'text' : 'password'}
+                                                value={integrationsSettings.ms_client_secret || ''}
+                                                onChange={e => setIntegrationsSettings(prev => ({ ...prev, ms_client_secret: e.target.value }))}
+                                                placeholder={integrationsSettings.ms_client_secret === '****' ? '                ' : 'Client Secret Value'}
+                                                style={{ width: '100%', padding: '10px 40px 10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                                            />
+                                            <button type="button" onClick={() => toggleSecretVisible('ms_client_secret')}
+                                                aria-label={showSecrets.ms_client_secret ? 'Hide client secret' : 'Show client secret'}
+                                                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', display: 'flex' }}>
+                                                {showSecrets.ms_client_secret ? <EyeOff size={15} /> : <Eye size={15} />}
+                                            </button>
+                                        </div>
+                                        <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: 'var(--text-subtle)' }}>Stored encrypted. Once saved, this field shows as •••• and is never displayed again.</p>
                                     </div>
                                 </div>
                             </div>
@@ -770,13 +792,20 @@ export default function ConnectPage() {
                                         ) : (
                                             <div>
                                                 <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-dim)', marginBottom: 4 }}>App Password</label>
-                                                <input 
-                                                    type="password"
-                                                    value={newEmailForm.email_pass}
-                                                    onChange={e => setNewEmailForm(prev => ({ ...prev, email_pass: e.target.value }))}
-                                                    placeholder="app password"
-                                                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', fontSize: '0.8rem' }}
-                                                />
+                                                <div style={{ position: 'relative' }}>
+                                                    <input
+                                                        type={showSecrets.new_email_pass ? 'text' : 'password'}
+                                                        value={newEmailForm.email_pass}
+                                                        onChange={e => setNewEmailForm(prev => ({ ...prev, email_pass: e.target.value }))}
+                                                        placeholder="app password"
+                                                        style={{ width: '100%', padding: '8px 36px 8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', fontSize: '0.8rem' }}
+                                                    />
+                                                    <button type="button" onClick={() => toggleSecretVisible('new_email_pass')}
+                                                        aria-label={showSecrets.new_email_pass ? 'Hide app password' : 'Show app password'}
+                                                        style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', display: 'flex' }}>
+                                                        {showSecrets.new_email_pass ? <EyeOff size={13} /> : <Eye size={13} />}
+                                                    </button>
+                                                </div>
                                             </div>
                                         )}
                                     </div>
@@ -846,11 +875,12 @@ export default function ConnectPage() {
                                 <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>Automatically upload processed candidate resumes to your Google Drive folder.</div>
                             </div>
                             <label style={{ position: 'relative', display: 'inline-block', width: 48, height: 24, cursor: 'pointer' }}>
-                                <input 
-                                    type="checkbox" 
+                                <input
+                                    type="checkbox"
                                     checked={integrationsSettings.drive_enabled === 1}
                                     disabled={!integrationsSettings.gdrive_refresh_token}
                                     onChange={e => setIntegrationsSettings(prev => ({ ...prev, drive_enabled: e.target.checked ? 1 : 0 }))}
+                                    aria-label="Enable Google Drive sync"
                                     style={{ opacity: 0, width: 0, height: 0 }}
                                 />
                                 <span style={{
@@ -923,13 +953,21 @@ export default function ConnectPage() {
                                         <label className="modern-label" style={{ fontSize: '0.78rem', margin: 0 }}>Google Client Secret</label>
                                         <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.72rem', color: 'var(--sky-dim)', textDecoration: 'underline' }}>Find Secret ↗</a>
                                     </div>
-                                    <input 
-                                        type="password"
-                                        value={integrationsSettings.gdrive_client_secret || ''}
-                                        onChange={e => setIntegrationsSettings(prev => ({ ...prev, gdrive_client_secret: e.target.value }))}
-                                        placeholder={integrationsSettings.gdrive_client_secret === '****' ? '••••••••••••••••' : 'Enter your OAuth 2.0 Client Secret'}
-                                        style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
-                                    />
+                                    <div style={{ position: 'relative' }}>
+                                        <input
+                                            type={showSecrets.gdrive_client_secret ? 'text' : 'password'}
+                                            value={integrationsSettings.gdrive_client_secret || ''}
+                                            onChange={e => setIntegrationsSettings(prev => ({ ...prev, gdrive_client_secret: e.target.value }))}
+                                            placeholder={integrationsSettings.gdrive_client_secret === '****' ? '••••••••••••••••' : 'Enter your OAuth 2.0 Client Secret'}
+                                            style={{ width: '100%', padding: '10px 40px 10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                                        />
+                                        <button type="button" onClick={() => toggleSecretVisible('gdrive_client_secret')}
+                                            aria-label={showSecrets.gdrive_client_secret ? 'Hide client secret' : 'Show client secret'}
+                                            style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', display: 'flex' }}>
+                                            {showSecrets.gdrive_client_secret ? <EyeOff size={15} /> : <Eye size={15} />}
+                                        </button>
+                                    </div>
+                                    <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: 'var(--text-subtle)' }}>Stored encrypted. Once saved, this field shows as •••• and is never displayed again.</p>
                                 </div>
                             </div>
                             <div>
