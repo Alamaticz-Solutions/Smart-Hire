@@ -26,7 +26,7 @@ export default function UploadPage() {
         } catch { return []; }
     })
     const [progress, setProgress] = useState([])
-    const { toast, showToast, dismissToast } = useToast()
+    const { toast, showToast, dismissToast, pauseToast, resumeToast } = useToast()
     const { confirm, confirmDialogProps } = useConfirm()
     const [editCell, setEditCell] = useState(null)
     const [editVal, setEditVal] = useState('')
@@ -237,7 +237,12 @@ export default function UploadPage() {
         const allLoaded = [...base, ...custom, { key: '_actions', label: 'Actions', pct: '100px' }]
 
         setCols(applySavedColumnOrder(allLoaded, 'hire_ai_col_order'))
-    }).catch(() => { })
+    }).catch(() => {
+        // G-20: used to fail silently, leaving whatever default columns
+        // useColumnConfig started with and no signal that the real column
+        // config never loaded.
+        showToast('Failed to load column settings.', 'error')
+    })
 
 
 
@@ -467,7 +472,7 @@ export default function UploadPage() {
                 loadMore={loadMore}
             />
 
-            <ToastHost toast={toast} onDismiss={dismissToast} />
+            <ToastHost toast={toast} onDismiss={dismissToast} onPause={pauseToast} onResume={resumeToast} />
             <ConfirmDialog {...confirmDialogProps} />
 
             {showFilter && (

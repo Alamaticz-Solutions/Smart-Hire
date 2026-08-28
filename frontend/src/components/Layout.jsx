@@ -23,6 +23,7 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
     const [showActivitySidebar, setShowActivitySidebar] = useState(false);
     const [activities, setActivities] = useState([]);
     const [loadingActivities, setLoadingActivities] = useState(false);
+    const [activitiesError, setActivitiesError] = useState(false);
     const location = useLocation();
     const pageTitle = PAGE_TITLES[location.pathname] || 'Hire AI';
 
@@ -68,8 +69,15 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
         try {
             const res = await axios.get('/api/activity');
             setActivities(res.data || []);
+            setActivitiesError(false);
         } catch (err) {
-            console.error('Failed to fetch activities');
+            console.error('Failed to fetch activities', err);
+            // G-20: a failed fetch used to leave `activities` at its last
+            // known value with no signal, so a dead backend rendered as
+            // either a stale list or (on first load) an indistinguishable
+            // "No activity logged yet." - track the failure explicitly so
+            // the drawer can show a real error + Retry instead of lying.
+            setActivitiesError(true);
         } finally {
             setLoadingActivities(false);
         }
@@ -278,6 +286,13 @@ export default function Layout({ user, onLogout, theme, toggleTheme, onUpdateUse
                             <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
                                 {loadingActivities && activities.length === 0 ? (
                                     <div style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '2rem 0' }}>Loading...</div>
+                                ) : activitiesError ? (
+                                    <div style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '2rem 0', fontSize: '0.9rem' }}>
+                                        <p style={{ margin: '0 0 10px' }}>Couldn't load activity.</p>
+                                        <button type="button" className="btn btn-secondary" onClick={fetchActivities} style={{ fontSize: '0.8rem', padding: '6px 14px' }}>
+                                            Retry
+                                        </button>
+                                    </div>
                                 ) : activities.length === 0 ? (
                                     <div style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '2rem 0', fontSize: '0.9rem' }}>No activity logged yet.</div>
                                 ) : (

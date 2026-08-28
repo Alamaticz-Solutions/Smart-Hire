@@ -22,6 +22,8 @@ export default function ColumnVisibilityPopover({
                 className="btn btn-secondary"
                 onClick={() => setShowColVisibility(!showColVisibility)}
                 style={{ gap: 6, color: 'var(--text)', borderColor: 'var(--border)' }}
+                aria-expanded={showColVisibility}
+                aria-haspopup="true"
             >
                 <Eye size={14} /> Columns
             </button>

@@ -67,7 +67,7 @@ const isImmediate = (val) => {
 export default function DashboardPage() {
     const { user } = useOutletContext()
     const navigate = useNavigate()
-    const { toast, showToast, dismissToast } = useToast()
+    const { toast, showToast, dismissToast, pauseToast, resumeToast } = useToast()
     const chartColors = useCssVars(CHART_VAR_NAMES)
 
     const [candidates, setCandidates] = useState([])
@@ -231,7 +231,7 @@ export default function DashboardPage() {
                 </div>
             )}
 
-            <ToastHost toast={toast} onDismiss={dismissToast} />
+            <ToastHost toast={toast} onDismiss={dismissToast} onPause={pauseToast} onResume={resumeToast} />
         </div>
     )
 }

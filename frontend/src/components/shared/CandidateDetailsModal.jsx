@@ -80,7 +80,7 @@ export default function CandidateDetailsModal({
     showFormattedToggle,
     defaultResumeTemplate = 'alamaticz',
 }) {
-    const { toast, showToast, dismissToast } = useToast();
+    const { toast, showToast, dismissToast, pauseToast, resumeToast } = useToast();
     const modalRef = useModalA11y(true, onClose);
     const canEdit = editable !== undefined ? editable : Boolean(onToggleStatus);
     const canExportDocx = showExportDocx !== undefined ? showExportDocx : Boolean(onToggleStatus);
@@ -808,7 +808,7 @@ export default function CandidateDetailsModal({
                 )}
             </div>
             <div onClick={e => e.stopPropagation()}>
-                <ToastHost toast={toast} onDismiss={dismissToast} />
+                <ToastHost toast={toast} onDismiss={dismissToast} onPause={pauseToast} onResume={resumeToast} />
             </div>
         </div>
     );

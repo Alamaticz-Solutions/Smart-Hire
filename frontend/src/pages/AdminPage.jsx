@@ -29,7 +29,7 @@ const CANDIDATE_FIELDS = [
 
 export default function AdminPage() {
     const { user, onUpdateUser } = useOutletContext()
-    const { toast, showToast, dismissToast } = useToast()
+    const { toast, showToast, dismissToast, pauseToast, resumeToast } = useToast()
     const { confirm, confirmDialogProps } = useConfirm()
     const [activeTab, setActiveTab] = useState('requests') // requests | users | matrix
     const [requests, setRequests] = useState([])
@@ -674,7 +674,7 @@ export default function AdminPage() {
                     </div>
                 </div>
             )}
-            <ToastHost toast={toast} onDismiss={dismissToast} />
+            <ToastHost toast={toast} onDismiss={dismissToast} onPause={pauseToast} onResume={resumeToast} />
             <ConfirmDialog {...confirmDialogProps} />
         </div>
     )

@@ -193,7 +193,7 @@ export default function ChatPage() {
                     {messages.length === 0 && !loading ? (
                         <div className="chat-empty">
                             <div className="chat-empty-icon"><Bot size={28} /></div>
-                            <div className="chat-empty-title">Chat with Hire-Ai</div>
+                            <div className="chat-empty-title">Chat with Hire AI</div>
                             <div className="chat-empty-sub">
                                 Ask me anything about your candidates — I'll show results in a table when possible.
                             </div>
@@ -230,8 +230,8 @@ export default function ChatPage() {
                             {loading ? <div className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} /> : <Send size={17} />}
                         </button>
                     </div>
-                    <p style={{ textAlign: 'center', fontSize: '0.73rem', color: 'rgba(var(--sky-dim-rgb), 0.4)', marginTop: '0.5rem' }}>
-                        Hire-Ai may make mistakes — always verify important candidate information.
+                    <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '0.5rem' }}>
+                        Hire AI may make mistakes — always verify important candidate information.
                     </p>
                 </div>
             </div>

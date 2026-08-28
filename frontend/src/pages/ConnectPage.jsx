@@ -10,7 +10,7 @@ import ConfirmDialog from '../components/shared/ConfirmDialog'
 export default function ConnectPage() {
     const { user } = useOutletContext()
     const [activeTab, setActiveTab] = useState('mail') // 'mail' | 'drive'
-    const { toast, showToast, dismissToast } = useToast()
+    const { toast, showToast, dismissToast, pauseToast, resumeToast } = useToast()
     const { confirm, confirmDialogProps } = useConfirm()
     const [saving, setSaving] = useState(false)
     const [testingConnection, setTestingConnection] = useState(false)
@@ -334,7 +334,7 @@ export default function ConnectPage() {
 
     return (
         <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
-            <ToastHost toast={toast} onDismiss={dismissToast} />
+            <ToastHost toast={toast} onDismiss={dismissToast} onPause={pauseToast} onResume={resumeToast} />
             <ConfirmDialog {...confirmDialogProps} />
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>

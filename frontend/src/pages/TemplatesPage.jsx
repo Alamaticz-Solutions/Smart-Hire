@@ -100,7 +100,7 @@ Alamaticz Solutions`
 
 export default function TemplatesPage() {
     const { user } = useOutletContext()
-    const { toast, showToast, dismissToast } = useToast()
+    const { toast, showToast, dismissToast, pauseToast, resumeToast } = useToast()
     const [saving, setSaving] = useState(false)
     const [editorTab, setEditorTab] = useState('missing') // 'missing' | 'complete'
     const [previewType, setPreviewType] = useState('missing') // 'missing' | 'complete'
@@ -288,7 +288,7 @@ export default function TemplatesPage() {
 
     return (
         <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
-            <ToastHost toast={toast} onDismiss={dismissToast} />
+            <ToastHost toast={toast} onDismiss={dismissToast} onPause={pauseToast} onResume={resumeToast} />
 
             {/* Header section */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>

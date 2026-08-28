@@ -90,7 +90,7 @@ export default function JobsPage() {
     });
     const [isMatching, setIsMatching] = useState(false);
     const [activeTab, setActiveTab] = useState('matched'); // 'matched' or 'selected'
-    const { toast, showToast, dismissToast } = useToast();
+    const { toast, showToast, dismissToast, pauseToast, resumeToast } = useToast();
     const { confirm, confirmDialogProps } = useConfirm();
     const [editingCandidate, setEditingCandidate] = useState(null);
     const [editName, setEditName] = useState('');
@@ -255,7 +255,12 @@ export default function JobsPage() {
         ]
         
         setCols(applySavedColumnOrder(allLoaded, 'hire_ai_job_col_order'))
-    }).catch(() => { })
+    }).catch(() => {
+        // G-20: used to fail silently, leaving whatever default columns
+        // useColumnConfig started with and no signal that the real column
+        // config never loaded.
+        showToast('Failed to load column settings.', 'error')
+    })
 
     const loadJobs = async () => {
         try {
@@ -899,7 +904,7 @@ export default function JobsPage() {
                 handleSaveShares={handleSaveShares}
             />
 
-             <ToastHost toast={toast} onDismiss={dismissToast} />
+             <ToastHost toast={toast} onDismiss={dismissToast} onPause={pauseToast} onResume={resumeToast} />
              <ConfirmDialog {...confirmDialogProps} />
         </div>
     );
