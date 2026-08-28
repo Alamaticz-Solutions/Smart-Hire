@@ -200,8 +200,17 @@
    it from its own :focus/:focus-within rule; this is the fallback for
    every element that doesn't define one, so a keyboard user is never
    left with no visible focus indicator anywhere in the app. */
+/* !important is deliberate and narrow here (unlike G-18's blanket
+   !important sweep): 53 inline styles across 14 files set
+   outline: 'none' directly on inputs (form-input, modern-input, etc.),
+   and a plain outline declaration in a stylesheet can never beat an
+   inline style - only !important can. Without it this rule is a no-op
+   on every one of those fields and G-1 stays broken in practice
+   despite "existing". Restoring keyboard-focus visibility overrides
+   an accidental accessibility regression from inline authoring, which
+   is exactly the kind of case !important exists for. */
 :focus-visible {
-  outline: 2px solid var(--focus);
+  outline: 2px solid var(--focus) !important;
   outline-offset: 2px;
   border-radius: inherit;
 }
