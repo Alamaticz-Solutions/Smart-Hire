@@ -47,8 +47,13 @@ export default function DataTable({
     const colSpan = activeCols.length + leadingColumns.length
     const virtualItems = rowVirtualizer.getVirtualItems()
 
+    // scrollbarGutter:'stable' reserves the vertical scrollbar's track width
+    // up front instead of only when content overflows, so the sticky
+    // right:0 Actions column's declared width doesn't get eaten by the
+    // scrollbar appearing on top of it (the actual cause of the Actions
+    // column looking "fixed and overlapping").
     return (
-        <div ref={tableScrollRef} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', borderRadius: 'var(--r-md)', border: '1px solid var(--border)', width: '100%' }}>
+        <div ref={tableScrollRef} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', borderRadius: 'var(--r-md)', border: '1px solid var(--border)', width: '100%', scrollbarGutter: 'stable' }}>
             <table style={{ width: getTableWidth(), tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--fs-3)' }}>
                 <colgroup>
                     {leadingColumns.map(lc => <col key={lc.key} style={{ width: lc.width }} />)}

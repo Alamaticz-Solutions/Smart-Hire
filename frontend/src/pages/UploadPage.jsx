@@ -244,7 +244,13 @@ export default function UploadPage() {
     const loadCols = () => apiClient.get(`/api/columns`).then(r => {
         const base = (r.data.base || []).map(c => ({ key: c.col_key, label: c.col_label, pct: getColumnWidth(c.col_key), col_key: c.col_key, col_label: c.col_label }))
         const custom = (r.data.custom || []).map(c => ({ key: c.col_key, label: c.col_label, pct: '120px', col_key: c.col_key, col_label: c.col_label, isCustom: true }))
-        const allLoaded = [...base, ...custom, { key: '_actions', label: 'Actions', pct: '100px' }]
+        // 100px used to be exactly wide enough to clip the Delete button's
+        // own padding against the vertical scrollbar this table always
+        // shows (maxHeight+overflowY:auto in DataTable.jsx) - the sticky
+        // right:0 column sat right under the scrollbar track instead of
+        // beside it, reading as a stray gray overlap. Widened, and see
+        // DataTable.jsx's scrollbar-gutter fix for the other half of this.
+        const allLoaded = [...base, ...custom, { key: '_actions', label: 'Actions', pct: '132px' }]
 
         setCols(applySavedColumnOrder(allLoaded, 'hire_ai_col_order'))
     }).catch(() => {
