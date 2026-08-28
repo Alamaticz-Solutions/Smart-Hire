@@ -323,10 +323,31 @@ body,
   padding-right: 0.6rem;
 }
 
+/* Collapsed (icon-only) rail: the expanded row's left-border active
+   indicator reads as a stray sliver at 72px wide with no label to
+   anchor it, so collapsed mode gets its own treatment - a centered,
+   evenly-proportioned square tile per icon with a solid tinted fill
+   for the active/hover states instead of a border. */
 .sidebar.collapsed .nav-link {
   justify-content: center;
-  padding-left: 3px;
-  padding-right: 3px;
+  align-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  margin: 0 auto;
+  border-width: 1px;
+  border-radius: var(--r-md);
+}
+
+.sidebar.collapsed .nav-link.active {
+  background: rgba(var(--action-rgb), 0.14);
+  border-left-color: transparent;
+}
+
+.sidebar-nav-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 10px 14px;
 }
 
 .sidebar-brand {
@@ -525,12 +546,19 @@ body,
   flex-shrink: 0;
 }
 
+/* Nav-bar/page-title redesign: the topbar label and each page's own
+   <h1 className="page-title"> used to be near-identical weight (both
+   bold, both ~1.3rem+), so every screen showed two competing headings
+   stacked directly on top of each other ("Administration" then "Admin
+   Portal"). This is now a quiet wayfinding label - smaller, medium
+   weight, muted color - so it reads as "you are here" context rather
+   than a second title fighting the real one below it. */
 .topbar-title {
   font-family: var(--fh);
-  font-size: 1.3rem;
-  font-weight: 800;
-  color: var(--text);
-  letter-spacing: -0.01em;
+  font-size: var(--fs-4);
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
 }
 
 .profile-chip {

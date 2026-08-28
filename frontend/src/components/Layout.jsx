@@ -193,7 +193,9 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
 
                     {workspaceNavItems.length > 0 && (
                         <>
-                            {!effectiveCollapsed && (
+                            {effectiveCollapsed ? (
+                                <div className="sidebar-nav-divider" aria-hidden="true" />
+                            ) : (
                                 <div style={{
                                     fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em',
                                     color: 'var(--text-dim)', padding: '18px 16px 6px'
