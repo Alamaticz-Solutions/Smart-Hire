@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { X, Edit } from 'lucide-react'
 import Chip from './Chip'
+import Tag from './Tag'
 import { useModalA11y } from '../../hooks/useModalA11y'
 
 /**
@@ -32,28 +33,22 @@ export default function ExpandableCell({ value, onEdit }) {
     return (
         <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, overflow: 'hidden' }}>
-                <span style={{
-                    background: 'rgba(var(--sky-rgb), 0.12)', border: '1px solid rgba(var(--sky-rgb), 0.25)',
-                    borderRadius: 5, padding: '2px 7px', fontSize: '0.73rem',
-                    color: 'var(--sky-dim)', whiteSpace: 'nowrap', overflow: 'hidden',
-                    textOverflow: 'ellipsis', lineHeight: '1.7', maxWidth: 'calc(100% - 64px)',
-                    display: 'inline-block',
-                }}>{items[0]}</span>
+                <Tag style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 'calc(100% - 64px)' }}>
+                    {items[0]}
+                </Tag>
 
                 {items.length > 1 && (
-                    <button ref={btnRef}
+                    <Tag
+                        as="button"
+                        ref={btnRef}
                         type="button"
                         onClick={openPopup}
                         aria-label={`Show ${items.length - 1} more`}
-                        style={{
-                            background: 'rgba(var(--gold-rgb), 0.13)', border: '1px solid rgba(var(--gold-rgb), 0.35)',
-                            borderRadius: 5, padding: '2px 7px', fontSize: '0.7rem',
-                            color: 'var(--gold)', cursor: 'pointer', whiteSpace: 'nowrap',
-                            lineHeight: '1.7', fontFamily: 'var(--fh)', fontWeight: 700,
-                            flexShrink: 0,
-                        }}>
+                        tone="gold"
+                        style={{ cursor: 'pointer', fontFamily: 'var(--fh)', fontWeight: 700, flexShrink: 0 }}
+                    >
                         +{items.length - 1}
-                    </button>
+                    </Tag>
                 )}
             </div>
 
