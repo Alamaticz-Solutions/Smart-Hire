@@ -66,12 +66,12 @@ export default function ExpandableCell({ value, onEdit }) {
                         style={{
                             position: 'relative',
                             background: 'var(--card-bg)', border: '1px solid var(--border)',
-                            borderRadius: 12, padding: '16px 20px', width: 340, maxWidth: '90%',
+                            borderRadius: 'var(--r-md)', padding: '16px 20px', width: 340, maxWidth: '90%',
                             boxShadow: '0 20px 50px rgba(0, 0, 0, 0.45)',
                         }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                             <span id="expandable-cell-modal-title" style={{
-                                fontSize: '0.78rem', color: 'var(--gold)', fontFamily: 'var(--fh)',
+                                fontSize: 'var(--fs-2)', color: 'var(--gold)', fontFamily: 'var(--fh)',
                                 fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05rem'
                             }}>
                                 All ({items.length})
@@ -90,13 +90,13 @@ export default function ExpandableCell({ value, onEdit }) {
                             marginTop: 12, borderTop: '1px solid var(--border)',
                             paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                         }}>
-                            <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)', opacity: 0.7 }}>
+                            <span style={{ fontSize: 'var(--fs-2)', color: 'var(--text-dim)', opacity: 0.7 }}>
                                 Double-click cell to edit full text
                             </span>
                             <button onClick={() => { setOpen(false); onEdit() }}
                                 style={{
                                     background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
-                                    borderRadius: 6, color: 'var(--gold)', fontSize: '0.75rem', cursor: 'pointer',
+                                    borderRadius: 'var(--r-sm)', color: 'var(--gold)', fontSize: 'var(--fs-2)', cursor: 'pointer',
                                     padding: '4px 12px', fontFamily: 'var(--fh)', fontWeight: 700,
                                     display: 'inline-flex', alignItems: 'center', gap: '4px'
                                 }}>

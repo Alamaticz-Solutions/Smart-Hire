@@ -39,7 +39,7 @@ export default function ColumnVisibilityPopover({
                     }}
                 >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
-                        <span style={{ fontWeight: 'bold', fontSize: '0.85rem', color: 'var(--gold)' }}>{title}</span>
+                        <span style={{ fontWeight: 'bold', fontSize: 'var(--fs-4)', color: 'var(--gold)' }}>{title}</span>
                         <button
                             onClick={() => setShowColVisibility(false)}
                             style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: 0 }}
@@ -53,7 +53,7 @@ export default function ColumnVisibilityPopover({
                         <button
                             onClick={handleShowAllColumns}
                             style={{
-                                flex: 1, padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px',
+                                flex: 1, padding: '4px 8px', fontSize: 'var(--fs-2)', borderRadius: '4px',
                                 border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', cursor: 'pointer'
                             }}
                         >
@@ -62,7 +62,7 @@ export default function ColumnVisibilityPopover({
                         <button
                             onClick={handleHideAllColumns}
                             style={{
-                                flex: 1, padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px',
+                                flex: 1, padding: '4px 8px', fontSize: 'var(--fs-2)', borderRadius: '4px',
                                 border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', cursor: 'pointer'
                             }}
                         >
@@ -77,7 +77,7 @@ export default function ColumnVisibilityPopover({
                                 <label
                                     key={c.key}
                                     style={{
-                                        display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem',
+                                        display: 'flex', alignItems: 'center', gap: '8px', fontSize: 'var(--fs-3)',
                                         color: isChecked ? 'var(--text)' : 'var(--text-dim)', cursor: 'pointer',
                                         padding: '4px 6px', borderRadius: '4px', transition: 'all 0.15s',
                                         background: isChecked ? 'transparent' : 'rgba(var(--sky-rgb), 0.02)'

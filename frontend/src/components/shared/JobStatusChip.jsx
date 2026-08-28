@@ -12,8 +12,8 @@ const STATUS_TOKEN = {
 }
 
 const SIZES = {
-    sm: { fontSize: '0.72rem', padding: '3px 8px', borderRadius: '12px' },
-    md: { fontSize: '0.8rem', padding: '4px 10px', borderRadius: '20px' },
+    sm: { fontSize: 'var(--fs-2)', padding: '3px 8px', borderRadius: '12px' },
+    md: { fontSize: 'var(--fs-3)', padding: '4px 10px', borderRadius: '20px' },
 }
 
 export default function JobStatusChip({ status, size = 'md' }) {

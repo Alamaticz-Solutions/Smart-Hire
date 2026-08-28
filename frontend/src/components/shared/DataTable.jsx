@@ -48,8 +48,8 @@ export default function DataTable({
     const virtualItems = rowVirtualizer.getVirtualItems()
 
     return (
-        <div ref={tableScrollRef} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', borderRadius: 10, border: '1px solid var(--border)', width: '100%' }}>
-            <table style={{ width: getTableWidth(), tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
+        <div ref={tableScrollRef} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', borderRadius: 'var(--r-md)', border: '1px solid var(--border)', width: '100%' }}>
+            <table style={{ width: getTableWidth(), tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--fs-3)' }}>
                 <colgroup>
                     {leadingColumns.map(lc => <col key={lc.key} style={{ width: lc.width }} />)}
                     {activeCols.map(c => <col key={c.key} style={{ width: c.pct }} />)}
@@ -183,7 +183,7 @@ export default function DataTable({
                                                 style={{
                                                     background: 'var(--danger-bg)', border: '1px solid rgba(var(--red-rgb), 0.4)',
                                                     borderRadius: '4px', color: 'var(--danger-fg)', cursor: 'pointer',
-                                                    fontSize: '0.7rem', fontWeight: 'bold', padding: '4px 8px', width: '100%',
+                                                    fontSize: 'var(--fs-1)', fontWeight: 'bold', padding: '4px 8px', width: '100%',
                                                     transition: 'all 0.2s', display: 'inline-flex', alignItems: 'center',
                                                     justifyContent: 'center', gap: '4px'
                                                 }}
@@ -212,7 +212,7 @@ export default function DataTable({
                                         style={{
                                             width: '100%', padding: '5px 8px', borderRadius: '5px',
                                             border: '1px solid var(--border)', background: 'var(--input-bg)',
-                                            color: 'var(--text)', fontSize: '0.75rem', outline: 'none', transition: 'all 0.2s'
+                                            color: 'var(--text)', fontSize: 'var(--fs-2)', outline: 'none', transition: 'all 0.2s'
                                         }}
                                         onFocus={e => {
                                             e.target.style.border = '1px solid var(--gold)';

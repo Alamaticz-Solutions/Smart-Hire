@@ -57,7 +57,7 @@ export default function CellTextModal({ data, onClose }) {
                 </div>
                 <div style={{
                     flex: 1, padding: '24px', overflowY: 'auto',
-                    color: 'var(--text)', fontSize: '0.92rem', lineHeight: '1.5',
+                    color: 'var(--text)', fontSize: 'var(--fs-4)', lineHeight: '1.5',
                     whiteSpace: 'pre-wrap', maxHeight: '50vh', background: 'rgba(0,0,0,0.2)'
                 }}>
                     {data.text}
@@ -70,14 +70,14 @@ export default function CellTextModal({ data, onClose }) {
                     <button
                         onClick={handleCopy}
                         className="btn btn-secondary"
-                        style={{ padding: '6px 12px', fontSize: '0.8rem', gap: '6px', borderColor: 'var(--border)' }}
+                        style={{ padding: '6px 12px', fontSize: 'var(--fs-3)', gap: '6px', borderColor: 'var(--border)' }}
                     >
                         {copied ? <><Check size={14} /> Copied!</> : <><Copy size={14} /> Copy to Clipboard</>}
                     </button>
                     <button
                         onClick={onClose}
                         className="btn btn-primary"
-                        style={{ padding: '6px 16px', fontSize: '0.8rem' }}
+                        style={{ padding: '6px 16px', fontSize: 'var(--fs-3)' }}
                     >
                         Close
                     </button>

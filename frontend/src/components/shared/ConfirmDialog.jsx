@@ -101,12 +101,12 @@ export default function ConfirmDialog({
                         <h2 id="confirm-dialog-title" style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text)', margin: 0 }}>
                             {title}
                         </h2>
-                        <p id="confirm-dialog-message" style={{ fontSize: '0.88rem', color: 'var(--text-muted)', marginTop: '6px', lineHeight: 1.5 }}>
+                        <p id="confirm-dialog-message" style={{ fontSize: 'var(--fs-4)', color: 'var(--text-muted)', marginTop: '6px', lineHeight: 1.5 }}>
                             {message}
                         </p>
                         {confirmText && (
                             <div style={{ marginTop: '12px' }}>
-                                <label htmlFor="confirm-dialog-typed-input" style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '5px' }}>
+                                <label htmlFor="confirm-dialog-typed-input" style={{ display: 'block', fontSize: 'var(--fs-2)', color: 'var(--text-muted)', marginBottom: '5px' }}>
                                     Type <strong style={{ color: 'var(--text)' }}>{confirmText}</strong> to confirm
                                 </label>
                                 <input
