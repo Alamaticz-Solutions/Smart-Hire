@@ -62,6 +62,20 @@ export default function JobsPage() {
             return JSON.parse(sessionStorage.getItem('cached_selected_job')) || null;
         } catch { return null; }
     });
+
+    // G-15: below 900px the fixed 320px job list + detail panel no longer
+    // fit side by side, so collapse to one visible pane at a time - list by
+    // default, switching to the detail panel once a job is selected (same
+    // matchMedia pattern as Layout.jsx's sidebar breakpoints).
+    const [isNarrowWidth, setIsNarrowWidth] = useState(() =>
+        typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches
+    );
+    useEffect(() => {
+        const mq = window.matchMedia('(max-width: 900px)');
+        const handler = (e) => setIsNarrowWidth(e.matches);
+        mq.addEventListener('change', handler);
+        return () => mq.removeEventListener('change', handler);
+    }, []);
     const [candidates, setCandidates] = useState(() => {
         try {
             const initialSelected = JSON.parse(sessionStorage.getItem('cached_selected_job'));
@@ -653,28 +667,45 @@ export default function JobsPage() {
         return true;
     });
 
+    const showSidebarPane = !isNarrowWidth || (!selectedJob && !showNewForm);
+    const showMainPane = !isNarrowWidth || selectedJob || showNewForm;
+
     return (
         <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
-            <JobSidebar
-                isExternal={isExternal}
-                isAdmin={isAdmin}
-                filteredJobs={filteredJobs}
-                selectedJob={selectedJob}
-                setSelectedJob={setSelectedJob}
-                setShowNewForm={setShowNewForm}
-                statusFilter={statusFilter}
-                setStatusFilter={setStatusFilter}
-                activeDropdownJobId={activeDropdownJobId}
-                setActiveDropdownJobId={setActiveDropdownJobId}
-                setShowDropdown={setShowDropdown}
-                handleOpenShareModal={handleOpenShareModal}
-                handleStartEditJob={handleStartEditJob}
-                handleDeleteJob={handleDeleteJob}
-                setViewingSharedList={setViewingSharedList}
-            />
+            {showSidebarPane && (
+                <JobSidebar
+                    isExternal={isExternal}
+                    isAdmin={isAdmin}
+                    filteredJobs={filteredJobs}
+                    selectedJob={selectedJob}
+                    setSelectedJob={setSelectedJob}
+                    setShowNewForm={setShowNewForm}
+                    statusFilter={statusFilter}
+                    setStatusFilter={setStatusFilter}
+                    activeDropdownJobId={activeDropdownJobId}
+                    setActiveDropdownJobId={setActiveDropdownJobId}
+                    setShowDropdown={setShowDropdown}
+                    handleOpenShareModal={handleOpenShareModal}
+                    handleStartEditJob={handleStartEditJob}
+                    handleDeleteJob={handleDeleteJob}
+                    setViewingSharedList={setViewingSharedList}
+                    style={isNarrowWidth ? { width: '100%' } : undefined}
+                />
+            )}
 
             {/* Main Content: Job Details */}
+            {showMainPane && (
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', overflow: 'hidden' }}>
+                {isNarrowWidth && (showNewForm || selectedJob) && (
+                    <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => { setShowNewForm(false); setSelectedJob(null); }}
+                        style={{ margin: '10px 14px 0', alignSelf: 'flex-start', fontSize: '0.8rem', padding: '5px 10px' }}
+                    >
+                        ← Back to jobs
+                    </button>
+                )}
                 {showNewForm ? (
                     <NewJobForm
                         newJob={newJob}
@@ -778,6 +809,7 @@ export default function JobsPage() {
                     />
                 )}
             </div>
+            )}
 
             <EditCandidateModal
                 editingCandidate={editingCandidate}
