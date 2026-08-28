@@ -1,6 +1,33 @@
 import React from 'react';
-import { Share2, X, Loader, Edit } from 'lucide-react';
+import { Share2, X, Loader, Edit, EyeOff } from 'lucide-react';
 import { useModalA11y } from '../../../hooks/useModalA11y';
+
+// S5.7: the Share modal used to give no indication of what an external user
+// would actually see once shared - masking is configured per-user in Admin
+// (hidden_fields), and this is the one place that config's consequence is
+// actually visible to the person granting access. Certifications are always
+// hidden for external accounts server-side (jobs.py's list_job_candidates/
+// get_job_candidates, independent of hidden_fields), so it's listed here
+// unconditionally alongside whatever fields that user's own hidden_fields
+// config adds.
+const FIELD_LABELS = {
+    certifications: 'Certifications', ctc: 'CTC', current_ctc: 'CTC', expected_ctc: 'Expected CTC',
+    phone: 'Phone', mobile: 'Phone', email: 'Email', current_location: 'Current Location',
+    pref_locations: 'Preferred Locations', notice_period: 'Notice Period', ai_reason: 'AI Match Reason',
+}
+function hiddenFieldLabels(user) {
+    const configured = (user.hidden_fields || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+    const all = ['certifications', ...configured]
+    const seen = new Set()
+    const labels = []
+    for (const f of all) {
+        const label = FIELD_LABELS[f] || f
+        if (seen.has(label)) continue
+        seen.add(label)
+        labels.push(label)
+    }
+    return labels
+}
 
 // Extracted from JobsPage.jsx: the job-sharing modal cluster — the
 // "Shared Candidates" viewer (viewingSharedList state) and the "Share Job
@@ -165,9 +192,13 @@ export default function ShareModal({
                                                 }}
                                                 style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--gold)' }}
                                             />
-                                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, minWidth: 0 }}>
                                                 <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{u.full_name}</span>
                                                 <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>@{u.username}</span>
+                                                <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <EyeOff size={11} style={{ flexShrink: 0 }} />
+                                                    Won&apos;t see: {hiddenFieldLabels(u).join(', ')}
+                                                </span>
                                             </div>
                                         </label>
                                     ))}

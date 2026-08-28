@@ -2,6 +2,7 @@ import React from 'react';
 import { ArrowLeft, Share2, MoreVertical, Edit, Trash2, Phone, User, Calendar, Award, Briefcase, DollarSign, Search, Loader } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import apiClient from '../../api/client';
+import JobStatusChip from '../../components/shared/JobStatusChip';
 
 // Extracted from JobsPage.jsx: the selectedJob header section — back button,
 // job actions dropdown, status/type badges, parameter grid, required-skills
@@ -48,26 +49,7 @@ export default function JobDetailPanel({
                         <h2 style={{ fontFamily: 'var(--fh)', color: 'var(--gold)', margin: 0 }}>{selectedJob.title}</h2>
 
                         {/* Status Badge */}
-                        <span style={{
-                            fontSize: '0.8rem',
-                            fontWeight: 600,
-                            padding: '4px 10px',
-                            borderRadius: '20px',
-                            textTransform: 'uppercase',
-                            background: selectedJob.job_status === 'In-progress' ? 'rgba(34, 197, 94, 0.15)' :
-                                        selectedJob.job_status === 'On-hold' ? 'rgba(249, 115, 22, 0.15)' :
-                                        selectedJob.job_status === 'Closed' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(33, 158, 188, 0.15)',
-                            color: selectedJob.job_status === 'In-progress' ? 'var(--success-fg)' :
-                                   selectedJob.job_status === 'On-hold' ? 'var(--warning-fg)' :
-                                   selectedJob.job_status === 'Closed' ? 'var(--danger-fg)' : 'var(--info-fg)',
-                            border: `1px solid ${
-                                selectedJob.job_status === 'In-progress' ? 'rgba(34, 197, 94, 0.3)' :
-                                selectedJob.job_status === 'On-hold' ? 'rgba(249, 115, 22, 0.3)' :
-                                selectedJob.job_status === 'Closed' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(33, 158, 188, 0.3)'
-                            }`
-                        }}>
-                            ● {selectedJob.job_status || 'In-progress'}
-                        </span>
+                        <JobStatusChip status={selectedJob.job_status} size="md" />
 
                         {/* Job Type Badge */}
                         <span style={{
@@ -325,15 +307,25 @@ export default function JobDetailPanel({
             </div>
 
             {!isExternal && (
-                <button
-                    className="btn btn-primary"
-                    onClick={handleMatch}
-                    disabled={isMatching}
-                    style={{ width: 'fit-content' }}
-                >
-                    {isMatching ? <Loader className="spin" size={16} /> : <Search size={16} />}
-                    {isMatching ? 'Finding Perfect Matches...' : 'Match Job Description'}
-                </button>
+                <div>
+                    <button
+                        className="btn btn-primary"
+                        onClick={handleMatch}
+                        disabled={isMatching}
+                        style={{ width: 'fit-content' }}
+                    >
+                        {isMatching ? <Loader className="spin" size={16} /> : <Search size={16} />}
+                        {isMatching ? 'Scoring candidates…' : 'Match Job Description'}
+                    </button>
+                    {/* S5.3: the action previously had no explanation of what it does,
+                        how long it takes, or what "matched" means - and both its own
+                        label and the empty state below overclaimed "perfect matches". */}
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '6px', maxWidth: '480px' }}>
+                        {isMatching
+                            ? 'Scoring every candidate in your database against this job’s requirements - usually well under a minute.'
+                            : 'Scores every candidate in your database against this job’s requirements and adds the closest matches to the Matched tab.'}
+                    </p>
+                </div>
             )}
         </div>
     );

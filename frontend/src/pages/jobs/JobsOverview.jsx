@@ -1,5 +1,6 @@
 import React from 'react';
 import { Briefcase, Search, X, Share2, UserCheck, ChevronRight, Trash2 } from 'lucide-react';
+import JobStatusChip from '../../components/shared/JobStatusChip';
 
 // Extracted from JobsPage.jsx: the dashboard shown when no job is selected and
 // the "new job" form isn't open — search bar, status stat tiles, and the jobs
@@ -168,26 +169,7 @@ export default function JobsOverview({
                             >
                                 {/* Status and Type Badges top row */}
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span style={{
-                                        fontSize: '0.72rem',
-                                        fontWeight: 700,
-                                        padding: '3px 8px',
-                                        borderRadius: '12px',
-                                        textTransform: 'uppercase',
-                                        background: job.job_status === 'In-progress' ? 'rgba(34, 197, 94, 0.12)' :
-                                                    job.job_status === 'On-hold' ? 'rgba(249, 115, 22, 0.12)' :
-                                                    job.job_status === 'Closed' ? 'rgba(239, 68, 68, 0.12)' : 'rgba(33, 158, 188, 0.12)',
-                                        color: job.job_status === 'In-progress' ? 'var(--success-fg)' :
-                                               job.job_status === 'On-hold' ? 'var(--warning-fg)' :
-                                               job.job_status === 'Closed' ? 'var(--danger-fg)' : 'var(--info-fg)',
-                                        border: `1px solid ${
-                                            job.job_status === 'In-progress' ? 'rgba(34, 197, 94, 0.2)' :
-                                            job.job_status === 'On-hold' ? 'rgba(249, 115, 22, 0.2)' :
-                                            job.job_status === 'Closed' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(33, 158, 188, 0.2)'
-                                        }`
-                                    }}>
-                                        ● {job.job_status || 'In-progress'}
-                                    </span>
+                                    <JobStatusChip status={job.job_status} size="sm" />
                                     <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)', background: 'rgba(var(--sky-rgb), 0.08)', padding: '2px 8px', borderRadius: '4px' }}>
                                         {job.job_type || 'Full time'}
                                     </span>

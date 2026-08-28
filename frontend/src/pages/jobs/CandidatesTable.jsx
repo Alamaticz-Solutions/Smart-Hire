@@ -1,6 +1,7 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Search, UserCheck, ChevronRight, Edit, Trash2, Download, FileText, Mail, Star } from 'lucide-react';
+import { Search, UserCheck, ChevronRight, Edit, Trash2, Download, FileText, Mail, Star, MoreVertical } from 'lucide-react';
 import apiClient from '../../api/client';
 import { exportToExcel, formatCandidatesForExcel } from '../../utils/excelUtils';
 import ExpandableCell from '../../components/shared/ExpandableCell';
@@ -21,6 +22,12 @@ import DataTable from '../../components/shared/DataTable';
 // or S.No here) and passes no `onDeleteColumn`, so DataTable's column-header
 // action is always "hide" — this table never supported deleting a column,
 // unlike Upload's.
+const menuItemStyle = (color) => ({
+    width: '100%', padding: '10px 14px', background: 'none', border: 'none',
+    color, textAlign: 'left', cursor: 'pointer', fontSize: '0.85rem',
+    display: 'flex', alignItems: 'center', gap: '8px',
+})
+
 export default function CandidatesTable({
     isExternal,
     selectedJob,
@@ -77,7 +84,46 @@ export default function CandidatesTable({
     // `overflowY`/`maxHeight` added to the scroll wrapper below) is a deliberate,
     // approved UX change specifically to make that possible, matching the
     // `maxHeight: '70vh'` pattern Upload's table already used.
+    // S5.4: the actions cell used to render up to 6 buttons (Select/Deselect,
+    // Send Gmail, Edit, Remove, Delete) at 0.73rem - below the 12px legibility
+    // floor and far below a 44px target, three different color treatments.
+    // Collapsed to one primary action (context-dependent on the active tab)
+    // plus an overflow menu for the rest, reusing the same MoreVertical
+    // dropdown pattern JobSidebar.jsx already uses for per-job actions.
+    //
+    // The menu is portaled to document.body rather than positioned relative
+    // to its trigger: this row sits inside DataTable's scrollable wrapper
+    // (overflow:auto, for the horizontal/vertical table scroll), which clips
+    // any absolutely-positioned descendant that escapes its bounds - an
+    // in-flow dropdown here would render invisibly clipped for any row near
+    // the table's right/bottom edge. `menuAnchor` carries the trigger
+    // button's viewport rect (captured on open) so the portaled menu can
+    // position itself with `position: fixed` outside that clipping context.
+    const [menuAnchor, setMenuAnchor] = useState(null) // { rowId, top, left } | null
+
     const tableScrollRef = useRef(null)
+
+    useEffect(() => {
+        if (!menuAnchor) return
+        const close = () => setMenuAnchor(null)
+        const scrollEl = tableScrollRef.current
+        scrollEl?.addEventListener('scroll', close)
+        window.addEventListener('resize', close)
+        return () => {
+            scrollEl?.removeEventListener('scroll', close)
+            window.removeEventListener('resize', close)
+        }
+    }, [menuAnchor])
+
+    // filteredCandidates gets a new reference on any background refresh
+    // (e.g. JobsPage's match-status poll updating selectedJob/jobs) as well
+    // as on user filtering. Since this table is virtualized, a row can
+    // remount at a different index between such refreshes while an open
+    // menu's captured rect/rowId stay pointed at the old position — close
+    // proactively rather than risk a menu anchored to stale coordinates.
+    useEffect(() => {
+        setMenuAnchor(null)
+    }, [filteredCandidates])
     const rowVirtualizer = useVirtualizer({
         count: filteredCandidates.length,
         getScrollElement: () => tableScrollRef.current,
@@ -105,50 +151,97 @@ export default function CandidatesTable({
                             boxShadow: '-3px 0 6px rgba(0,0,0,0.15)', overflow: 'visible', verticalAlign: 'middle'
                         }}
                     >
-                        <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+                        <div style={{ display: 'flex', gap: 6, justifyContent: 'center', alignItems: 'center' }}>
                             {activeTab === 'matched' ? (
-                                <button className="btn btn-primary" onClick={() => handleStatusChange(row.id, 'selected')} style={{ fontSize: '0.73rem', padding: '5px 9px' }} title="Select candidate for job">
+                                <button className="btn btn-primary" onClick={() => handleStatusChange(row.id, 'selected')} style={{ fontSize: '0.78rem', padding: '6px 10px' }} title="Select candidate for job">
                                     Select <ChevronRight size={12} />
                                 </button>
                             ) : (
-                                <>
-                                    <button className="btn btn-secondary" onClick={() => handleStatusChange(row.id, 'matched')} style={{ fontSize: '0.73rem', padding: '5px 9px', borderColor: 'var(--border)' }} title="Remove Selection">
-                                        Deselect
-                                    </button>
-                                    {row.email && (
-                                        <button
-                                            className="btn btn-primary"
-                                            onClick={() => {
-                                                const subject = encodeURIComponent(`Congratulations! You have been selected for ${selectedJob.title} at ${selectedJob.client_name || 'Alamaticz'}`);
-                                                const body = encodeURIComponent(`Dear ${row.full_name},\n\nWe are pleased to inform you that you have been selected for the position of ${selectedJob.title} at ${selectedJob.client_name || 'our company'}.\n\nWe were highly impressed by your experience and credentials.\nOur recruitment team will contact you shortly with the official offer letter and next onboarding steps.\n\nBest regards,\nRecruitment Team\nAlamaticz Solutions`);
-                                                const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${row.email}&su=${subject}&body=${body}`;
-                                                window.open(gmailUrl, '_blank');
-                                            }}
-                                            style={{ fontSize: '0.73rem', padding: '5px 9px', background: 'rgba(var(--sky-rgb), 0.15)', borderColor: 'rgba(var(--sky-rgb), 0.3)', color: 'var(--sky-dim)' }}
-                                            title="Send congratulations email via Gmail"
-                                        >
-                                            <Mail size={12} /> Send Gmail
-                                        </button>
-                                    )}
-                                </>
+                                <button className="btn btn-secondary" onClick={() => handleStatusChange(row.id, 'matched')} style={{ fontSize: '0.78rem', padding: '6px 10px', borderColor: 'var(--border)' }} title="Remove Selection">
+                                    Deselect
+                                </button>
                             )}
-                            <button className="btn btn-secondary" onClick={() => {
-                                setEditingCandidate(row);
-                                setEditName(row.full_name || row.filename || '');
-                                setEditExp(row.total_experience || '0');
-                                setEditSkills(row.skills || '');
-                                setEditReason(row.ai_reason || '');
-                                setEditCurrentLocation(row.current_location || '');
-                                setEditPrefLocations(row.pref_locations || '');
-                            }} style={{ fontSize: '0.73rem', padding: '5px 9px', borderColor: 'rgba(var(--gold-rgb), 0.3)', color: 'var(--gold)' }} title="Edit candidate details">
-                                <Edit size={12} /> Edit
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (menuAnchor?.rowId === row.id) { setMenuAnchor(null); return }
+                                    const r = e.currentTarget.getBoundingClientRect();
+                                    setMenuAnchor({ rowId: row.id, top: r.bottom + 4, left: r.right - 190 });
+                                }}
+                                aria-label="More actions"
+                                aria-haspopup="menu"
+                                aria-expanded={menuAnchor?.rowId === row.id}
+                                style={{
+                                    background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-dim)',
+                                    cursor: 'pointer', width: 30, height: 30, borderRadius: 'var(--r-md)',
+                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                                }}
+                            >
+                                <MoreVertical size={15} />
                             </button>
-                            <button className="btn btn-secondary" onClick={() => handleRemoveFromJob(row.id)} style={{ fontSize: '0.73rem', padding: '5px 9px', borderColor: 'rgba(var(--sky-rgb), 0.3)', color: 'var(--sky)' }} title="Remove candidate from this job description mapping">
-                                Remove
-                            </button>
-                            <button className="btn btn-danger" onClick={() => handleDeleteCandidate(row.id)} style={{ fontSize: '0.73rem', padding: '5px 9px' }} title="Delete candidate permanently from database">
-                                <Trash2 size={12} /> Delete
-                            </button>
+                            {menuAnchor?.rowId === row.id && createPortal(
+                                <>
+                                    <div style={{ position: 'fixed', inset: 0, zIndex: 998 }} onClick={() => setMenuAnchor(null)} />
+                                    <div
+                                        role="menu"
+                                        style={{
+                                            position: 'fixed', top: menuAnchor.top, left: menuAnchor.left, zIndex: 999, width: 190,
+                                            background: 'var(--navy-dark)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)',
+                                            boxShadow: '0 10px 25px rgba(0,0,0,0.4)', overflow: 'hidden',
+                                        }}
+                                    >
+                                        {activeTab === 'selected' && row.email && (
+                                            <button
+                                                role="menuitem"
+                                                onClick={() => {
+                                                    setMenuAnchor(null);
+                                                    const subject = encodeURIComponent(`Congratulations! You have been selected for ${selectedJob.title} at ${selectedJob.client_name || 'Alamaticz'}`);
+                                                    const body = encodeURIComponent(`Dear ${row.full_name},\n\nWe are pleased to inform you that you have been selected for the position of ${selectedJob.title} at ${selectedJob.client_name || 'our company'}.\n\nWe were highly impressed by your experience and credentials.\nOur recruitment team will contact you shortly with the official offer letter and next onboarding steps.\n\nBest regards,\nRecruitment Team\nAlamaticz Solutions`);
+                                                    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${row.email}&su=${subject}&body=${body}`;
+                                                    window.open(gmailUrl, '_blank');
+                                                }}
+                                                style={menuItemStyle('var(--sky-dim)')}
+                                            >
+                                                <Mail size={14} /> Send Gmail
+                                            </button>
+                                        )}
+                                        <button
+                                            role="menuitem"
+                                            onClick={() => {
+                                                setMenuAnchor(null);
+                                                setEditingCandidate(row);
+                                                setEditName(row.full_name || row.filename || '');
+                                                setEditExp(row.total_experience || '0');
+                                                setEditSkills(row.skills || '');
+                                                setEditReason(row.ai_reason || '');
+                                                setEditCurrentLocation(row.current_location || '');
+                                                setEditPrefLocations(row.pref_locations || '');
+                                            }}
+                                            style={menuItemStyle('var(--gold)')}
+                                        >
+                                            <Edit size={14} /> Edit details
+                                        </button>
+                                        <button
+                                            role="menuitem"
+                                            onClick={() => { setMenuAnchor(null); handleRemoveFromJob(row.id) }}
+                                            style={menuItemStyle('var(--sky)')}
+                                            title="Remove candidate from this job description mapping"
+                                        >
+                                            Remove from job
+                                        </button>
+                                        <button
+                                            role="menuitem"
+                                            onClick={() => { setMenuAnchor(null); handleDeleteCandidate(row.id) }}
+                                            style={{ ...menuItemStyle('var(--danger-fg)'), borderTop: '1px solid var(--border)' }}
+                                            title="Delete candidate permanently from database"
+                                        >
+                                            <Trash2 size={14} /> Delete candidate
+                                        </button>
+                                    </div>
+                                </>,
+                                document.body
+                            )}
                         </div>
                     </td>
                 )
@@ -380,7 +473,11 @@ export default function CandidatesTable({
                     <div style={{ textAlign: 'center', color: 'var(--text-dim)', marginTop: '2rem', padding: '3rem', border: '1px dashed var(--border)', borderRadius: '12px' }}>
                         <Search size={32} style={{ opacity: 0.3, marginBottom: '10px' }} />
                         <p style={{ margin: 0 }}>
-                            {isExternal ? 'Your application details are not matched with this job description yet.' : (activeTab === 'matched' ? 'No candidates matched yet. Click "Match Job Description" to find perfect matches in your database.' : 'No candidates selected yet. Select them from the Matched tab.')}
+                            {isExternal
+                                ? 'None of your submitted candidates have matched this job yet — check back after the recruiting team runs matching.'
+                                : (activeTab === 'matched'
+                                    ? 'No candidates matched yet. Click “Match Job Description” to score your candidate database against this job.'
+                                    : 'No candidates selected yet. Select them from the Matched tab.')}
                         </p>
                     </div>
                 ) : (
