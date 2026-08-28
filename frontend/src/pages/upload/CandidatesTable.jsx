@@ -263,7 +263,10 @@ export default function CandidatesTable({
                     const s = String(val || 'New').trim();
                     const statusClass = 'status-' + s.toLowerCase().replace(/\s+/g, '-');
                     display = (
-                        <span className={`status-chip ${statusClass}`}>
+                        <span
+                            className={`status-chip ${statusClass}`}
+                            title={s === 'Error' && row.error_detail ? row.error_detail : undefined}
+                        >
                             {s}
                         </span>
                     );

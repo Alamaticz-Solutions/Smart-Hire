@@ -171,7 +171,7 @@ def _get_candidates_list(
                 "linkedin, created_by, timestamp, source, cdh_exp, expected_ctc, percentage_hike, "
                 "candidate_interview_status, availability_in_days, current_location, pref_locations, "
                 "current_client, domain, tier, certification_version, "
-                "sender_email, is_qualified, is_approved, file_url"
+                "sender_email, is_qualified, is_approved, file_url, error_detail"
             )
             # LIMIT/OFFSET are only ever set to a real value from the paginated
             # branch of GET /api/candidates below -- every other caller (the

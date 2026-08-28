@@ -707,6 +707,12 @@ def process_resume_logic(
 
         traceback.print_exc()
         error_msg = str(e)[:200]
+        # Same string that used to only ever reach the log line below (which
+        # nothing persists - stdout only, no log file) - now also stored on
+        # the row itself, since there was previously no way to answer "why
+        # did this fail" after the fact without having watched the terminal
+        # at the exact moment it happened.
+        error_detail = f"{type(e).__name__}: {error_msg}"[:500]
         logger.error(f"Error processing resume {safe_name}: {error_msg}")
         # Instead of deleting the placeholder (which makes the candidate disappear),
         # update it with a failed status so the user can see it failed and retry.
@@ -715,8 +721,8 @@ def process_resume_logic(
                 cur = conn.cursor()
                 if placeholder_id:
                     cur.execute(
-                        "UPDATE candidate_metadata SET full_name = ?, candidate_status = ? WHERE id = ?",
-                        (f"❌ Processing Failed: {safe_name}", "Error", placeholder_id),
+                        "UPDATE candidate_metadata SET full_name = ?, candidate_status = ?, error_detail = ? WHERE id = ?",
+                        (f"❌ Processing Failed: {safe_name}", "Error", error_detail, placeholder_id),
                     )
                     conn.commit()
         except Exception as db_err:

@@ -230,7 +230,13 @@ def init_db():
         'is_approved': 'INTEGER DEFAULT 1',
         'created_by': "TEXT DEFAULT 'admin'",
         'file_bytes': 'BYTEA',
-        'file_url': 'TEXT'
+        'file_url': 'TEXT',
+        # The only way to find out why a candidate ended up candidate_status
+        # 'Error' was to have been watching stdout at the exact moment it
+        # happened - logs aren't persisted to a file, and nothing was ever
+        # stored on the row itself. Same str(e)[:200] resume_processing.py
+        # already computed and threw away into a log line.
+        'error_detail': 'TEXT'
     }
     for col, dtype in new_cols.items():
         if col not in existing:
