@@ -143,12 +143,19 @@ export default function CandidatesTable({
             {activeCols.map(({ key }) => {
                 /* ── Actions column ── */
                 if (key === '_actions') return (
+                    // Was position:sticky;right:0 - on a table narrower than
+                    // its viewport (any job with few visible columns) the
+                    // pinned cell's own opaque background sat on top of
+                    // whatever regular column hadn't scrolled out from
+                    // under it yet, reading as the Actions column randomly
+                    // overlapping mid-table content instead of living at a
+                    // fixed right edge. A normal scrolling column doesn't
+                    // have that failure mode.
                     <td
                         key={key}
                         style={{
-                            ...TD_BASE, textAlign: 'center', position: 'sticky', right: 0, zIndex: 10,
-                            background: ri % 2 === 0 ? 'var(--input-bg)' : 'var(--card-bg)',
-                            boxShadow: '-3px 0 6px rgba(0,0,0,0.15)', overflow: 'visible', verticalAlign: 'middle'
+                            ...TD_BASE, textAlign: 'center',
+                            overflow: 'visible', verticalAlign: 'middle'
                         }}
                     >
                         <div style={{ display: 'flex', gap: 6, justifyContent: 'center', alignItems: 'center' }}>

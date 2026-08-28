@@ -92,12 +92,16 @@ export default function DataTable({
                                     onDrop={(e) => !isActions && handleDrop(e, c.key)}
                                     style={{
                                         ...TH,
+                                        // isActions used to also get position:sticky;right:0 here
+                                        // (and in the filter-row <th> and renderRow's <td> below) -
+                                        // see jobs/CandidatesTable.jsx's Actions cell comment for
+                                        // why that read as "randomly overlapping" rather than
+                                        // living at a clean fixed edge. Vertical stickiness (top:0,
+                                        // same as every other header) is unrelated and kept.
                                         position: 'sticky',
                                         top: 0,
-                                        right: isActions ? 0 : undefined,
-                                        zIndex: isActions ? 15 : 12,
+                                        zIndex: 12,
                                         background: backgroundStyle,
-                                        boxShadow: isActions ? '-3px 0 6px rgba(0,0,0,0.15)' : undefined,
                                         cursor: isActions ? 'default' : (isDragged ? 'grabbing' : 'grab'),
                                         opacity: isDragged ? 0.4 : 1,
                                         borderLeft: (isDragTarget && !isDragged) ? '2px dashed var(--gold)' : '2px dashed transparent',
@@ -177,9 +181,8 @@ export default function DataTable({
                                         key="filter-_actions"
                                         style={{
                                             padding: '6px 10px', borderBottom: '2px solid var(--border)',
-                                            position: 'sticky', top: '38px', right: 0, zIndex: 14,
-                                            background: 'rgba(var(--navy-dark-rgb), 0.95)',
-                                            boxShadow: '-3px 0 6px rgba(0,0,0,0.15)', textAlign: 'center'
+                                            position: 'sticky', top: '38px', zIndex: 11,
+                                            background: 'rgba(var(--navy-rgb), 0.97)', textAlign: 'center'
                                         }}
                                     >
                                         {hasAnyFilter && (
