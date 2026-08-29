@@ -65,6 +65,29 @@ os.makedirs(os.path.dirname(STATS_DB), exist_ok=True)
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
 DEBUG = ENVIRONMENT not in ("production", "prod")
 
+
+def _env_flag(name: str, default: str = "false") -> bool:
+    return os.getenv(name, default).strip().lower() in ("1", "true", "yes", "on")
+
+
+# These two are deliberately NOT derived from ENVIRONMENT/DEBUG: neither this
+# repo's local dev setup nor its current deployment sets ENVIRONMENT at all,
+# so keying safety-critical behavior off it would make the "safe" branch the
+# one nobody is actually running. Each defaults to the safe/closed value
+# regardless of ENVIRONMENT, and requires its own explicit opt-in.
+#
+# ALLOW_OTP_IN_RESPONSE: the forgot-password OTP has no real SMS/email
+# delivery channel yet, so it used to always be echoed back in the API
+# response - a full unauthenticated account-takeover path once combined with
+# an enumerable mobile number. Off by default; a developer testing the reset
+# flow locally sets this explicitly rather than getting it for free.
+ALLOW_OTP_IN_RESPONSE = _env_flag("ALLOW_OTP_IN_RESPONSE")
+
+# SHOW_ERROR_DETAIL: whether an unhandled exception's message reaches the
+# client (main.py's catch-all handler) instead of a generic "Internal server
+# error". Off by default for the same reason.
+SHOW_ERROR_DETAIL = _env_flag("SHOW_ERROR_DETAIL")
+
 # ── AI / LLM ─────────────────────────────────────────────────────────────────
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 HF_TOKEN = os.getenv("HF_TOKEN", "")

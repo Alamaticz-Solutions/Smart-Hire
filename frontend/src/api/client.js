@@ -98,5 +98,19 @@ export default apiClient;
  * @returns {string} The full URL to the static asset.
  */
 export function getStaticUrl(filename) {
-    return `${BASE_URL}/static/${filename}`;
+    // /static/{filename} now requires a verified session (previously fully
+    // open to anyone who knew/guessed a filename). This URL is handed
+    // directly to the browser (<iframe src>, download links) rather than
+    // fetched through apiClient, so the usual x-session-token header never
+    // reaches it - the same token is appended as a query param instead,
+    // which the endpoint verifies itself.
+    let token = null;
+    try {
+        token = JSON.parse(localStorage.getItem('hire_ai_user'))?.token || null;
+    } catch {
+        // Malformed/missing localStorage value: fall through with no token;
+        // the request 401s server-side same as any other unauthenticated call.
+    }
+    const url = `${BASE_URL}/static/${filename}`;
+    return token ? `${url}?token=${encodeURIComponent(token)}` : url;
 }

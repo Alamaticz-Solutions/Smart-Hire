@@ -47,7 +47,7 @@ from app.core.config import PROJECT_ROOT, STATS_DB, UPLOAD_DIR  # noqa: E402
 from app.core.logging import get_logger  # noqa: E402
 from app.db.init_db import init_db  # noqa: E402
 from app.db.postgres_adapter import closeall_pool, patch_if_configured  # noqa: E402
-from app.core.config import ENVIRONMENT  # noqa: E402
+from app.core.config import ENVIRONMENT, SHOW_ERROR_DETAIL  # noqa: E402
 from app.services.ai_clients import get_models  # noqa: E402
 from app.services.auth import get_user_info, is_admin_or_hr, is_user_approved  # noqa: E402
 from app.services.email_worker import poll_emails_and_process  # noqa: E402
@@ -188,7 +188,7 @@ async def verify_session_middleware(request: Request, call_next):
 # resumes have no corresponding file under UPLOAD_DIR at all. Both mechanisms
 # are preserved here, in their original order, unchanged.
 @app.get("/static/{filename}")
-def serve_file_from_db(filename: str, request: Request):
+def serve_file_from_db(filename: str, request: Request, token: str | None = None):
     # Previously had zero permission check - anyone who knew or guessed a
     # filename (e.g. by watching network requests, or the sequential/
     # predictable names the upload flow produces) could pull any candidate's
@@ -198,7 +198,18 @@ def serve_file_from_db(filename: str, request: Request):
     # same ownership rule used for candidate records: admin/hr sees
     # everything, everyone else only their own uploads or a job explicitly
     # shared with them.
+    #
+    # This route is hit directly by the browser (<iframe src>, download
+    # links) via app.services... getStaticUrl(), not through the apiClient
+    # axios instance - so the `x-session-token` header the auth middleware
+    # looks for is never attached, and verify_session_middleware never
+    # populates `x-user-username` for these requests. A `?token=` query
+    # param carrying the same session token is verified here directly as a
+    # fallback, and getStaticUrl() appends it precisely so this endpoint
+    # keeps working after the auth requirement was added.
     username = request.headers.get("x-user-username")
+    if not username and token:
+        username = verify_session_token(token)
     if not username or not is_user_approved(username):
         raise HTTPException(status_code=401, detail="Not authenticated")
 
@@ -316,6 +327,6 @@ async def catch_all_unhandled(request: Request, exc: Exception):
     library versions). Full detail still goes to the server log either way.
     """
     logger.error("Unhandled exception on %s %s: %s", request.method, request.url.path, exc, exc_info=True)
-    if ENVIRONMENT not in ("production", "prod"):
+    if SHOW_ERROR_DETAIL:
         raise exc
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})

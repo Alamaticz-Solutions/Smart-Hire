@@ -374,7 +374,7 @@ def request_otp(req: ForgotPasswordRequest, request: Request):
     logger.info(f"[OTP SIMULATION] Password reset OTP for mobile {mobile}: {otp}")
 
     res_data = {"message": generic_msg}
-    if config.DEBUG:
+    if config.ALLOW_OTP_IN_RESPONSE:
         res_data["otp"] = otp
     return res_data
 
