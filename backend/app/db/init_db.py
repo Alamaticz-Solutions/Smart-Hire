@@ -308,6 +308,18 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_candidate_metadata_timestamp ON candidate_metadata (timestamp)",
         "CREATE INDEX IF NOT EXISTS idx_jobs_created_by_lower ON jobs (LOWER(created_by))",
         "CREATE INDEX IF NOT EXISTS idx_job_candidates_candidate_id ON job_candidates (candidate_id)",
+        # job_shares' PK is (job_id, username) - username is the TRAILING
+        # column of that composite key, so it gets none of the leftmost-
+        # prefix benefit job_id gets from the same PK. The external-user
+        # "which jobs are shared with me" query filters on
+        # LOWER(js.username) alone (jobs.py's list_jobs), which was a full
+        # table scan without this.
+        "CREATE INDEX IF NOT EXISTS idx_job_shares_username_lower ON job_shares (LOWER(username))",
+        # activity_logs only ever grows and is queried as ORDER BY timestamp
+        # DESC LIMIT N (the activity feed, polled every 30s while open) -
+        # without this, Postgres sorts the whole table before applying the
+        # limit, on every poll.
+        "CREATE INDEX IF NOT EXISTS idx_activity_logs_timestamp ON activity_logs (timestamp)",
     ):
         try:
             cur.execute(index_sql)
