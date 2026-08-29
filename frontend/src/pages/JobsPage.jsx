@@ -57,6 +57,18 @@ export default function JobsPage() {
             return JSON.parse(sessionStorage.getItem('cached_jobs')) || [];
         } catch { return []; }
     });
+    // "Why does switching pages take so long": on a first visit this session
+    // (no cached_jobs yet), jobs started empty with no loading flag at all,
+    // so JobSidebar's "No jobs found matching the selected status" empty
+    // state rendered immediately and then silently got replaced by the real
+    // list once loadJobs() resolved - a false "nothing here" flash that
+    // reads as the page being broken/slow rather than still loading. Only
+    // true when there's nothing cached to show in the meantime; a cached
+    // list (the common case - revisiting Jobs later in the same session)
+    // still renders instantly with no loading flash at all.
+    const [loadingJobs, setLoadingJobs] = useState(() => {
+        try { return !sessionStorage.getItem('cached_jobs'); } catch { return true; }
+    });
     const [selectedJob, setSelectedJob] = useState(() => {
         try {
             return JSON.parse(sessionStorage.getItem('cached_selected_job')) || null;
@@ -299,7 +311,9 @@ export default function JobsPage() {
                 if (updated) sessionStorage.setItem('cached_selected_job', JSON.stringify(updated));
                 return updated || prev;
             });
+            setLoadingJobs(false);
         } catch (e) {
+            setLoadingJobs(false);
             console.error(e);
         }
     }
@@ -694,6 +708,7 @@ export default function JobsPage() {
                     isExternal={isExternal}
                     isAdmin={isAdmin}
                     filteredJobs={filteredJobs}
+                    loadingJobs={loadingJobs}
                     selectedJob={selectedJob}
                     setSelectedJob={setSelectedJob}
                     setShowNewForm={setShowNewForm}

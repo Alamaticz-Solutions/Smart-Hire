@@ -47,7 +47,15 @@ export default function UploadPage() {
 
 
     const [showColVisibility, setShowColVisibility] = useState(false)
-    const [loadingCandidates, setLoadingCandidates] = useState(false)
+    // Same "page switch feels slow" false-empty-flash bug as Jobs' sidebar:
+    // on a first visit this session (no cached_candidates yet), the table's
+    // "No candidates match the applied filters" message rendered
+    // immediately since candidates started at [], then got silently
+    // replaced once the real fetch resolved. Only starts true when there's
+    // nothing cached to show meanwhile.
+    const [loadingCandidates, setLoadingCandidates] = useState(() => {
+        try { return !sessionStorage.getItem('cached_candidates'); } catch { return true; }
+    })
     const [selectedIds, setSelectedIds] = useState(new Set())
     const [isAddingCandidate, setIsAddingCandidate] = useState(false)
 

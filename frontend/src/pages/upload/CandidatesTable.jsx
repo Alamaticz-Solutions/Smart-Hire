@@ -464,7 +464,18 @@ export default function CandidatesTable({
                         rowVirtualizer={rowVirtualizer}
                         rows={filteredCandidates}
                         renderRow={renderRow}
-                        noMatchMessage={(
+                        noMatchMessage={loadingCandidates ? (
+                            // Was unconditional on rows.length===0 alone, so this
+                            // showed as a false "no results" message on every
+                            // first-visit-this-session load (candidates starts
+                            // empty until the fetch resolves) before silently
+                            // getting swapped for the real rows - read as the
+                            // page being broken rather than still loading.
+                            <>
+                                <RefreshCw size={24} className="spin" style={{ marginBottom: 8, opacity: 0.6 }} />
+                                <p style={{ margin: 0 }}>Loading candidates…</p>
+                            </>
+                        ) : (
                             <>
                                 <Search size={28} style={{ marginBottom: 8, opacity: 0.6 }} />
                                 <p style={{ margin: 0 }}>No candidates match the applied filters.</p>

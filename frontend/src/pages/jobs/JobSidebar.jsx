@@ -1,5 +1,6 @@
 import React from 'react';
 import { Plus, MoreVertical, Share2, Edit, Trash2, Search, UserCheck, Building2 } from 'lucide-react';
+import { SkeletonBlock } from '../../components/shared/Skeleton';
 
 // Extracted from JobsPage.jsx: the left sidebar "Job List" section
 // (status filter select + scrollable job list with per-job actions dropdown).
@@ -8,6 +9,7 @@ export default function JobSidebar({
     isExternal,
     isAdmin,
     filteredJobs,
+    loadingJobs,
     selectedJob,
     setSelectedJob,
     setShowNewForm,
@@ -52,12 +54,20 @@ export default function JobSidebar({
             </div>
 
             <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
-                {filteredJobs.length === 0 && (
+                {loadingJobs ? (
+                    // "Page switch feels slow": this used to render "No jobs
+                    // found" below immediately, then silently swap in the
+                    // real list once the fetch resolved - a false empty-state
+                    // flash that read as broken rather than still loading.
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} aria-busy="true" aria-label="Loading jobs">
+                        {[0, 1, 2, 3].map(i => <SkeletonBlock key={i} height={72} radius={10} />)}
+                    </div>
+                ) : filteredJobs.length === 0 ? (
                     <div style={{ textAlign: 'center', color: 'var(--text-dim)', marginTop: '2rem' }}>
                         No jobs found matching<br/>the selected status.
                     </div>
-                )}
-                {filteredJobs.map(job => (
+                ) : null}
+                {!loadingJobs && filteredJobs.map(job => (
                     <div
                         key={job.id}
                         onClick={() => { setSelectedJob(job); setShowNewForm(false); }}
