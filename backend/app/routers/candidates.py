@@ -156,7 +156,7 @@ def _get_candidates_list(
     is_hr_or_admin: bool = None,
     limit: Optional[int] = None,
     offset: int = 0,
-) -> list:
+) -> tuple[list, Optional[int]]:
     with get_db_connection() as conn:
         conn.row_factory = dict_row_factory
         cur = conn.cursor()
@@ -179,36 +179,53 @@ def _get_candidates_list(
             # passes limit=None, which keeps this exactly the "no LIMIT clause
             # at all" query it always was, so nothing about the default
             # behavior changes here.
+            #
+            # When paginating, also select COUNT(*) OVER() - a window function
+            # that returns the full matching-row count on every row of the
+            # SAME result set, no GROUP BY needed - so the caller gets its
+            # pagination total without the separate _count_candidates() round
+            # trip this used to require on every single page load (this app's
+            # database round-trip cost is ~300-500ms; that was a guaranteed
+            # extra one on the very first thing a user sees on this page).
             limit_clause = ""
             params: tuple = ()
+            select_cols = cols_to_select
             if limit is not None:
                 limit_clause = " LIMIT ? OFFSET ?"
                 params = (limit, offset)
+                select_cols = f"{cols_to_select}, COUNT(*) OVER() AS __total_count"
 
             if role == "admin" or is_hr_or_admin or not username:
-                cur.execute(f"SELECT {cols_to_select} FROM candidate_metadata ORDER BY timestamp DESC{limit_clause}", params)
+                cur.execute(f"SELECT {select_cols} FROM candidate_metadata ORDER BY timestamp DESC{limit_clause}", params)
             else:
                 cur.execute(
-                    f"SELECT {cols_to_select} FROM candidate_metadata WHERE LOWER(created_by) = LOWER(?) "
+                    f"SELECT {select_cols} FROM candidate_metadata WHERE LOWER(created_by) = LOWER(?) "
                     f"ORDER BY timestamp DESC{limit_clause}",
                     (username,) + params,
                 )
             raw_rows = cur.fetchall()
             rows = []
+            total = 0
             for r in raw_rows:
                 try:
-                    rows.append(dict(r))
+                    row_dict = dict(r)
                 except Exception as row_err:
                     # If dict(r) fails, build dict manually from cursor description
                     if cur.description:
                         col_names = [desc[0] for desc in cur.description]
-                        rows.append(dict(zip(col_names, r)))
+                        row_dict = dict(zip(col_names, r))
                     else:
                         logger.warning(f"Could not convert row to dict: {row_err}")
+                        continue
+                if limit is not None:
+                    total = row_dict.pop("__total_count", total)
+                rows.append(row_dict)
+            if limit is None:
+                total = None
         except Exception as e:
             logger.error(f"ERROR in _get_candidates_list: {e}", exc_info=True)
-            rows = []
-    return rows
+            rows, total = [], (0 if limit is not None else None)
+    return rows, total
 
 
 def _count_candidates(username: Optional[str] = None, role: str = "user", is_hr_or_admin: bool = None) -> int:
@@ -259,7 +276,7 @@ def list_candidates(request: Request, limit: Optional[int] = None, offset: int =
         return {"items": [], "total": 0} if limit is not None else []
 
     effective_role = "admin" if is_user_admin else "user"
-    rows = _get_candidates_list(
+    rows, total_from_query = _get_candidates_list(
         username, role=effective_role, is_hr_or_admin=is_admin_or_hr_flag, limit=limit, offset=offset
     )
 
@@ -280,7 +297,12 @@ def list_candidates(request: Request, limit: Optional[int] = None, offset: int =
     rows = apply_user_hidden_fields(rows, username)
 
     if limit is not None:
-        total = _count_candidates(username, role=effective_role, is_hr_or_admin=is_admin_or_hr_flag)
+        # COUNT(*) OVER() rides along on the main query's rows, so the common
+        # case (there ARE rows on this page) needs no extra round trip. Only
+        # fall back to the standalone count query for the edge case it can't
+        # cover - zero rows back (offset past the end, or genuinely no
+        # candidates) - where the window function gives no signal either way.
+        total = total_from_query if rows else _count_candidates(username, role=effective_role, is_hr_or_admin=is_admin_or_hr_flag)
         return {"items": rows, "total": total}
     return rows
 
