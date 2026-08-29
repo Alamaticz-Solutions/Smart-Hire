@@ -20,16 +20,28 @@ import os
 import secrets
 import time
 
+from app.core import config
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
 _env_secret = os.getenv("SESSION_SECRET")
 if not _env_secret:
-    logger.warning(
+    # Deliberately a warning, not a startup failure: this app currently
+    # boots today with no SESSION_SECRET set (neither locally nor on the
+    # existing deployment), so crashing on it would be a worse regression
+    # than the bug it's warning about. In any real multi-worker/multi-
+    # instance production deployment, each process minting its own random
+    # secret means a token issued by one process fails verification on
+    # another - intermittent, hard-to-reproduce 401s for real logged-in
+    # users. Set SESSION_SECRET explicitly before deploying with >1 worker.
+    level = logger.error if config.ENVIRONMENT in ("production", "prod") else logger.warning
+    level(
         "SESSION_SECRET is not set - generating a random per-process secret. "
-        "All logged-in sessions will be invalidated on the next restart. "
-        "Set SESSION_SECRET in the environment to avoid this in production."
+        "All logged-in sessions will be invalidated on the next restart, and "
+        "a multi-worker/multi-instance deployment will see random logouts as "
+        "requests land on different processes. Set SESSION_SECRET in the "
+        "environment before deploying with more than one worker."
     )
 _SECRET = (_env_secret or secrets.token_hex(32)).encode()
 

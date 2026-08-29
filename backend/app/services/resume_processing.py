@@ -339,9 +339,16 @@ def format_candidate_resume(candidate: dict, candidate_id: int) -> dict:
 
     if filename and not file_bytes and file_url:
         import requests
+        from app.services.storage import get_s3_presigned_url, is_s3_url
+
+        fetch_url = file_url
+        if is_s3_url(file_url):
+            # S3 resumes are no longer public - the stored file_url 403s on
+            # a bare GET now, so sign it first.
+            fetch_url = get_s3_presigned_url(filename) or file_url
 
         try:
-            resp = requests.get(file_url, timeout=15)
+            resp = requests.get(fetch_url, timeout=15)
             if resp.status_code == 200:
                 file_bytes = resp.content
                 logger.info(f"Successfully fetched resume bytes from {file_url} for formatting")

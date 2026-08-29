@@ -47,10 +47,25 @@ from app.core.config import PROJECT_ROOT, STATS_DB, UPLOAD_DIR  # noqa: E402
 from app.core.logging import get_logger  # noqa: E402
 from app.db.init_db import init_db  # noqa: E402
 from app.db.postgres_adapter import closeall_pool, patch_if_configured  # noqa: E402
+from app.core.config import ENVIRONMENT  # noqa: E402
 from app.services.ai_clients import get_models  # noqa: E402
-from app.services.auth import is_admin_or_hr  # noqa: E402
+from app.services.auth import get_user_info, is_admin_or_hr, is_user_approved  # noqa: E402
 from app.services.email_worker import poll_emails_and_process  # noqa: E402
 from app.services.session_tokens import verify_session_token  # noqa: E402
+
+# Comma-separated list of allowed browser origins for cross-origin requests
+# (needed only when the frontend is served from a different origin than the
+# API, e.g. the Vite dev server on :5173 talking to the API on :8000).
+# `allow_origins=["*"]` combined with `allow_credentials=True` is invalid/
+# dangerous - browsers ignore the wildcard once credentials are involved and
+# most proxies just reflect the request's Origin back, effectively allowing
+# any site to make credentialed calls. Default to the common local dev
+# origins so nothing breaks out of the box; production deploys should set
+# CORS_ALLOWED_ORIGINS explicitly.
+_default_cors_origins = "http://localhost:5173,http://127.0.0.1:5173"
+CORS_ALLOWED_ORIGINS = [
+    o.strip() for o in os.getenv("CORS_ALLOWED_ORIGINS", _default_cors_origins).split(",") if o.strip()
+]
 
 logger = get_logger(__name__)
 
@@ -68,6 +83,19 @@ except Exception as e:
     logger.critical(f"CRITICAL CONFIGURATION ERROR: {e}")
     import sys
     sys.exit(1)
+
+if not PG_ACTIVE and ENVIRONMENT in ("production", "prod"):
+    # Not a hard failure - a small deployment legitimately running on local
+    # SQLite is possible - but this combination (ENVIRONMENT=production with
+    # no POSTGRES_DATABASE_URL) is the "looks fine, but is actually writing
+    # to ephemeral local storage on every restart/redeploy" trap flagged by
+    # the production-readiness review. Loud and visible beats silent.
+    logger.warning(
+        "Running with ENVIRONMENT=production but POSTGRES_DATABASE_URL is not "
+        "set - the app is using local SQLite storage, which does not survive "
+        "a redeploy on most hosting platforms. Set POSTGRES_DATABASE_URL if "
+        "this is unintentional."
+    )
 
 
 @asynccontextmanager
@@ -94,7 +122,7 @@ app = FastAPI(title="Hire AI API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -160,12 +188,47 @@ async def verify_session_middleware(request: Request, call_next):
 # resumes have no corresponding file under UPLOAD_DIR at all. Both mechanisms
 # are preserved here, in their original order, unchanged.
 @app.get("/static/{filename}")
-def serve_file_from_db(filename: str):
+def serve_file_from_db(filename: str, request: Request):
+    # Previously had zero permission check - anyone who knew or guessed a
+    # filename (e.g. by watching network requests, or the sequential/
+    # predictable names the upload flow produces) could pull any candidate's
+    # resume directly, bypassing every ownership/role check enforced
+    # everywhere else in the app. Require the same verified, approved
+    # session every other data-bearing endpoint requires, and layer on the
+    # same ownership rule used for candidate records: admin/hr sees
+    # everything, everyone else only their own uploads or a job explicitly
+    # shared with them.
+    username = request.headers.get("x-user-username")
+    if not username or not is_user_approved(username):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
     conn = sqlite3.connect(STATS_DB, timeout=30.0)
     cur = conn.cursor()
 
     cur.execute("PRAGMA table_info(candidate_metadata)")
     existing_cols = {c[1] for c in cur.fetchall()}
+
+    cur.execute("SELECT id, created_by FROM candidate_metadata WHERE filename = ? LIMIT 1", (filename,))
+    owner_row = cur.fetchone()
+    if not owner_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="File not found")
+    candidate_id, created_by = owner_row
+
+    user_info = get_user_info(username)
+    is_privileged = bool(user_info) and (user_info["is_admin"] == 1 or user_info["role"] == "admin" or is_admin_or_hr(username))
+    if not is_privileged and (created_by or "").lower() != username.lower():
+        cur.execute(
+            """
+            SELECT 1 FROM job_candidates jc
+            JOIN job_shares js ON js.job_id = jc.job_id
+            WHERE jc.candidate_id = ? AND LOWER(js.username) = LOWER(?)
+            """,
+            (candidate_id, username),
+        )
+        if not cur.fetchone():
+            conn.close()
+            raise HTTPException(status_code=403, detail="Forbidden")
 
     if "file_url" in existing_cols:
         cur.execute("SELECT file_url, file_bytes FROM candidate_metadata WHERE filename = ? LIMIT 1", (filename,))
@@ -181,7 +244,12 @@ def serve_file_from_db(filename: str):
     conn.close()
 
     if file_url:
+        from app.services.storage import get_s3_presigned_url, is_s3_url
         from fastapi.responses import RedirectResponse
+        if is_s3_url(file_url):
+            signed = get_s3_presigned_url(filename)
+            if signed:
+                return RedirectResponse(url=signed)
         return RedirectResponse(url=file_url)
 
     if not file_bytes:
@@ -236,3 +304,18 @@ async def catch_all_spa_routes(request: Request, exc: StarletteHTTPException):
         if os.path.exists(index_file):
             return FileResponse(index_file)
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+
+@app.exception_handler(Exception)
+async def catch_all_unhandled(request: Request, exc: Exception):
+    """Last-resort handler for anything a route didn't already turn into an
+    HTTPException. Without this, FastAPI's default behavior returns the raw
+    exception message (and, depending on server config, a traceback) to the
+    client - fine for local debugging, a real information-disclosure risk in
+    production (DB error text can reveal schema/column names, file paths,
+    library versions). Full detail still goes to the server log either way.
+    """
+    logger.error("Unhandled exception on %s %s: %s", request.method, request.url.path, exc, exc_info=True)
+    if ENVIRONMENT not in ("production", "prod"):
+        raise exc
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})

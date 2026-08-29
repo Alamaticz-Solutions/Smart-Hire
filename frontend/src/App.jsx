@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useState, useEffect, Suspense, lazy } from 'react'
 import axios from 'axios'
 import Layout from './components/Layout'
+import ErrorBoundary from './components/ErrorBoundary'
 
 // Route-based code splitting: these used to be static imports, so every
 // page's JS (JobsPage/UploadPage alone are still large even after being
@@ -97,6 +98,7 @@ export default function App() {
 
     return (
         <BrowserRouter>
+            <ErrorBoundary>
             <Suspense fallback={<RouteLoadingFallback />}>
                 <Routes>
                     <Route path="/login" element={user ? <Navigate to="/" /> : <LoginPage onLogin={login} />} />
@@ -112,6 +114,7 @@ export default function App() {
                     <Route path="*" element={<Navigate to="/" />} />
                 </Routes>
             </Suspense>
+            </ErrorBoundary>
         </BrowserRouter>
     )
 }

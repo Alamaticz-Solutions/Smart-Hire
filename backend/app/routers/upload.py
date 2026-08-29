@@ -45,6 +45,18 @@ logger = get_logger(__name__)
 
 router = APIRouter()
 
+# Applies to both /api/upload and /api/jobs/parse-document - neither route
+# previously bounded the request body, so a single very large or malformed
+# file could exhaust disk space or hang the parser.
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB
+ALLOWED_JD_EXTENSIONS = {".pdf", ".docx", ".doc"}
+ALLOWED_RESUME_EXTENSIONS = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".csv"}
+
+
+def _reject_if_too_large(content: bytes) -> None:
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"File too large - max {MAX_UPLOAD_BYTES // (1024 * 1024)}MB")
+
 
 def _log_activity_db(username: str, action: str) -> None:
     """Insert one row into activity_logs. Mirrors main.py's log_activity_db."""
@@ -68,11 +80,19 @@ async def upload_resume(
 ):
     is_approved = 1
 
-    # Save file
-    safe_name = f"{uuid.uuid4().hex}_{file.filename}"
+    ext = os.path.splitext((file.filename or "").lower())[1]
+    if ext not in ALLOWED_RESUME_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Unsupported file type. Please upload a PDF, Word, or Excel/CSV file.")
+
+    content = await file.read()
+    _reject_if_too_large(content)
+
+    # uuid-prefixed and basename-stripped: file.filename is client-supplied
+    # and untrusted, so never join it into a path without stripping any
+    # directory components a crafted filename ("../../x") could carry.
+    safe_name = f"{uuid.uuid4().hex}_{os.path.basename(file.filename)}"
     path = os.path.join(UPLOAD_DIR, safe_name)
     with open(path, "wb") as f:
-        content = await file.read()
         f.write(content)
 
     ext = os.path.splitext(safe_name.lower())[1]
@@ -104,18 +124,27 @@ async def upload_resume(
 
 @router.post("/api/jobs/parse-document")
 async def parse_jd_document(file: UploadFile = File(...), username: str = Depends(require_approved_user)):
-    # Save file temporarily in a temp folder under UPLOAD_DIR
-    safe_name = file.filename
+    # os.path.basename() strips any directory components a crafted filename
+    # (e.g. "../../../etc/whatever") would otherwise carry - file.filename is
+    # client-supplied and was previously joined into temp_dir verbatim,
+    # letting a request write outside UPLOAD_DIR/temp_jds entirely. The uuid
+    # prefix also avoids two concurrent uploads of the same filename
+    # clobbering each other's temp file.
+    ext = os.path.splitext((file.filename or "").lower())[1]
+    if ext not in ALLOWED_JD_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Unsupported file format. Please upload a PDF or Word (.docx) document.")
+
+    safe_name = f"{uuid.uuid4().hex}_{os.path.basename(file.filename)}"
     temp_dir = os.path.join(UPLOAD_DIR, "temp_jds")
     os.makedirs(temp_dir, exist_ok=True)
     path = os.path.join(temp_dir, safe_name)
 
     try:
+        content = await file.read()
+        _reject_if_too_large(content)
         with open(path, "wb") as f:
-            content = await file.read()
             f.write(content)
 
-        ext = os.path.splitext(safe_name.lower())[1]
         text = ""
 
         if ext == ".pdf":

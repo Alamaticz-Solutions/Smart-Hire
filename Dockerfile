@@ -13,10 +13,14 @@ WORKDIR /app
 COPY backend/requirements.txt backend/
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
-# Copy frontend package.json and install Node dependencies
-COPY frontend/package.json frontend/
+# Copy frontend package manifests and install Node dependencies.
+# `npm ci` (not `npm install`) installs exactly what's pinned in
+# package-lock.json - `npm install` can silently resolve newer
+# semver-compatible versions than what was tested, drifting the deployed
+# build away from the lockfile between builds.
+COPY frontend/package.json frontend/package-lock.json frontend/
 WORKDIR /app/frontend
-RUN npm install
+RUN npm ci
 
 # Copy the rest of the application
 WORKDIR /app

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Download, Trash2, FileText, X, Loader, Edit, Check, Eye, Plus, User, Briefcase, Mail } from 'lucide-react'
 import apiClient, { getStaticUrl } from '../../api/client'
-import alamaticzLogo from '../../assets/alamaticz-logo.jpg'
+import alamaticzLogo from '../../assets/alamaticz-mark.png'
 import ResumePreview, { getResumeHtml } from '../ResumePreview'
 import ResumeEditor from './ResumeEditor'
 import { formatDate } from '../../utils/formatters'

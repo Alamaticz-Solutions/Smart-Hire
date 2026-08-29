@@ -411,9 +411,29 @@ async def update_candidate(
         created_by = row[0]
         assert_owns_or_admin(created_by, username)
 
-        cur.execute("PRAGMA table_info(candidate_metadata)")
-        allowed_cols = [c[1] for c in cur.fetchall()]
-        updates = {k: v for k, v in body.items() if k in allowed_cols and k != "id" and v is not None and v != "[HIDDEN]"}
+        # Explicit allow-list, not "every column except id": the old
+        # `PRAGMA table_info` check let the request body overwrite ANY
+        # column that exists on the table, including created_by (silent
+        # ownership takeover), filename/file_url (breaks file lookup and
+        # the delete/embedding-cleanup logic, which key off filename), and
+        # file_bytes/timestamp. Only genuinely user-editable fields belong
+        # here - mirrors the pattern jobs.py's JobCreate model already uses.
+        EDITABLE_CANDIDATE_FIELDS = {
+            "full_name", "candidate_status", "total_experience", "pega_experience",
+            "skills", "certifications", "ctc", "notice_period", "current_organization",
+            "email", "phone", "linkedin", "source", "cdh_exp", "expected_ctc",
+            "percentage_hike", "candidate_interview_status", "availability_in_days",
+            "current_location", "pref_locations", "current_client", "domain", "tier",
+            "certification_version", "sender_email", "is_qualified", "is_approved",
+        }
+        # Admin-defined custom columns (see add_column below) are also
+        # user-editable free-text fields, on top of the fixed allow-list.
+        try:
+            cur.execute("SELECT col_key FROM custom_columns")
+            EDITABLE_CANDIDATE_FIELDS = EDITABLE_CANDIDATE_FIELDS | {r[0] for r in cur.fetchall()}
+        except Exception:
+            pass
+        updates = {k: v for k, v in body.items() if k in EDITABLE_CANDIDATE_FIELDS and v is not None and v != "[HIDDEN]"}
 
         # Server-side validation for numeric edits
         for int_col in ["notice_period", "availability_in_days"]:

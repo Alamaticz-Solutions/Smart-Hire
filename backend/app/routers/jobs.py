@@ -210,10 +210,7 @@ def list_jobs(request: Request):
 
 
 @router.post("/api/jobs")
-def create_job(job: JobCreate, request: Request, background_tasks: BackgroundTasks):
-    username = request.headers.get("x-user-username") or "admin"
-    if not is_user_approved(username):
-        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
+def create_job(job: JobCreate, background_tasks: BackgroundTasks, username: str = Depends(require_approved_user)):
 
     with get_db_connection() as conn:
         cur = conn.cursor()
@@ -254,7 +251,6 @@ def create_job(job: JobCreate, request: Request, background_tasks: BackgroundTas
         updated_job["selected_count"] = counts.get("selected", 0)
         updated_job["shared_with"] = []
 
-    username = request.headers.get("x-user-username")
     _log_activity_db(username or "unknown", f"posted a Job Description for '{job.title}'")
 
     return updated_job
@@ -292,8 +288,10 @@ def update_job(job_id: int, job: JobCreate, background_tasks: BackgroundTasks, u
                 job_id,
             ),
         )
-        if cur.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Job not found")
+        # Existence was already confirmed by the SELECT above; don't rely on
+        # cur.rowcount here - the Postgres cursor wrapper (PGCursor) doesn't
+        # implement it, so this raised an unconditional AttributeError on
+        # every call when POSTGRES_DATABASE_URL is configured.
         conn.commit()
 
     # See create_job's comment: runs after the response is sent instead of
@@ -525,7 +523,7 @@ def add_job_candidate(job_id: int, candidate_id: int, username: str = Depends(re
         conn.commit()
 
     try:
-        _log_activity_db("recruiter", f"manually matched candidate '{cand_name}' to job '{job_title}'")
+        _log_activity_db(username or "unknown", f"manually matched candidate '{cand_name}' to job '{job_title}'")
     except Exception as e:
         logger.error("Failed to log activity: %s", e)
 
@@ -611,14 +609,22 @@ def share_job(job_id: int, req: JobShareRequest, username: str = Depends(require
         if not cur.fetchone():
             raise HTTPException(status_code=404, detail="Job not found")
 
-        cur.execute("DELETE FROM job_shares WHERE job_id = ?", (job_id,))
+        valid_usernames = []
         for u in req.usernames:
+            cur.execute("SELECT 1 FROM users WHERE LOWER(username) = LOWER(?)", (u,))
+            if cur.fetchone():
+                valid_usernames.append(u)
+            else:
+                logger.warning("share_job: skipping unknown username %r for job %s", u, job_id)
+
+        cur.execute("DELETE FROM job_shares WHERE job_id = ?", (job_id,))
+        for u in valid_usernames:
             cur.execute("INSERT INTO job_shares (job_id, username) VALUES (?, ?)", (job_id, u))
 
         conn.commit()
 
     job_title = _get_job_title(job_id)
-    _log_activity_db(username or "unknown", f"shared Job Description '{job_title}' with {len(req.usernames)} external users")
+    _log_activity_db(username or "unknown", f"shared Job Description '{job_title}' with {len(valid_usernames)} external users")
 
     return {"status": "shared"}
 

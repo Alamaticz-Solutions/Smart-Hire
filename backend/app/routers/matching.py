@@ -21,7 +21,7 @@ from __future__ import annotations
 import concurrent.futures
 import os
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from langchain_community.vectorstores import PGVector
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
@@ -55,12 +55,15 @@ _MATCH_EVAL_RULES = """Rules for evaluation:
 
 
 @router.post("/api/match-jd")
-def match_jd(req: JDMatchRequest, request: Request):
+def match_jd(req: JDMatchRequest, username: str = Depends(require_approved_user)):
+    # Previously had no approval check at all - reachable unauthenticated,
+    # and each call does a PGVector similarity search plus a batch of LLM
+    # calls, so this was an open way to burn the shared (and already
+    # quota-limited) Groq daily token budget.
     jd = req.job_description.strip()
     if not jd:
         raise HTTPException(status_code=400, detail="Empty Job Description")
 
-    username = request.headers.get("x-user-username") or ""
     is_user_admin = False
 
     has_vectors = False

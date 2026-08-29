@@ -19,12 +19,14 @@ call itself).
 
 import sqlite3
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.core.logging import get_logger
 from app.db.row_helpers import dict_row_factory
 from app.db.session import get_db_connection
+from app.dependencies import require_approved_user
+from app.services.auth import is_admin_or_hr
 
 logger = get_logger(__name__)
 
@@ -58,11 +60,21 @@ def _log_activity_db(username: str, action: str) -> None:
 # ── Health ─────────────────────────────────────────────────────────────────────
 @router.get("/api/health")
 def health():
-    return {"status": "ok"}
+    # A hardcoded {"status": "ok"} tells a load balancer/uptime monitor
+    # nothing about whether the app can actually serve a request - a
+    # DB-connectivity failure would previously still report healthy. This
+    # does the cheapest possible real check: one round trip.
+    try:
+        with get_db_connection() as conn:
+            conn.cursor().execute("SELECT 1")
+        return {"status": "ok", "db": "ok"}
+    except Exception as e:
+        logger.error("Health check DB probe failed: %s", e)
+        raise HTTPException(status_code=503, detail={"status": "degraded", "db": "unreachable"})
 
 
 @router.get("/api/activity")
-def get_activity_logs():
+def get_activity_logs(username: str = Depends(require_approved_user)):
     try:
         with get_db_connection() as conn:
             conn.row_factory = dict_row_factory
@@ -75,27 +87,31 @@ def get_activity_logs():
 
 
 @router.post("/api/activity")
-def create_activity_log(req: ActivityCreate):
-    _log_activity_db(req.username, req.action)
+def create_activity_log(req: ActivityCreate, username: str = Depends(require_approved_user)):
+    # Log under the authenticated caller, not whatever `username` the
+    # request body claims - the body field previously let any approved
+    # caller forge activity-log entries under someone else's name.
+    _log_activity_db(username, req.action)
     return {"status": "logged"}
 
 
 @router.delete("/api/activity")
-def clear_activity_logs(request: Request):
-    username = request.headers.get("x-user-username")
+def clear_activity_logs(username: str = Depends(require_approved_user)):
+    if not is_admin_or_hr(username):
+        raise HTTPException(status_code=403, detail="Forbidden")
     try:
         with get_db_connection() as conn:
             cur = conn.cursor()
             cur.execute("DELETE FROM activity_logs")
             conn.commit()
-        _log_activity_db(username or "unknown", "cleared the activity feed")
+        _log_activity_db(username, "cleared the activity feed")
         return {"status": "cleared"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/api/team-members")
-def list_team_members():
+def list_team_members(username: str = Depends(require_approved_user)):
     try:
         with get_db_connection() as conn:
             conn.row_factory = dict_row_factory
@@ -108,8 +124,9 @@ def list_team_members():
 
 
 @router.post("/api/team-members")
-def create_team_member(req: TeamMemberCreate, request: Request):
-    username = request.headers.get("x-user-username") or "admin"
+def create_team_member(req: TeamMemberCreate, username: str = Depends(require_approved_user)):
+    if not is_admin_or_hr(username):
+        raise HTTPException(status_code=403, detail="Forbidden")
     name = req.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Name cannot be empty")
@@ -130,8 +147,9 @@ def create_team_member(req: TeamMemberCreate, request: Request):
 
 
 @router.delete("/api/team-members/{member_id}")
-def delete_team_member(member_id: int, request: Request):
-    username = request.headers.get("x-user-username") or "admin"
+def delete_team_member(member_id: int, username: str = Depends(require_approved_user)):
+    if not is_admin_or_hr(username):
+        raise HTTPException(status_code=403, detail="Forbidden")
     try:
         with get_db_connection() as conn:
             cur = conn.cursor()

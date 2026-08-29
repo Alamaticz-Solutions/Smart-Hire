@@ -48,6 +48,9 @@ export default function AdminPage() {
     const USER_PAGE_SIZE = 20
     const [keywords, setKeywords] = useState([])
     const [newKeyword, setNewKeyword] = useState('')
+    const [addingKeyword, setAddingKeyword] = useState(false)
+    const [addingMember, setAddingMember] = useState(false)
+    const [savingPermissionId, setSavingPermissionId] = useState(null)
     
     const [selectedUserForHiddenFields, setSelectedUserForHiddenFields] = useState(null)
     const [tempHiddenFields, setTempHiddenFields] = useState([])
@@ -161,26 +164,32 @@ export default function AdminPage() {
             }
         }
 
+        if (savingPermissionId === id) return // in-flight guard: a fast double-click on the
+        // same row previously fired two PUTs against the same stale currentValue, flip-flopping
+        // the result away from what was actually clicked.
+        setSavingPermissionId(id)
         try {
-            await apiClient.put(`/api/admin/users/${id}/permissions`, { 
-                is_hr: isHrValue, 
+            await apiClient.put(`/api/admin/users/${id}/permissions`, {
+                is_hr: isHrValue,
                 is_admin: isAdminValue,
                 is_external: isExternalValue,
                 is_approved: isApprovedValue
             })
             if (targetUser.username === user.username) {
-                onUpdateUser({ 
-                    ...user, 
-                    is_hr: isHrValue, 
+                onUpdateUser({
+                    ...user,
+                    is_hr: isHrValue,
                     is_admin: isAdminValue,
                     is_external: isExternalValue,
                     is_approved: isApprovedValue,
                     role: isAdminValue === 1 ? 'admin' : 'user'
                 })
             }
-            fetchUsers()
+            await fetchUsers()
         } catch (err) {
             showToast(err.response?.data?.detail || 'Failed to update user permissions', 'error')
+        } finally {
+            setSavingPermissionId(null)
         }
     }
 
@@ -232,14 +241,17 @@ export default function AdminPage() {
     const handleAddKeyword = async (e) => {
         e.preventDefault()
         const kw = newKeyword.trim()
-        if (!kw) return
+        if (!kw || addingKeyword) return
         setError(null)
+        setAddingKeyword(true)
         try {
             await apiClient.post('/api/admin/masked-keywords', { keyword: kw })
             setNewKeyword('')
-            fetchKeywords()
+            await fetchKeywords()
         } catch (err) {
             setError(err.response?.data?.detail || 'Failed to add masked keyword.')
+        } finally {
+            setAddingKeyword(false)
         }
     }
 
@@ -289,14 +301,17 @@ export default function AdminPage() {
     const handleAddTeamMember = async (e) => {
         e.preventDefault()
         const name = newMemberName.trim()
-        if (!name) return
+        if (!name || addingMember) return
         setError(null)
+        setAddingMember(true)
         try {
             await apiClient.post('/api/team-members', { name })
             setNewMemberName('')
-            fetchTeamMembers()
+            await fetchTeamMembers()
         } catch (err) {
             setError(err.response?.data?.detail || 'Failed to add team member.')
+        } finally {
+            setAddingMember(false)
         }
     }
 
@@ -376,6 +391,28 @@ export default function AdminPage() {
                     }}
                 >
                     User Management
+                </button>
+                <button
+                    onClick={() => setActiveTab('matrix')}
+                    style={{
+                        padding: '0.8rem 1.5rem', background: 'none', border: 'none', cursor: 'pointer',
+                        color: activeTab === 'matrix' ? 'var(--gold)' : 'var(--text-dim)',
+                        borderBottom: activeTab === 'matrix' ? '2px solid var(--gold)' : '2px solid transparent',
+                        fontWeight: activeTab === 'matrix' ? 'bold' : 'normal', fontSize: '1rem'
+                    }}
+                >
+                    Recruiter Persona Matrix
+                </button>
+                <button
+                    onClick={() => setActiveTab('keywords')}
+                    style={{
+                        padding: '0.8rem 1.5rem', background: 'none', border: 'none', cursor: 'pointer',
+                        color: activeTab === 'keywords' ? 'var(--gold)' : 'var(--text-dim)',
+                        borderBottom: activeTab === 'keywords' ? '2px solid var(--gold)' : '2px solid transparent',
+                        fontWeight: activeTab === 'keywords' ? 'bold' : 'normal', fontSize: '1rem'
+                    }}
+                >
+                    Masked Keywords
                 </button>
 
             </div>
@@ -560,7 +597,7 @@ export default function AdminPage() {
                                                                 type="checkbox"
                                                                 className="switch-input"
                                                                 checked={u.is_hr === 1}
-                                                                disabled={isSelf}
+                                                                disabled={isSelf || savingPermissionId === u.id}
                                                                 aria-label={`HR access for ${u.full_name || u.username}`}
                                                                 onChange={() => togglePermission(u.id, 'is_hr', u.is_hr)}
                                                             />
@@ -578,7 +615,7 @@ export default function AdminPage() {
                                                                 type="checkbox"
                                                                 className="switch-input"
                                                                 checked={u.is_admin === 1}
-                                                                disabled={isSelf}
+                                                                disabled={isSelf || savingPermissionId === u.id}
                                                                 aria-label={`Admin access for ${u.full_name || u.username}`}
                                                                 onChange={() => togglePermission(u.id, 'is_admin', u.is_admin)}
                                                             />
@@ -596,7 +633,7 @@ export default function AdminPage() {
                                                                 type="checkbox"
                                                                 className="switch-input"
                                                                 checked={u.is_external === 1}
-                                                                disabled={isSelf}
+                                                                disabled={isSelf || savingPermissionId === u.id}
                                                                 aria-label={`External access for ${u.full_name || u.username}`}
                                                                 onChange={() => togglePermission(u.id, 'is_external', u.is_external)}
                                                             />
@@ -692,8 +729,84 @@ export default function AdminPage() {
                 </div>
             )}
 
+            {/* Recruiter Persona Matrix Tab */}
+            {!loading && activeTab === 'matrix' && (
+                <div className="user-table-card">
+                    <div style={{ padding: '1.2rem 1.5rem', borderBottom: '1px solid var(--border)' }}>
+                        <h3 style={{ margin: 0, fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 700 }}>Recruiter Persona Matrix</h3>
+                        <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
+                            Team members an admin can act as (see the persona switcher in the top bar).
+                        </p>
+                    </div>
+                    <form onSubmit={handleAddTeamMember} style={{ display: 'flex', gap: '0.6rem', padding: '1.2rem 1.5rem', borderBottom: '1px solid var(--border)' }}>
+                        <input
+                            type="text"
+                            className="form-input"
+                            style={{ margin: 0, flex: 1 }}
+                            placeholder="Team member name"
+                            value={newMemberName}
+                            onChange={e => setNewMemberName(e.target.value)}
+                        />
+                        <button type="submit" className="btn btn-primary" disabled={addingMember || !newMemberName.trim()} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <UserPlus size={16} /> {addingMember ? 'Adding…' : 'Add'}
+                        </button>
+                    </form>
+                    <div style={{ padding: '1rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                        {teamMembers.length === 0 ? (
+                            <div style={{ padding: '1.5rem 0', textAlign: 'center', color: 'var(--text-dim)' }}>No team members yet.</div>
+                        ) : teamMembers.map(m => (
+                            <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.7rem 1rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                                <span>{m.name}{user?.active_persona === m.name ? ' (active)' : ''}</span>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <button className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: '0.8rem' }} onClick={() => handleSelectPersona(m.name)}>
+                                        {user?.active_persona === m.name ? 'Revert' : 'Act as'}
+                                    </button>
+                                    <button className="btn btn-danger" style={{ padding: '4px 10px', fontSize: '0.8rem' }} onClick={() => handleDeleteTeamMember(m.id, m.name)}>
+                                        <Trash2 size={14} />
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
-
+            {/* Masked Keywords Tab */}
+            {!loading && activeTab === 'keywords' && (
+                <div className="user-table-card">
+                    <div style={{ padding: '1.2rem 1.5rem', borderBottom: '1px solid var(--border)' }}>
+                        <h3 style={{ margin: 0, fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 700 }}>Masked Keywords</h3>
+                        <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
+                            Terms redacted from candidate records shown to non-HR/admin users (client names, sensitive tags, etc).
+                        </p>
+                    </div>
+                    <form onSubmit={handleAddKeyword} style={{ display: 'flex', gap: '0.6rem', padding: '1.2rem 1.5rem', borderBottom: '1px solid var(--border)' }}>
+                        <input
+                            type="text"
+                            className="form-input"
+                            style={{ margin: 0, flex: 1 }}
+                            placeholder="Keyword to mask"
+                            value={newKeyword}
+                            onChange={e => setNewKeyword(e.target.value)}
+                        />
+                        <button type="submit" className="btn btn-primary" disabled={addingKeyword || !newKeyword.trim()}>
+                            {addingKeyword ? 'Adding…' : 'Add'}
+                        </button>
+                    </form>
+                    <div style={{ padding: '1rem 1.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.6rem' }}>
+                        {keywords.length === 0 ? (
+                            <div style={{ padding: '1.5rem 0', textAlign: 'center', color: 'var(--text-dim)', width: '100%' }}>No masked keywords configured.</div>
+                        ) : keywords.map(kw => (
+                            <span key={kw} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 999, background: 'var(--surface-2)', border: '1px solid var(--border)', fontSize: '0.82rem' }}>
+                                {kw}
+                                <button onClick={() => handleDeleteKeyword(kw)} aria-label={`Remove ${kw}`} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', display: 'flex' }}>
+                                    <XCircle size={14} />
+                                </button>
+                            </span>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {showHiddenFieldsModal && selectedUserForHiddenFields && (
                 <div className="modal-overlay" onClick={() => setShowHiddenFieldsModal(false)}>

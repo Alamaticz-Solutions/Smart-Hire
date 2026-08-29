@@ -146,8 +146,13 @@ export default function ConnectPage() {
     }
 
     const handleAddMailbox = () => {
-        if (!newEmailForm.email_user || !newEmailForm.email_pass) {
-            showToast("Please enter both email address and app password.", "error")
+        // Outlook/office365 mailboxes authenticate via the global Microsoft
+        // Graph API settings configured on the Primary Mailbox - the app
+        // password field is intentionally hidden for them (see the form
+        // below), so requiring it here made it impossible to ever add one.
+        const isOutlookHost = newEmailForm.imap_host?.includes('office365')
+        if (!newEmailForm.email_user || (!isOutlookHost && !newEmailForm.email_pass)) {
+            showToast(isOutlookHost ? "Please enter an email address." : "Please enter both email address and app password.", "error")
             return
         }
         let list = []

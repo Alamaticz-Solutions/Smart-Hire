@@ -37,10 +37,12 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from app.core import config
 from app.core.logging import get_logger
 from app.db.row_helpers import dict_row_factory
 from app.db.session import get_db_connection
 from app.services.passwords import hash_password, is_legacy_hash, verify_password
+from app.services.rate_limit import is_rate_limited
 from app.services.session_tokens import create_session_token
 
 logger = get_logger(__name__)
@@ -162,7 +164,12 @@ def register(req: RegisterRequest):
 
 
 @router.post("/api/auth/login")
-def login(req: LoginRequest):
+def login(req: LoginRequest, request: Request):
+    client_ip = request.client.host if request.client else "unknown"
+    rl_key = f"login:{client_ip}:{req.username.lower()}"
+    if is_rate_limited(rl_key, max_attempts=10, window_seconds=300):
+        raise HTTPException(status_code=429, detail="Too many login attempts. Please try again in a few minutes.")
+
     with get_db_connection() as conn:
         conn.row_factory = dict_row_factory
         cur = conn.cursor()
@@ -327,7 +334,11 @@ def get_user_status(request: Request):
 
 
 @router.post("/api/auth/forgot-password/request")
-def request_otp(req: ForgotPasswordRequest):
+def request_otp(req: ForgotPasswordRequest, request: Request):
+    client_ip = request.client.host if request.client else "unknown"
+    if is_rate_limited(f"otp-request:{client_ip}", max_attempts=5, window_seconds=300):
+        raise HTTPException(status_code=429, detail="Too many requests. Please try again in a few minutes.")
+
     mobile = req.mobile.strip()
 
     with get_db_connection() as conn:
@@ -336,8 +347,13 @@ def request_otp(req: ForgotPasswordRequest):
         users = cur.fetchall()
     matching_users = [u for u in users if u[0] and str(u[0]).strip() == mobile]
 
+    # Deliberately generic: whether or not this mobile is registered, the
+    # response looks the same. Revealing "no account found" here lets an
+    # attacker enumerate registered mobile numbers pre-auth.
+    generic_msg = "If this mobile number is registered, a reset code has been sent."
+
     if not matching_users:
-        raise HTTPException(status_code=404, detail="No registered account found with this mobile number.")
+        return {"message": generic_msg}
 
     username = matching_users[0][1]
 
@@ -348,16 +364,29 @@ def request_otp(req: ForgotPasswordRequest):
         "username": username,
     }
 
+    # There is no real SMS/email delivery channel wired up yet (tracked
+    # separately) - the OTP is only ever logged server-side. It used to be
+    # echoed back in the API response in every environment, which combined
+    # with the enumeration fix above would otherwise still hand out a live
+    # OTP to anyone who could reach this endpoint. It is now only included
+    # in the response outside production (config.DEBUG), matching what the
+    # frontend already assumed but never enforced.
     logger.info(f"[OTP SIMULATION] Password reset OTP for mobile {mobile}: {otp}")
 
-    msg = "Simulated OTP code returned for demonstration."
-    res_data = {"message": msg, "otp": otp}
-
+    res_data = {"message": generic_msg}
+    if config.DEBUG:
+        res_data["otp"] = otp
     return res_data
 
 
 @router.post("/api/auth/forgot-password/reset")
-def reset_password(req: ResetPasswordRequest):
+def reset_password(req: ResetPasswordRequest, request: Request):
+    client_ip = request.client.host if request.client else "unknown"
+    # Bounds brute-forcing the 6-digit OTP itself (previously unlimited
+    # attempts within the 5-minute OTP validity window).
+    if is_rate_limited(f"otp-reset:{client_ip}:{req.mobile.strip()}", max_attempts=8, window_seconds=300):
+        raise HTTPException(status_code=429, detail="Too many attempts. Please request a new code.")
+
     mobile = req.mobile.strip()
     otp_code = req.otp.strip()
     new_pass = req.new_password

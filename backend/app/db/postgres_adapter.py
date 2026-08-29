@@ -61,6 +61,15 @@ class PGCursor:
         self.connection = connection
         self.lastrowid = None
 
+    @property
+    def rowcount(self):
+        # sqlite3.Cursor.rowcount is a plain attribute; this wrapper never
+        # defined it, so any call site written against the sqlite3 API (as
+        # every route in this codebase is) got an AttributeError against
+        # Postgres. Proxy straight through to the underlying driver cursor,
+        # which does support it.
+        return self.pg_cursor.rowcount
+
     def execute(self, query, params=None):
         translated = self._translate_query(query)
         pg_params = params
@@ -243,7 +252,7 @@ class PGCursor:
             )
             if m_table:
                 table = m_table.group(1).lower()
-                if table in ["candidate_metadata", "custom_columns", "jobs", "users", "change_requests", "activity_logs", "team_members", "integrations_settings"]:
+                if table in ["candidate_metadata", "custom_columns", "jobs", "users", "change_requests", "activity_logs", "team_members", "integrations_settings", "job_shares", "job_candidates"]:
                     translated += " RETURNING id"
 
         # 8. Translate 'password' column -> 'password_hash' for PostgreSQL users table compatibility.
@@ -400,7 +409,9 @@ def connect_pg(*args, **kwargs):
             last_err = e
             time.sleep(0.1)
     else:
-        raise last_err
+        if last_err is not None:
+            raise last_err
+        raise psycopg2.pool.PoolError("PostgreSQL connection pool exhausted after retry attempts.")
     conn.set_client_encoding('UTF8')
     return PGConnection(conn, pool=pool)
 

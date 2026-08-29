@@ -81,6 +81,30 @@ def get_s3_client():
                 logger.error(f"Failed to initialize S3 client: {e}")
     return _s3_client
 
+
+def get_s3_presigned_url(filename: str, expires_in: int = 300) -> Optional[str]:
+    """Short-lived signed URL for a private S3 object. Resumes are no longer
+    uploaded with a public-read ACL (see upload_to_external_storage below) -
+    every consumer of an S3-backed file_url needs to go through this instead
+    of hitting the permanent https://<bucket>.s3.<region>.amazonaws.com/<key>
+    URL directly, which now 403s for anyone without bucket credentials."""
+    client = get_s3_client()
+    if not client or not AWS_BUCKET_NAME:
+        return None
+    try:
+        return client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": AWS_BUCKET_NAME, "Key": filename},
+            ExpiresIn=expires_in,
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate S3 presigned URL for {filename}: {e}")
+        return None
+
+
+def is_s3_url(url: str) -> bool:
+    return bool(url) and bool(AWS_BUCKET_NAME) and f"{AWS_BUCKET_NAME}.s3." in url
+
 # ── OneDrive Helper ───────────────────────────────────────────────────────────
 def get_onedrive_access_token(client_id, client_secret, refresh_token):
     url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
@@ -312,22 +336,20 @@ def upload_to_external_storage(file_path: str, filename: str) -> Tuple[Optional[
             if content_type:
                 extra_args["ContentType"] = content_type
             
-            try:
-                client.upload_file(
-                    file_path,
-                    AWS_BUCKET_NAME,
-                    filename,
-                    ExtraArgs={**extra_args, "ACL": "public-read"}
-                )
-            except Exception as acl_err:
-                logger.info(f"Failed to upload with public-read ACL, retrying without ACL: {acl_err}")
-                client.upload_file(
-                    file_path,
-                    AWS_BUCKET_NAME,
-                    filename,
-                    ExtraArgs=extra_args
-                )
-            
+            # Resumes contain PII (name, phone, email) - upload privately.
+            # This used to request ACL="public-read", making every resume
+            # world-readable via a guessable/enumerable URL as soon as it
+            # was uploaded. The stored `url` below is kept as a stable
+            # identifier (candidates.py/main.py key lookups match on the
+            # filename portion), but reading the object now always requires
+            # a short-lived signed URL via get_s3_presigned_url().
+            client.upload_file(
+                file_path,
+                AWS_BUCKET_NAME,
+                filename,
+                ExtraArgs=extra_args,
+            )
+
             url = f"https://{AWS_BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{filename}"
             logger.info(f"Successfully uploaded {filename} to AWS S3: {url}")
             return url, None

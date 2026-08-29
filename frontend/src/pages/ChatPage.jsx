@@ -213,7 +213,18 @@ export default function ChatPage() {
 
     useEffect(() => {
         if (user?.username) {
-            localStorage.setItem(`hire_ai_chat_msgs_${user.username}`, JSON.stringify(messages))
+            try {
+                // Cap what's persisted - some answers embed full candidate-table
+                // dumps, so an unbounded history can grow past localStorage's
+                // ~5MB quota and throw (this write was previously unguarded).
+                const MAX_PERSISTED_MESSAGES = 100
+                const toPersist = messages.length > MAX_PERSISTED_MESSAGES
+                    ? messages.slice(messages.length - MAX_PERSISTED_MESSAGES)
+                    : messages
+                localStorage.setItem(`hire_ai_chat_msgs_${user.username}`, JSON.stringify(toPersist))
+            } catch (err) {
+                console.warn('Failed to persist chat history (storage quota?):', err)
+            }
         }
     }, [messages, user])
 

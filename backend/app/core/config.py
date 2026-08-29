@@ -54,6 +54,17 @@ else:
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(os.path.dirname(STATS_DB), exist_ok=True)
 
+# ── Environment ──────────────────────────────────────────────────────────────
+# Defaults to "development", matching this app's existing "boots with a
+# blank .env" local-dev convention (see session_tokens.py) - flipping this
+# default to "production" would silently change response bodies (hiding the
+# forgot-password OTP with no delivery channel to replace it, hiding error
+# detail) for the existing deployment and every local dev setup, neither of
+# which currently sets this var. Set ENVIRONMENT=production explicitly in
+# any real deployment to get the locked-down behavior.
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
+DEBUG = ENVIRONMENT not in ("production", "prod")
+
 # ── AI / LLM ─────────────────────────────────────────────────────────────────
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 HF_TOKEN = os.getenv("HF_TOKEN", "")
