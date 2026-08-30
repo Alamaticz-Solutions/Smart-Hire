@@ -428,17 +428,16 @@ export default function LoginPage({ onLogin }) {
                                 </p>
                                 {simulatedOtp && (
                                     <div style={{
-                                        background: 'rgba(var(--gold-rgb), 0.12)',
-                                        border: '1px dashed var(--gold)',
+                                        background: 'var(--info-bg)',
+                                        border: '1px solid var(--border)',
                                         borderRadius: 6,
                                         padding: '10px 12px',
                                         fontSize: '0.82rem',
-                                        color: 'var(--gold)',
+                                        color: 'var(--info-fg)',
                                         marginBottom: '1rem',
                                         textAlign: 'center',
-                                        fontWeight: 'bold'
                                     }}>
-                                        [Dev Mode] OTP Code: {simulatedOtp}
+                                        Development build — code not emailed: <strong>{simulatedOtp}</strong>
                                     </div>
                                 )}
                                 <div className="form-group">

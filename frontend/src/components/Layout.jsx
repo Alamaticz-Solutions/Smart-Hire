@@ -23,8 +23,8 @@ const PAGE_META = {
     '/jobs': { title: 'Jobs', subtitle: 'Track open roles and their candidate funnel status.', Icon: Briefcase },
     '/upload': { title: 'Candidates', subtitle: 'Upload resumes and manage your candidate database.', Icon: Users },
     '/chat': { title: 'Assistant', subtitle: 'Ask questions about your candidates in natural language.', Icon: MessageSquare },
-    '/connect': { title: 'Integrations', subtitle: 'Configure connection details for background email resume synchronization and Google Drive storage sync.', Icon: Link },
-    '/templates': { title: 'Email Templates', subtitle: 'Draft and customize automated email responses sent back to candidates upon receiving application logs.', Icon: FileText },
+    '/connect': { title: 'Integrations', subtitle: 'Connect mailboxes and Drive storage.', Icon: Link },
+    '/templates': { title: 'Email Templates', subtitle: 'Draft automated email responses sent to candidates.', Icon: FileText },
     '/admin': { title: 'Administration', subtitle: 'Manage system changes, user roles, and access control.', Icon: Shield },
 }
 const PAGE_TITLES = Object.fromEntries(Object.entries(PAGE_META).map(([path, { title }]) => [path, title]))
@@ -466,7 +466,7 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
                             </div>
                             <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
                                 {loadingActivities && activities.length === 0 ? (
-                                    <div style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '2rem 0' }}>Loading...</div>
+                                    <div style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '2rem 0' }}>Loading…</div>
                                 ) : activitiesError ? (
                                     <div style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '2rem 0', fontSize: '0.9rem' }}>
                                         <p style={{ margin: '0 0 10px' }}>Couldn't load activity.</p>

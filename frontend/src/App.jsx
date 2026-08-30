@@ -24,7 +24,7 @@ const TemplatesPage = lazy(() => import('./pages/TemplatesPage'))
 function RouteLoadingFallback() {
     return (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh', color: 'var(--text-dim, #888)' }}>
-            Loading...
+            Loading…
         </div>
     )
 }
