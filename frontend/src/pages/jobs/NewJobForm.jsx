@@ -26,7 +26,7 @@ export default function NewJobForm({
 
                 {/* JD Document Upload Zone */}
                 <div style={{ marginBottom: '2rem' }}>
-                    <label className="form-label" style={{ display: 'block', marginBottom: '8px', color: 'var(--sky-dim)' }}>
+                    <label className="form-label" style={{ display: 'block', marginBottom: '8px' }}>
                         Optionally Upload JD Document to Auto-Fill Form
                     </label>
                     <div

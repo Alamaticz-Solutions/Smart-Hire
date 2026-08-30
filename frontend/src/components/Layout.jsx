@@ -268,7 +268,7 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
                         <div className="topbar-heading">
                             {pageMeta?.Icon && (
                                 <span className="topbar-heading-icon">
-                                    <pageMeta.Icon size={22} color="var(--gold)" />
+                                    <pageMeta.Icon size={20} color="var(--gold)" />
                                 </span>
                             )}
                             <div style={{ minWidth: 0 }}>

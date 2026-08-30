@@ -182,7 +182,7 @@ export default function JobSidebar({
                                 onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.08)'}
                                 title="Click to view shared users"
                             >
-                                <Share2 size={10} /> Shared ({job.shared_with.length})
+                                <Share2 size={12} /> Shared ({job.shared_with.length})
                             </button>
                         )}
                         {isAdmin && (

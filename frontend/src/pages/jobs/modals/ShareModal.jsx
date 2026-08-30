@@ -196,7 +196,7 @@ export default function ShareModal({
                                                 <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{u.full_name}</span>
                                                 <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>@{u.username}</span>
                                                 <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                    <EyeOff size={11} style={{ flexShrink: 0 }} />
+                                                    <EyeOff size={12} style={{ flexShrink: 0 }} />
                                                     Won&apos;t see: {hiddenFieldLabels(u).join(', ')}
                                                 </span>
                                             </div>

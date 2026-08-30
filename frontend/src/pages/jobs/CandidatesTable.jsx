@@ -420,7 +420,7 @@ export default function CandidatesTable({
                                     {display}
                                     {row.is_qualified ? (
                                         <span style={{ fontSize: '0.72rem', background: 'rgba(var(--gold-rgb), 0.2)', padding: '2px 6px', borderRadius: '10px', color: 'var(--gold)', marginLeft: '6px', display: 'inline-flex', alignItems: 'center', gap: '3px' }} title="Qualified candidate">
-                                            <Star size={11} fill="currentColor" /> Qualified
+                                            <Star size={12} fill="currentColor" /> Qualified
                                         </span>
                                     ) : null}
                                 </button>

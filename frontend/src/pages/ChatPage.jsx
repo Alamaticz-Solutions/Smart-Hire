@@ -324,7 +324,7 @@ export default function ChatPage() {
                             style={{ fontSize: '0.78rem', padding: '5px 10px', gap: 6, display: 'inline-flex', alignItems: 'center' }}
                             onClick={handleClearChat}
                         >
-                            <Trash2 size={13} /> Clear conversation
+                            <Trash2 size={12} /> Clear conversation
                         </button>
                     </div>
                 )}

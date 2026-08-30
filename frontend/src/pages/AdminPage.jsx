@@ -386,7 +386,7 @@ export default function AdminPage() {
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', font: 'inherit', padding: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}
             >
                 {children}
-                {userSort.key === sortKey && (userSort.dir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />)}
+                {userSort.key === sortKey && (userSort.dir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
             </button>
         </th>
     )

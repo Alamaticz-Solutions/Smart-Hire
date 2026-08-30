@@ -439,7 +439,7 @@ export default function ConnectPage() {
                                             <button type="button" onClick={() => toggleSecretVisible('gmail_pass')}
                                                 aria-label={showSecrets.gmail_pass ? 'Hide app password' : 'Show app password'}
                                                 style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', display: 'flex' }}>
-                                                {showSecrets.gmail_pass ? <EyeOff size={15} /> : <Eye size={15} />}
+                                                {showSecrets.gmail_pass ? <EyeOff size={16} /> : <Eye size={16} />}
                                             </button>
                                         </div>
                                         <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: 'var(--text-subtle)' }}>Stored encrypted. Once saved, this field shows as •••• and is never displayed again.</p>
@@ -505,7 +505,7 @@ export default function ConnectPage() {
                                             <button type="button" onClick={() => toggleSecretVisible('ms_client_secret')}
                                                 aria-label={showSecrets.ms_client_secret ? 'Hide client secret' : 'Show client secret'}
                                                 style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', display: 'flex' }}>
-                                                {showSecrets.ms_client_secret ? <EyeOff size={15} /> : <Eye size={15} />}
+                                                {showSecrets.ms_client_secret ? <EyeOff size={16} /> : <Eye size={16} />}
                                             </button>
                                         </div>
                                         <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: 'var(--text-subtle)' }}>Stored encrypted. Once saved, this field shows as •••• and is never displayed again.</p>
@@ -768,7 +768,7 @@ export default function ConnectPage() {
                                                     <button type="button" onClick={() => toggleSecretVisible('new_email_pass')}
                                                         aria-label={showSecrets.new_email_pass ? 'Hide app password' : 'Show app password'}
                                                         style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', display: 'flex' }}>
-                                                        {showSecrets.new_email_pass ? <EyeOff size={13} /> : <Eye size={13} />}
+                                                        {showSecrets.new_email_pass ? <EyeOff size={12} /> : <Eye size={12} />}
                                                     </button>
                                                 </div>
                                             </div>
@@ -920,7 +920,7 @@ export default function ConnectPage() {
                                         <button type="button" onClick={() => toggleSecretVisible('gdrive_client_secret')}
                                             aria-label={showSecrets.gdrive_client_secret ? 'Hide client secret' : 'Show client secret'}
                                             style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', display: 'flex' }}>
-                                            {showSecrets.gdrive_client_secret ? <EyeOff size={15} /> : <Eye size={15} />}
+                                            {showSecrets.gdrive_client_secret ? <EyeOff size={16} /> : <Eye size={16} />}
                                         </button>
                                     </div>
                                     <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: 'var(--text-subtle)' }}>Stored encrypted. Once saved, this field shows as •••• and is never displayed again.</p>

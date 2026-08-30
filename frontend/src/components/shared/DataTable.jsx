@@ -222,7 +222,7 @@ export default function DataTable({
                                                 }}
                                                 title="Clear all column filters"
                                             >
-                                                <X size={10} /> Clear
+                                                <X size={12} /> Clear
                                             </button>
                                         )}
                                     </th>

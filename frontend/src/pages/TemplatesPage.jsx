@@ -627,13 +627,13 @@ export default function TemplatesPage() {
                                             onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.2)'}
                                             onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.12)'}
                                         >
-                                            <Copy size={10} />
+                                            <Copy size={12} />
                                             {variable.key}
                                         </span>
                                     ))}
                                 </div>
                                 <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginTop: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
-                                    <Info size={11} /> Click any chip above to copy. Paste it directly into your template subject or message body.
+                                    <Info size={12} /> Click any chip above to copy. Paste it directly into your template subject or message body.
                                 </div>
                             </div>
 
@@ -692,7 +692,7 @@ export default function TemplatesPage() {
                             <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ff5f56' }}></div>
                             <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ffbd2e' }}></div>
                             <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#27c93f' }}></div>
-                            <div style={{ marginLeft: 12, fontSize: '0.75rem', color: '#6B6F94', fontFamily: 'monospace', letterSpacing: '0.02rem', display: 'flex', alignItems: 'center', gap: 5 }}><Mail size={11} /> mail-client-simulator.html</div>
+                            <div style={{ marginLeft: 12, fontSize: '0.75rem', color: '#6B6F94', fontFamily: 'monospace', letterSpacing: '0.02rem', display: 'flex', alignItems: 'center', gap: 5 }}><Mail size={12} /> mail-client-simulator.html</div>
                         </div>
 
                         {/* Email headers */}

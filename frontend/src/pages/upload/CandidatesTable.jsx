@@ -341,7 +341,7 @@ export default function CandidatesTable({
                                         opacity: isRetrying ? 0.6 : 1,
                                     }}
                                 >
-                                    <RefreshCw size={11} className={isRetrying ? 'spin' : undefined} /> {isRetrying ? 'Retrying…' : 'Retry'}
+                                    <RefreshCw size={12} className={isRetrying ? 'spin' : undefined} /> {isRetrying ? 'Retrying…' : 'Retry'}
                                 </button>
                             )}
                         </span>
