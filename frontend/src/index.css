@@ -1972,6 +1972,23 @@ tbody tr:last-child td {
   box-shadow: inset 3px 0 0 0 var(--gold);
 }
 
+/* shared/DataTable.jsx's per-column filter-row inputs. */
+.column-filter-input {
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: var(--fs-2);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.column-filter-input:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 4px rgba(var(--gold-rgb), 0.3);
+}
+
 @keyframes overlayFadeIn {
   from { opacity: 0; }
   to { opacity: 1; }

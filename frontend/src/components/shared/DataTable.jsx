@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { X, Trash2 } from 'lucide-react'
 
 // Shared table chrome extracted from upload/CandidatesTable.jsx and
@@ -49,6 +50,24 @@ export default function DataTable({
     const colSpan = activeCols.length + leadingColumns.length
     const virtualItems = rowVirtualizer.getVirtualItems()
 
+    // The filter row's sticky `top` used to be a hardcoded 38px, but the
+    // header row above it is 11px padding + ~11.7px uppercase text + 2px
+    // border ~= 42px tall - while scrolled, the filter row overlapped the
+    // header by ~4px and its inputs clipped. Measuring the real header
+    // height means this stays correct if TH's padding/font-size ever
+    // changes, instead of silently desyncing again.
+    const headerRowRef = useRef(null)
+    const [headerHeight, setHeaderHeight] = useState(40)
+    useEffect(() => {
+        const el = headerRowRef.current
+        if (!el) return
+        const measure = () => setHeaderHeight(el.getBoundingClientRect().height)
+        measure()
+        const observer = new ResizeObserver(measure)
+        observer.observe(el)
+        return () => observer.disconnect()
+    }, [])
+
     // scrollbarGutter:'stable' reserves the vertical scrollbar's track width
     // up front instead of only when content overflows, so the sticky
     // right:0 Actions column's declared width doesn't get eaten by the
@@ -66,7 +85,7 @@ export default function DataTable({
                     {activeCols.map(c => <col key={c.key} style={{ width: c.pct }} />)}
                 </colgroup>
                 <thead>
-                    <tr>
+                    <tr ref={headerRowRef}>
                         {leadingColumns.map(lc => (
                             <th key={lc.key} style={{
                                 ...TH, position: 'sticky', top: 0, zIndex: 12,
@@ -170,7 +189,7 @@ export default function DataTable({
                         {leadingColumns.map(lc => (
                             <th key={`filter-${lc.key}`} style={{
                                 padding: '6px 10px', borderBottom: '2px solid var(--border)',
-                                background: 'rgba(var(--navy-rgb), 0.97)', position: 'sticky', top: '38px',
+                                background: 'rgba(var(--navy-rgb), 0.97)', position: 'sticky', top: headerHeight,
                                 zIndex: 11, textAlign: lc.align || 'left',
                                 color: lc.filterCellColor, fontSize: lc.filterCellColor ? '0.75rem' : undefined,
                                 fontWeight: lc.filterCellColor ? 800 : undefined,
@@ -187,7 +206,7 @@ export default function DataTable({
                                         key="filter-_actions"
                                         style={{
                                             padding: '6px 10px', borderBottom: '2px solid var(--border)',
-                                            position: 'sticky', top: '38px', zIndex: 11,
+                                            position: 'sticky', top: headerHeight, zIndex: 11,
                                             background: 'rgba(var(--navy-rgb), 0.97)', textAlign: 'center'
                                         }}
                                     >
@@ -215,27 +234,21 @@ export default function DataTable({
                                     key={`filter-${c.key}`}
                                     style={{
                                         padding: '6px 10px', borderBottom: '2px solid var(--border)',
-                                        background: 'rgba(var(--navy-rgb), 0.97)', position: 'sticky', top: '38px', zIndex: 11,
+                                        background: 'rgba(var(--navy-rgb), 0.97)', position: 'sticky', top: headerHeight, zIndex: 11,
                                     }}
                                 >
+                                    {/* Was onFocus/onBlur inline handlers restoring a DIFFERENT
+                                        color on blur (rgba(--sky-rgb,0.25)) than the field started
+                                        with (var(--border)) - focus any filter once and that
+                                        column's input stayed visibly blue-bordered for the rest of
+                                        the session. A CSS class expresses "return to the resting
+                                        state" correctly by construction. */}
                                     <input
                                         type="text"
+                                        className="column-filter-input"
                                         value={columnFilters[c.key] || ''}
                                         onChange={e => setColumnFilters(prev => ({ ...prev, [c.key]: e.target.value }))}
                                         placeholder="Search..."
-                                        style={{
-                                            width: '100%', padding: '5px 8px', borderRadius: '5px',
-                                            border: '1px solid var(--border)', background: 'var(--input-bg)',
-                                            color: 'var(--text)', fontSize: 'var(--fs-2)', outline: 'none', transition: 'all 0.2s'
-                                        }}
-                                        onFocus={e => {
-                                            e.target.style.border = '1px solid var(--gold)';
-                                            e.target.style.boxShadow = '0 0 4px rgba(var(--gold-rgb), 0.3)';
-                                        }}
-                                        onBlur={e => {
-                                            e.target.style.border = '1px solid rgba(var(--sky-rgb), 0.25)';
-                                            e.target.style.boxShadow = 'none';
-                                        }}
                                     />
                                 </th>
                             );
