@@ -1651,6 +1651,9 @@ tbody tr:last-child td {
 }
 
 .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--r-full);
