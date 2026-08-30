@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Plus, MoreVertical, Share2, Edit, Trash2, Search, UserCheck, Building2 } from 'lucide-react';
 import { SkeletonBlock } from '../../components/shared/Skeleton';
+import JobStatusChip from '../../components/shared/JobStatusChip';
 
 // Extracted from JobsPage.jsx: the left sidebar "Job List" section
 // (status filter select + scrollable job list with per-job actions dropdown).
@@ -24,17 +25,41 @@ export default function JobSidebar({
     setViewingSharedList,
     style,
 }) {
+    // The per-card options dropdown had no Escape handler and no
+    // outside-click dismissal - a keyboard user who opened it had no way
+    // to close it except tabbing through its items or reloading the page.
+    useEffect(() => {
+        if (activeDropdownJobId == null) return
+        const handleKeyDown = (e) => { if (e.key === 'Escape') setActiveDropdownJobId(null) }
+        const handleClickOutside = () => setActiveDropdownJobId(null)
+        document.addEventListener('keydown', handleKeyDown)
+        // Capture phase + next-tick-free: the trigger button's own onClick
+        // already stopPropagation()s, so this only ever fires for a click
+        // genuinely outside the menu.
+        document.addEventListener('click', handleClickOutside)
+        return () => {
+            document.removeEventListener('keydown', handleKeyDown)
+            document.removeEventListener('click', handleClickOutside)
+        }
+    }, [activeDropdownJobId, setActiveDropdownJobId])
+
     return (
         <div style={{ width: '320px', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', background: 'var(--surface-2)', ...style }}>
-            <div style={{ padding: '1.2rem 1.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontFamily: 'var(--fh)', fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>
-                    Job List
+            {/* Was a full 3-word button ("New Job Description") squeezed into
+                this 320px header beside the title - wraps/clips at any
+                client-name length. Shorter label, fixed 32px height, and its
+                own row so it can't collide with the title regardless of width. */}
+            <div style={{ padding: '1.2rem 1.5rem 0.8rem', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ fontFamily: 'var(--fh)', fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>
+                        Job List
+                    </div>
+                    {!isExternal && (
+                        <button className="btn btn-primary" style={{ height: 32, padding: '0 12px', fontSize: '0.82rem' }} onClick={() => setShowNewForm(true)}>
+                            <Plus size={14} /> New job
+                        </button>
+                    )}
                 </div>
-                {!isExternal && (
-                    <button className="btn btn-primary" style={{ padding: '6px 12px' }} onClick={() => setShowNewForm(true)}>
-                        <Plus size={16} /> New Job Description
-                    </button>
-                )}
             </div>
 
             {/* Status Filter */}
@@ -63,25 +88,103 @@ export default function JobSidebar({
                         {[0, 1, 2, 3].map(i => <SkeletonBlock key={i} height={72} radius={10} />)}
                     </div>
                 ) : filteredJobs.length === 0 ? (
-                    <div style={{ textAlign: 'center', color: 'var(--text-dim)', marginTop: '2rem' }}>
-                        No jobs found matching<br/>the selected status.
+                    // Was a hard <br/> forcing the line break regardless of
+                    // width, with no way out of the empty state (no clear-
+                    // filter, no create-a-job, not even an icon).
+                    <div style={{ textAlign: 'center', color: 'var(--text-dim)', marginTop: '2rem', padding: '0 0.5rem' }}>
+                        <Search size={28} style={{ marginBottom: 10, opacity: 0.5 }} />
+                        <p style={{ margin: '0 0 14px', textWrap: 'pretty' }}>
+                            {statusFilter === 'All' ? 'No open jobs' : `No jobs found matching the "${statusFilter}" status.`}
+                        </p>
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+                            {statusFilter !== 'All' && (
+                                <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.82rem' }} onClick={() => setStatusFilter('All')}>
+                                    Clear filter
+                                </button>
+                            )}
+                            {!isExternal && (
+                                <button type="button" className="btn btn-primary" style={{ padding: '6px 12px', fontSize: '0.82rem' }} onClick={() => setShowNewForm(true)}>
+                                    <Plus size={14} /> New job
+                                </button>
+                            )}
+                        </div>
                     </div>
                 ) : null}
                 {!loadingJobs && filteredJobs.map(job => (
+                    // Was a plain <div onClick> - the primary navigation of the
+                    // whole Jobs screen was unreachable by keyboard. Restructured
+                    // so the "select this job" action is a real <button> wrapping
+                    // just the card's informational content, with the options
+                    // menu trigger and the "Shared" link as its SIBLINGS (not
+                    // descendants) - a <button> can't contain other interactive
+                    // elements without breaking both semantics and click-through.
                     <div
                         key={job.id}
-                        onClick={() => { setSelectedJob(job); setShowNewForm(false); }}
-                        style={{
-                            position: 'relative',
-                            padding: '1rem', borderRadius: '12px', marginBottom: '10px', cursor: 'pointer',
-                            border: `1px solid ${selectedJob?.id === job.id ? 'var(--gold)' : 'var(--border)'}`,
-                            background: selectedJob?.id === job.id ? 'rgba(var(--gold-rgb), 0.1)' : 'var(--input-bg)',
-                            transition: 'all 0.2s'
-                        }}
+                        className={selectedJob?.id === job.id ? 'job-card job-card--selected' : 'job-card'}
+                        style={{ position: 'relative', marginBottom: '10px' }}
                     >
-                        <div style={{ fontWeight: 700, color: selectedJob?.id === job.id ? 'var(--gold)' : 'var(--text)', marginBottom: '4px', paddingRight: '24px' }}>
-                            {job.title}
-                        </div>
+                        <button
+                            type="button"
+                            onClick={() => { setSelectedJob(job); setShowNewForm(false); }}
+                            style={{
+                                all: 'unset', display: 'block', boxSizing: 'border-box', width: '100%', cursor: 'pointer',
+                                padding: '1rem', paddingRight: isAdmin ? '36px' : '1rem', borderRadius: 'inherit',
+                            }}
+                        >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                                {/* Selection used to be signaled three ways at once (gold
+                                    border + 10% gold fill + gold title), while hover had no
+                                    state at all. One treatment now (.job-card--selected: a
+                                    surface lift + 3px left bar, in index.css) - title stays
+                                    --text always. */}
+                                <span style={{ fontWeight: 700, color: 'var(--text)' }}>
+                                    {job.title}
+                                </span>
+                                {/* Was never rendered on the card at all - the only way to know a
+                                    job's status was to filter to it and see what remained, which is
+                                    why the live data has statuses hand-appended to titles instead
+                                    ("... (On-hold)"), overflowing the 2-line clamp. */}
+                                <JobStatusChip status={job.job_status} size="sm" />
+                            </div>
+                            {job.client_name && (
+                                <div style={{ fontSize: '0.76rem', color: 'var(--sky-dim)', marginBottom: '6px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <Building2 size={12} /> Client: {job.client_name}
+                                </div>
+                            )}
+                            <div style={{ display: 'flex', gap: '15px', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <Search size={12}/> {job.matched_count} Matched
+                                </span>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <UserCheck size={12}/> {job.selected_count} Selected
+                                </span>
+                            </div>
+                        </button>
+                        {!isExternal && job.shared_with && job.shared_with.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={() => setViewingSharedList(job)}
+                                style={{
+                                    all: 'unset', boxSizing: 'border-box',
+                                    fontSize: '0.72rem',
+                                    color: 'var(--gold)',
+                                    margin: '0 1rem 0.85rem',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    background: 'rgba(var(--gold-rgb), 0.08)',
+                                    padding: '2px 8px',
+                                    borderRadius: '4px',
+                                    border: '1px solid rgba(var(--gold-rgb), 0.15)',
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.15)'}
+                                onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.08)'}
+                                title="Click to view shared users"
+                            >
+                                <Share2 size={10} /> Shared ({job.shared_with.length})
+                            </button>
+                        )}
                         {isAdmin && (
                             <div style={{ position: 'absolute', top: '12px', right: '12px', zIndex: 10 }}>
                                 <button
@@ -105,13 +208,14 @@ export default function JobSidebar({
                                         <MoreVertical size={16} />
                                     </button>
                                     {activeDropdownJobId === job.id && (
-                                        <div style={{
+                                        <div role="menu" aria-label="Job options" style={{
                                             position: 'absolute', right: 0, top: '28px',
                                             background: 'var(--navy-dark)', border: '1px solid var(--border)',
                                             borderRadius: '8px', boxShadow: '0 8px 16px rgba(0,0,0,0.5)',
                                             zIndex: 100, width: '140px', overflow: 'hidden'
                                         }}>
                                             <button
+                                                role="menuitem"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     setActiveDropdownJobId(null);
@@ -128,6 +232,7 @@ export default function JobSidebar({
                                                 <Share2 size={14} /> Share
                                             </button>
                                             <button
+                                                role="menuitem"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     setActiveDropdownJobId(null);
@@ -144,6 +249,7 @@ export default function JobSidebar({
                                                 <Edit size={14} /> Edit
                                             </button>
                                             <button
+                                                role="menuitem"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     setActiveDropdownJobId(null);
@@ -163,46 +269,6 @@ export default function JobSidebar({
                                     )}
                                 </div>
                             )}
-                        {job.client_name && (
-                            <div style={{ fontSize: '0.76rem', color: 'var(--sky-dim)', marginBottom: '6px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <Building2 size={12} /> Client: {job.client_name}
-                            </div>
-                        )}
-                        <div style={{ display: 'flex', gap: '15px', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <Search size={12}/> {job.matched_count} Matched
-                            </span>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <UserCheck size={12}/> {job.selected_count} Selected
-                            </span>
-                        </div>
-                        {!isExternal && job.shared_with && job.shared_with.length > 0 && (
-                            <div
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setViewingSharedList(job);
-                                }}
-                                style={{
-                                    fontSize: '0.72rem',
-                                    color: 'var(--gold)',
-                                    marginTop: '6px',
-                                    cursor: 'pointer',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '4px',
-                                    background: 'rgba(var(--gold-rgb), 0.08)',
-                                    padding: '2px 8px',
-                                    borderRadius: '4px',
-                                    border: '1px solid rgba(var(--gold-rgb), 0.15)',
-                                    width: 'fit-content'
-                                }}
-                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.15)'}
-                                onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.08)'}
-                                title="Click to view shared users"
-                            >
-                                <Share2 size={10} /> Shared ({job.shared_with.length})
-                            </div>
-                        )}
                     </div>
                 ))}
             </div>

@@ -7,6 +7,7 @@ import { exportToExcel, formatCandidatesForExcel } from '../../utils/excelUtils'
 import ExpandableCell from '../../components/shared/ExpandableCell';
 import ColumnVisibilityPopover from '../../components/shared/ColumnVisibilityPopover';
 import DataTable from '../../components/shared/DataTable';
+import { CANDIDATE_STATUSES } from '../../utils/candidateStatus';
 
 // Extracted from JobsPage.jsx: the Matched/Selected tabs plus the whole
 // candidates spreadsheet section (columns selector popover, Excel export,
@@ -133,12 +134,14 @@ export default function CandidatesTable({
     })
 
     const renderRow = (row, ri, virtualRow) => (
+        // See .data-row in index.css - was JS mouse handlers overwriting
+        // style.background directly, which made keyboard focus show no
+        // row highlight at all.
         <tr key={row.id || ri}
             data-index={virtualRow.index}
             ref={rowVirtualizer.measureElement}
-            style={{ background: ri % 2 === 0 ? 'rgba(var(--navy-rgb), 0.25)' : 'transparent', transition: 'background 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.07)'}
-            onMouseLeave={e => e.currentTarget.style.background = ri % 2 === 0 ? 'rgba(var(--navy-rgb), 0.25)' : 'transparent'}
+            className="data-row"
+            data-zebra={ri % 2 === 0 ? 'even' : undefined}
         >
             {activeCols.map(({ key }) => {
                 /* ── Actions column ── */
@@ -261,7 +264,7 @@ export default function CandidatesTable({
                 /* ── Inline edit mode ── */
                 if (isEditing) {
                     if (key === 'candidate_status') {
-                        const statusOptions = ['New', 'In-Review', 'Available', 'Selected', 'Rejected', 'Engaged', 'Offered', 'Hired'];
+                        const statusOptions = CANDIDATE_STATUSES;
                         return (
                             <td key={key} style={TD_BASE}>
                                 <select

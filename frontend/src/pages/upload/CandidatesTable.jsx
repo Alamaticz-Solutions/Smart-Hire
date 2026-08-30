@@ -7,6 +7,7 @@ import ExpandableCell from '../../components/shared/ExpandableCell'
 import ColumnVisibilityPopover from '../../components/shared/ColumnVisibilityPopover'
 import DataTable from '../../components/shared/DataTable'
 import { useModalA11y } from '../../hooks/useModalA11y'
+import { CANDIDATE_STATUSES } from '../../utils/candidateStatus'
 
 // Extracted from UploadPage.jsx: the "Table" card — header toolbar (Filter
 // button, Columns visibility popover, Add Candidate, Add Column, Download
@@ -119,6 +120,33 @@ export default function CandidatesTable({
 
     const addCandidateModalRef = useModalA11y(showAddCandidate, () => setShowAddCandidate(false))
     const addColModalRef = useModalA11y(showAddCol, () => setShowAddCol(false))
+    // Roving tabindex: every non-name cell used to get a hardcoded
+    // tabIndex={0}. With ~30 columns and 200 loaded rows that's roughly
+    // 6,000 tab stops between the table and the Load More button below it -
+    // a keyboard user could not get past the table at all. Only the one
+    // "active" cell is now in the natural Tab order (tabIndex 0); every
+    // other cell is -1 (focusable programmatically, not via Tab) and
+    // reachable with arrow keys instead, which is also the standard
+    // interaction model for a spreadsheet-like grid (role="grid" below).
+    const [focusedCell, setFocusedCell] = React.useState({ ri: 0, key: null })
+    const tableBodyRef = useRef(null)
+    const focusCellAt = (ri, key) => {
+        const el = tableBodyRef.current?.querySelector(`[data-cell-row="${ri}"][data-cell-col="${key}"]`)
+        if (el) { el.focus(); setFocusedCell({ ri, key }) }
+    }
+    // Arrow-key movement is scoped to rows the virtualizer currently has
+    // mounted (querySelector only finds what's in the DOM) - reaching a
+    // far-off row still works via normal scrolling + click/Tab, this just
+    // covers the common case of navigating the visible viewport without a
+    // mouse, which is what was completely broken before.
+    const handleGridKeyDown = (e, ri, key) => {
+        const cols = activeCols.map(c => c.key)
+        const colIdx = cols.indexOf(key)
+        if (e.key === 'ArrowRight' && colIdx < cols.length - 1) { e.preventDefault(); focusCellAt(ri, cols[colIdx + 1]) }
+        else if (e.key === 'ArrowLeft' && colIdx > 0) { e.preventDefault(); focusCellAt(ri, cols[colIdx - 1]) }
+        else if (e.key === 'ArrowDown') { e.preventDefault(); focusCellAt(ri + 1, key) }
+        else if (e.key === 'ArrowUp' && ri > 0) { e.preventDefault(); focusCellAt(ri - 1, key) }
+    }
     const tableScrollRef = useRef(null)
     const rowVirtualizer = useVirtualizer({
         count: filteredCandidates.length,
@@ -139,6 +167,7 @@ export default function CandidatesTable({
             renderHeader: () => (
                 <input
                     type="checkbox"
+                    aria-label={`Select all ${filteredCandidates.length} filtered candidates`}
                     checked={filteredCandidates.length > 0 && selectedIds.size === filteredCandidates.length}
                     onChange={toggleSelectAll}
                     ref={el => { if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < filteredCandidates.length }}
@@ -158,16 +187,23 @@ export default function CandidatesTable({
     ]
 
     const renderRow = (row, ri, virtualRow) => (
+        // Row hover/selection used to be JS mouse handlers overwriting
+        // style.background directly, which made index.css's own tbody
+        // tr:hover rule dead code and meant a row reached by keyboard
+        // (focus, not mouse) showed no highlight at all. A CSS class plus
+        // :hover/:focus-within/[data-selected] gives every input method
+        // the same feedback - see .data-row in index.css.
         <tr key={row.id || ri}
             data-index={virtualRow.index}
             ref={rowVirtualizer.measureElement}
-            style={{ background: ri % 2 === 0 ? 'rgba(var(--navy-rgb), 0.25)' : 'transparent', transition: 'background 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.07)'}
-            onMouseLeave={e => e.currentTarget.style.background = ri % 2 === 0 ? 'rgba(var(--navy-rgb), 0.25)' : 'transparent'}
+            className="data-row"
+            data-selected={selectedIds.has(row.id) || undefined}
+            data-zebra={ri % 2 === 0 ? 'even' : undefined}
         >
             <td style={{ ...TD_BASE, textAlign: 'center', padding: '10px 6px' }}>
                 <input
                     type="checkbox"
+                    aria-label={`Select ${row.full_name || 'candidate'}`}
                     checked={selectedIds.has(row.id)}
                     onChange={() => toggleSelectCandidate(row.id)}
                     style={{ cursor: 'pointer', accentColor: 'var(--gold)', width: 15, height: 15 }}
@@ -185,7 +221,7 @@ export default function CandidatesTable({
                 /* ── Inline edit mode ── */
                 if (isEditing) {
                     if (key === 'candidate_status') {
-                        const statusOptions = ['New', 'In-Review', 'Available', 'Selected', 'Rejected', 'Engaged', 'Offered', 'Hired'];
+                        const statusOptions = CANDIDATE_STATUSES;
                         return (
                             <td key={key} style={TD_BASE}>
                                 <select
@@ -241,17 +277,26 @@ export default function CandidatesTable({
                 // G-33: see jobs/CandidatesTable.jsx's identical comment - a
                 // single-value cell renders no ExpandableCell button at all,
                 // so this td needs its own keyboard path to startEdit.
-                if (isExpandable) return (
-                    <td
-                        key={key}
-                        tabIndex={0}
-                        style={{ ...TD_BASE }}
-                        onDoubleClick={() => startEdit(ri, key, val)}
-                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startEdit(ri, key, val) } }}
-                    >
-                        <ExpandableCell value={val} onEdit={() => startEdit(ri, key, val)} />
-                    </td>
-                )
+                if (isExpandable) {
+                    const isFocused = focusedCell.ri === ri && (focusedCell.key || activeCols[0]?.key) === key
+                    return (
+                        <td
+                            key={key}
+                            data-cell-row={ri}
+                            data-cell-col={key}
+                            tabIndex={isFocused ? 0 : -1}
+                            style={{ ...TD_BASE }}
+                            onFocus={() => setFocusedCell({ ri, key })}
+                            onDoubleClick={() => startEdit(ri, key, val)}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startEdit(ri, key, val); return }
+                                handleGridKeyDown(e, ri, key)
+                            }}
+                        >
+                            <ExpandableCell value={val} onEdit={() => startEdit(ri, key, val)} />
+                        </td>
+                    )
+                }
 
                 /* ── Regular cells ── */
                 let display;
@@ -300,17 +345,24 @@ export default function CandidatesTable({
                     if (key === 'full_name') return // has its own focusable control below
                     startEdit(ri, key, val);
                 };
+                const isFocused = focusedCell.ri === ri && (focusedCell.key || activeCols[0]?.key) === key
                 return (
                     <td
                         key={key}
-                        tabIndex={key === 'full_name' ? undefined : 0}
+                        data-cell-row={ri}
+                        data-cell-col={key}
+                        tabIndex={key === 'full_name' ? undefined : (isFocused ? 0 : -1)}
+                        onFocus={() => { if (key !== 'full_name') setFocusedCell({ ri, key }) }}
                         onClick={() => {
                             if (key === 'candidate_status') startEdit(ri, key, val);
                         }}
                         onDoubleClick={() => {
                             if (key !== 'candidate_status') startEdit(ri, key, val);
                         }}
-                        onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && key !== 'full_name') { e.preventDefault(); activateCell() } }}
+                        onKeyDown={e => {
+                            if ((e.key === 'Enter' || e.key === ' ') && key !== 'full_name') { e.preventDefault(); activateCell(); return }
+                            if (key !== 'full_name') handleGridKeyDown(e, ri, key)
+                        }}
                         style={{
                             ...TD_BASE,
                             color: key === 'full_name' ? 'var(--gold)' : key === 'email' ? 'var(--sky-dim)' : 'var(--text)',
@@ -481,6 +533,8 @@ export default function CandidatesTable({
                     )}
 
                     <DataTable
+                        tbodyRef={tableBodyRef}
+                        ariaRowCount={filteredCandidates.length}
                         activeCols={activeCols}
                         leadingColumns={leadingColumns}
                         TH={TH}
@@ -580,11 +634,12 @@ export default function CandidatesTable({
                                             onChange={e => setNewCandidateForm(p => ({ ...p, [c.key]: e.target.value }))}
                                             style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
                                         >
-                                            <option value="New">New</option>
-                                            <option value="Screening">Screening</option>
-                                            <option value="Interview">Interview</option>
-                                            <option value="Offered">Offered</option>
-                                            <option value="Rejected">Rejected</option>
+                                            {/* Was New/Screening/Interview/Offered/Rejected - two of those
+                                                five ("Screening", "Interview") match no .status-chip class
+                                                and no PIPELINE_STAGES entry, so a candidate created with
+                                                either rendered as an unstyled grey pill and silently
+                                                dropped out of every dashboard count. One shared list now. */}
+                                            {CANDIDATE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                                         </select>
                                     ) : (
                                         <input

@@ -1146,6 +1146,31 @@ tbody tr:last-child td {
   border-bottom: none;
 }
 
+/* Candidates table rows (upload/CandidatesTable.jsx, jobs/CandidatesTable.jsx).
+   Was three inline JS mouse handlers (zebra background computed once,
+   hover/unhover overwriting it directly via style.background) - which made
+   the plain `tbody tr:hover` rule above dead code for these tables
+   specifically, and meant a row reached by keyboard focus (not a mouse)
+   showed no highlight at all. One class covers zebra + hover + keyboard
+   focus + the selected-row state (previously signaled only by the
+   checkbox itself changing, with the row background staying flat). */
+.data-row {
+  background: transparent;
+  transition: background-color 0.15s ease;
+  box-shadow: inset 2px 0 0 0 transparent;
+}
+.data-row[data-zebra='even'] {
+  background: rgba(var(--navy-rgb), 0.25);
+}
+.data-row:hover,
+.data-row:focus-within {
+  background: rgba(var(--sky-rgb), 0.07);
+}
+.data-row[data-selected] {
+  background: var(--action-quiet-bg);
+  box-shadow: inset 2px 0 0 0 var(--gold);
+}
+
 /* ── Chat ─────────────────────────────────────────────── */
 .chat-layout {
   display: flex;
@@ -1913,6 +1938,28 @@ tbody tr:last-child td {
 .dropdown-menu-item.danger:hover,
 .dropdown-menu-item.danger:focus-visible {
   background: rgba(var(--red-rgb), 0.1);
+}
+
+/* jobs/JobSidebar.jsx job cards. Selection used to be signaled three ways
+   at once (gold border + 10% gold fill + gold title text) while hover had
+   no state at all - one surface-lift + left-bar treatment now, plus a real
+   hover so the list doesn't feel inert before anything is selected. */
+.job-card {
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  box-shadow: inset 3px 0 0 0 transparent;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.job-card:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+.job-card--selected,
+.job-card--selected:hover {
+  background: var(--action-quiet-bg);
+  border-color: var(--gold);
+  box-shadow: inset 3px 0 0 0 var(--gold);
 }
 
 @keyframes overlayFadeIn {

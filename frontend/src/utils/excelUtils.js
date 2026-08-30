@@ -1,3 +1,5 @@
+import { CANDIDATE_STATUSES } from './candidateStatus';
+
 /**
  * Exports JSON data to an Excel file (.xlsx) with status dropdown lists and custom styling
  * @param {Array} data - Array of objects to export
@@ -43,7 +45,7 @@ export const exportToExcel = async (data, filename = 'candidates.xlsx', sheetNam
                 cell.dataValidation = {
                     type: 'list',
                     allowBlank: true,
-                    formulae: ['"New,In-Review,Available,Selected,Rejected,Engaged,Offered,Hired"']
+                    formulae: [`"${CANDIDATE_STATUSES.join(',')}"`]
                 };
             }
         }

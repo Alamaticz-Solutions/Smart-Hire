@@ -43,6 +43,8 @@ export default function DataTable({
     rows,
     renderRow,
     noMatchMessage,
+    tbodyRef,
+    ariaRowCount,
 }) {
     const colSpan = activeCols.length + leadingColumns.length
     const virtualItems = rowVirtualizer.getVirtualItems()
@@ -54,7 +56,11 @@ export default function DataTable({
     // column looking "fixed and overlapping").
     return (
         <div ref={tableScrollRef} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', borderRadius: 'var(--r-md)', border: '1px solid var(--border)', width: '100%', scrollbarGutter: 'stable' }}>
-            <table style={{ width: getTableWidth(), tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--fs-3)' }}>
+            <table
+                role={ariaRowCount != null ? 'grid' : undefined}
+                aria-rowcount={ariaRowCount}
+                style={{ width: getTableWidth(), tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--fs-3)' }}
+            >
                 <colgroup>
                     {leadingColumns.map(lc => <col key={lc.key} style={{ width: lc.width }} />)}
                     {activeCols.map(c => <col key={c.key} style={{ width: c.pct }} />)}
@@ -236,7 +242,7 @@ export default function DataTable({
                         })}
                     </tr>
                 </thead>
-                <tbody>
+                <tbody ref={tbodyRef}>
                     {rows.length === 0 && noMatchMessage ? (
                         <tr>
                             <td colSpan={colSpan} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-dim)' }}>
