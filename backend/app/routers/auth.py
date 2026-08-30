@@ -193,6 +193,13 @@ def login(req: LoginRequest, request: Request):
 
     if user_dict.get("is_approved", 0) == 0:
         raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
+    # Logged here, not by a follow-up client call: the frontend used to POST
+    # /api/activity right after login, but that fires before axios has the
+    # freshly-issued token attached (it's set by a React effect that only
+    # runs after this response is handled) - now that /api/activity requires
+    # an authenticated caller, that call 403'd on every single login. The
+    # backend already knows who just authenticated, so log it directly.
+    _log_activity_db(user_dict["username"], "logged in to the portal")
     return {
         "username": user_dict["username"],
         "full_name": user_dict["full_name"],
@@ -262,6 +269,9 @@ def firebase_sync(req: FirebaseSyncRequest):
     user_dict = dict(user)
     if user_dict.get("is_approved", 0) == 0:
         raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
+    # See login()'s identical comment: logged server-side rather than via a
+    # follow-up client call, which used to 403 (no session token attached yet).
+    _log_activity_db(user_dict["username"], "logged in to the portal")
     return {
         "username": user_dict["username"],
         "full_name": user_dict["full_name"],

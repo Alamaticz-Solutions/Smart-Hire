@@ -248,8 +248,8 @@ export default function CandidateDetailsModal({
                 }}>
                     {/* Header */}
                     <div style={{
-                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        padding: '20px 24px', background: 'rgba(var(--navy-dark-rgb), 0.4)',
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap',
+                        padding: '20px 24px', background: 'rgba(var(--navy-dark-rgb), 0.4)', rowGap: '12px',
                         borderBottom: '1px solid var(--border)'
                     }}>
                         <div>
@@ -261,7 +261,13 @@ export default function CandidateDetailsModal({
                                 {candidate.timestamp && <span>Analyzed: {formatDate(candidate.timestamp)}</span>}
                             </div>
                         </div>
-                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                        {/* This row can hold up to 6 buttons (Alamaticz Format,
+                            View/Hide toggle, Select/Selected, Delete, Open/
+                            Download, Close) inside a panel that's only ~50% of
+                            the modal width - without wrap, it silently overflowed
+                            the panel with no scrollbar, clipping buttons
+                            (including Close) completely out of reach. */}
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                             {canExportDocx && (
                                 <button
                                     onClick={handleDownloadDocx}

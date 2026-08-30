@@ -569,7 +569,7 @@ def get_candidate_jobs(candidate_id: int, username: str = Depends(require_approv
         if not cand_row:
             raise HTTPException(status_code=404, detail="Candidate not found")
 
-        created_by = cand_row[0]
+        created_by = cand_row["created_by"]
         assert_owns_or_admin(created_by, username)
 
         cur.execute(

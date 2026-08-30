@@ -113,15 +113,13 @@ export default function LoginPage({ onLogin }) {
                 loginData = res.data;
             }
             
-            try {
-                await apiClient.post('/api/activity', { 
-                    username: loginData.username, 
-                    action: 'logged in to the portal' 
-                })
-            } catch (err) {
-                console.error("Failed to log activity", err);
-            }
-
+            // "logged in to the portal" is now recorded server-side, inside
+            // /api/auth/login and /api/auth/firebase-sync themselves - a
+            // follow-up POST /api/activity from here always fired before
+            // axios had the freshly-issued session token attached (that's
+            // set by an effect that only runs after onLogin below causes a
+            // re-render), so it 403'd against every login once that
+            // endpoint started requiring an authenticated caller.
             onLogin(loginData)
         } catch (err) {
             console.error("Login error:", err);
