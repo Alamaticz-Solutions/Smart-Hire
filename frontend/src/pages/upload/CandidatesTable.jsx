@@ -1,4 +1,4 @@
-import React, { useRef } from 'react'
+import React, { useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Trash2, FileText, Filter, Download, RefreshCw, CheckSquare, Users, Search, X, Plus } from 'lucide-react'
 import { exportToExcel, formatCandidatesForExcel } from '../../utils/excelUtils'
@@ -103,6 +103,22 @@ export default function CandidatesTable({
     // previously the only recovery from a failure (most often a transient
     // Groq rate-limit, not a bad file) was deleting the candidate and
     // re-uploading the exact same file from scratch.
+    const [showGridTip, setShowGridTip] = useState(() => {
+        try {
+            return localStorage.getItem('candidatesGridTipDismissed') !== '1'
+        } catch {
+            return true
+        }
+    })
+    const dismissGridTip = () => {
+        setShowGridTip(false)
+        try {
+            localStorage.setItem('candidatesGridTipDismissed', '1')
+        } catch {
+            // localStorage unavailable (private browsing, disabled storage) - the
+            // tip just reappears next load, which is harmless.
+        }
+    }
     const [retryingIds, setRetryingIds] = React.useState(() => new Set())
     const handleRetryCandidate = async (id) => {
         if (retryingIds.has(id)) return
@@ -618,9 +634,21 @@ export default function CandidatesTable({
                         </div>
                     )}
 
-                    <p style={{ marginTop: '0.6rem', fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
-                        Click <strong style={{ color: 'var(--gold)' }}>+N</strong> to expand Skills / Certs · Double-click, or focus a cell and press Enter, to edit
-                    </p>
+                    {showGridTip && (
+                        <p style={{ marginTop: '0.6rem', fontSize: '0.75rem', color: 'var(--text-subtle)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span>
+                                Click <strong style={{ color: 'var(--gold)' }}>+N</strong> to expand Skills / Certs · Double-click, or focus a cell and press Enter, to edit
+                            </span>
+                            <button
+                                type="button"
+                                onClick={dismissGridTip}
+                                aria-label="Dismiss tip"
+                                style={{ background: 'none', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', padding: 2, lineHeight: 0 }}
+                            >
+                                <X size={12} />
+                            </button>
+                        </p>
+                    )}
                 </>
             )}
 
