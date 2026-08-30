@@ -51,7 +51,7 @@ const PIPELINE_STAGES = [
     { key: 'Hired', varName: '--st-hired-text' },
     { key: 'Rejected', varName: '--st-rejected-text' },
 ]
-const CHART_VAR_NAMES = ['--chart-1', '--chart-2', '--text-muted', '--surface', ...PIPELINE_STAGES.map(s => s.varName)]
+const CHART_VAR_NAMES = ['--chart-1', '--chart-2', '--text-muted', '--surface', '--border', ...PIPELINE_STAGES.map(s => s.varName)]
 
 const isImmediate = (val) => {
     if (val === 0 || val === '0') return true
@@ -109,7 +109,10 @@ export default function DashboardPage() {
     }, [])
 
     const totalCandidates = candidates.length
-    const openJobs = jobs.filter(j => j.job_status === 'In-progress').length
+    // Matches the same fallback JobStatusChip/JobsOverview use: a job with
+    // no job_status set displays and counts as In-progress, so this KPI
+    // doesn't undercount relative to what the Jobs page itself shows.
+    const openJobs = jobs.filter(j => (j.job_status || 'In-progress') === 'In-progress').length
     const inReview = candidates.filter(c => String(c.candidate_status || 'New').trim() === 'In-Review').length
     const offersOut = candidates.filter(c => String(c.candidate_status || 'New').trim() === 'Offered').length
     const immediateJoiners = candidates.filter(c => isImmediate(c.notice_period)).length
@@ -181,7 +184,12 @@ export default function DashboardPage() {
                 <div className="card" style={{ padding: '2.5rem' }}>
                     <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
                         <BarChart3 size={40} style={{ marginBottom: '1rem', color: 'var(--text-dim)' }} />
-                        <p style={{ fontSize: '1.1rem', fontFamily: 'var(--fh)', color: 'var(--gold)' }}>No Data Yet</p>
+                        {/* Was "No Data Yet" in Title Case, --fs-6-sized (17.6px), and
+                            action-orange - the only Title Case heading in the app, and
+                            in the color reserved for interactive elements despite being
+                            plain text. This heading isn't an error state, it's an
+                            onboarding prompt, so it reads as one now. */}
+                        <p style={{ fontSize: 'var(--fs-6)', fontFamily: 'var(--fh)', fontWeight: 700, color: 'var(--text)' }}>Let's set up your pipeline</p>
                         <p style={{ marginTop: '0.5rem', color: 'var(--text-dim)' }}>Get started in three steps:</p>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '460px', margin: '0 auto' }}>
@@ -193,6 +201,7 @@ export default function DashboardPage() {
                             <button
                                 key={step.key}
                                 type="button"
+                                autoFocus={i === 0}
                                 onClick={() => navigate(step.to)}
                                 style={{
                                     display: 'flex', alignItems: 'center', gap: '14px', textAlign: 'left',
@@ -221,7 +230,7 @@ export default function DashboardPage() {
                         <div className="card-title"><BarChart3 size={16} /> Pipeline by Stage</div>
                         <ResponsiveContainer width="100%" height={280}>
                             <BarChart data={pipelineData} margin={{ top: 5, right: 10, bottom: 20, left: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                                <CartesianGrid strokeDasharray="3 3" stroke={chartColors['--border']} />
                                 <XAxis dataKey="name" tick={{ fill: chartColors['--text-muted'], fontSize: 11 }} angle={-30} textAnchor="end" interval={0} />
                                 <YAxis tick={{ fill: chartColors['--text-muted'], fontSize: 12 }} allowDecimals={false} />
                                 <Tooltip contentStyle={{ background: chartColors['--surface'], border: '1px solid rgba(var(--gold-rgb), 0.3)', borderRadius: 10, color: 'var(--text)' }} />
@@ -236,7 +245,7 @@ export default function DashboardPage() {
                         <div className="card-title"><Timer size={16} /> Notice Period</div>
                         <ResponsiveContainer width="100%" height={280}>
                             <BarChart data={noticeData} margin={{ top: 5, right: 10, bottom: 20, left: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                                <CartesianGrid strokeDasharray="3 3" stroke={chartColors['--border']} />
                                 <XAxis dataKey="name" tick={{ fill: chartColors['--text-muted'], fontSize: 12 }} angle={-30} textAnchor="end" />
                                 <YAxis tick={{ fill: chartColors['--text-muted'], fontSize: 12 }} allowDecimals={false} />
                                 <Tooltip contentStyle={{ background: chartColors['--surface'], border: '1px solid rgba(var(--gold-rgb), 0.3)', borderRadius: 10, color: 'var(--text)' }} />
@@ -260,16 +269,19 @@ export default function DashboardPage() {
                                     const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' })
                                     return (
                                         <div key={act.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                                            <div style={{
-                                                width: 28, height: 28, borderRadius: '50%', background: 'var(--gold)',
-                                                color: 'var(--action-fg)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                fontWeight: 'bold', fontSize: '0.72rem', flexShrink: 0,
+                                            {/* Was action-orange bold, the color reserved for interactive
+                                                elements, and a second identity (username) for the same
+                                                person shown by full name in the topbar. */}
+                                            <div title={act.username} style={{
+                                                width: 28, height: 28, borderRadius: '50%', background: 'var(--surface-2)', border: '1px solid var(--border)',
+                                                color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                fontWeight: 600, fontSize: '0.72rem', flexShrink: 0,
                                             }}>
                                                 {initials}
                                             </div>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1, minWidth: 0 }}>
-                                                <div style={{ fontSize: '0.82rem', color: 'var(--text)' }}>
-                                                    <strong style={{ color: 'var(--gold)' }}>{act.username}</strong>{' '}
+                                                <div style={{ fontSize: '0.82rem', color: 'var(--text)' }} title={act.username}>
+                                                    <strong style={{ color: 'var(--text)', fontWeight: 600 }}>{act.full_name || act.username}</strong>{' '}
                                                     <span style={{ color: 'var(--text-muted)' }}>{act.action}</span>
                                                 </div>
                                                 <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)' }}>

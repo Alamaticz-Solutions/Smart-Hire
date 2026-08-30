@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react'
 import axios from 'axios'
 import { LayoutDashboard, Upload, MessageSquare, LogOut, Sun, Moon, Monitor, Briefcase, Shield, Users, Download, Activity, X, Link, FileText, AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, Menu } from 'lucide-react'
 import alamaticzMark from '../assets/alamaticz-mark.png'
+import { useModalA11y } from '../hooks/useModalA11y'
+import { usePageTitle } from '../hooks/usePageTitle'
 
 // Ref S2.1/G-26: the topbar used to show the company name on every screen
 // ("Alamaticz Solutions", repeated below the sidebar's own brand mark) with
@@ -35,7 +37,9 @@ const THEME_OPTIONS = [
 
 export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme, onUpdateUser }) {
     const [showProfileMenu, setShowProfileMenu] = useState(false);
+    const profileMenuRef = useModalA11y(showProfileMenu, () => setShowProfileMenu(false));
     const [showActivitySidebar, setShowActivitySidebar] = useState(false);
+    const activityDrawerRef = useModalA11y(showActivitySidebar, () => setShowActivitySidebar(false));
     const [activities, setActivities] = useState([]);
     const [loadingActivities, setLoadingActivities] = useState(false);
     const [activitiesError, setActivitiesError] = useState(false);
@@ -86,9 +90,7 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
     const pageMeta = PAGE_META[location.pathname];
     const pageTitle = pageMeta?.title || 'Hire AI';
 
-    useEffect(() => {
-        document.title = `${pageTitle} · Hire AI`;
-    }, [pageTitle]);
+    usePageTitle(pageTitle);
 
     // Close the mobile drawer on every navigation - otherwise it stays open
     // over the new page's content after a nav-link click.
@@ -275,16 +277,22 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
                             </div>
                         </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         {/* S2.9: was a single 36px toggle with no visible label and no
                             System option, defaulting a fresh viewer to light regardless
                             of their OS preference. A three-way group with a visible label
                             per option covers Light/Dark/System and honors
                             prefers-color-scheme (see App.jsx's `resolvedTheme`). */}
+                        {/* Was 30x30px segments (below the 44px touch minimum, on the
+                            app's primary theme control) with transition:'all 0.2s' -
+                            which animates layout properties like width/border-radius
+                            too, not just the color change it's meant for - and a 15px
+                            gap from the profile chip next to it while every other
+                            topbar gap is 12px. */}
                         <div
                             role="radiogroup"
                             aria-label="Theme"
-                            style={{ display: 'flex', gap: 2, background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--r-full)', padding: 3 }}
+                            style={{ display: 'flex', alignItems: 'center', gap: 2, height: 44, background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--r-full)', padding: '0 3px' }}
                         >
                             {THEME_OPTIONS.map(({ value, label, Icon }) => {
                                 const selected = theme === value
@@ -301,8 +309,8 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
                                         title={title}
                                         onClick={() => setTheme(value)}
                                         style={{
-                                            width: 30, height: 30, borderRadius: 'var(--r-full)', border: 'none', cursor: 'pointer',
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s',
+                                            width: 36, height: 32, borderRadius: 'var(--r-full)', border: 'none', cursor: 'pointer',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background-color 0.2s, color 0.2s',
                                             background: selected ? 'var(--action)' : 'transparent',
                                             color: selected ? 'var(--action-fg)' : 'var(--text-dim)',
                                         }}
@@ -355,40 +363,36 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
                             />
                             </button>
 
-                            {/* Profile Dropdown */}
+                            {/* Profile Dropdown - reuses useModalA11y (focus trap, Escape,
+                                focus restore on close) the same way every modal in the app
+                                does, plus role="menu"/"menuitem" and real CSS :hover/
+                                :focus-visible states (.dropdown-menu-item in index.css)
+                                instead of onMouseEnter/onMouseLeave, which gave a keyboard
+                                user tabbing to Logout no visual feedback at all. */}
                             {showProfileMenu && (
                                 <>
                                     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 998 }} onClick={() => setShowProfileMenu(false)}></div>
-                                    <div style={{
-                                        position: 'absolute', top: '100%', right: 0, marginTop: '8px', width: '200px',
-                                        background: 'var(--navy-dark)', border: '1px solid var(--border)', borderRadius: '8px',
-                                        boxShadow: '0 10px 25px rgba(0,0,0,0.5)', zIndex: 999, overflow: 'hidden'
-                                    }}>
+                                    <div
+                                        ref={profileMenuRef}
+                                        role="menu"
+                                        aria-label="Profile menu"
+                                        style={{
+                                            position: 'absolute', top: '100%', right: 0, marginTop: '8px', width: '200px',
+                                            background: 'var(--navy-dark)', border: '1px solid var(--border)', borderRadius: '8px',
+                                            boxShadow: '0 10px 25px rgba(0,0,0,0.5)', zIndex: 999, overflow: 'hidden'
+                                        }}
+                                    >
                                         {(user?.role === 'admin' || user?.is_admin === 1) && (
-                                            <button 
+                                            <button
+                                                role="menuitem"
+                                                className="dropdown-menu-item"
                                                 onClick={() => { setShowProfileMenu(false); setShowActivitySidebar(true); }}
-                                                style={{
-                                                    width: '100%', padding: '12px 16px', background: 'none', border: 'none',
-                                                    color: 'var(--text)', textAlign: 'left', cursor: 'pointer', fontSize: '0.9rem',
-                                                    display: 'flex', alignItems: 'center', gap: '8px', transition: 'background 0.2s'
-                                                }}
-                                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.1)'}
-                                                onMouseLeave={e => e.currentTarget.style.background = 'none'}
                                             >
                                                 <Activity size={16} color="var(--gold)" />
                                                 Activity Feed
                                             </button>
                                         )}
-                                        <button 
-                                            onClick={onLogout}
-                                            style={{
-                                                width: '100%', padding: '12px 16px', background: 'none', border: 'none', borderTop: '1px solid var(--border)',
-                                                color: 'var(--danger-fg)', textAlign: 'left', cursor: 'pointer', fontSize: '0.9rem',
-                                                display: 'flex', alignItems: 'center', gap: '8px', transition: 'background 0.2s'
-                                            }}
-                                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'}
-                                            onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                                        >
+                                        <button role="menuitem" className="dropdown-menu-item danger" onClick={onLogout}>
                                             <LogOut size={16} />
                                             Logout
                                         </button>
@@ -432,20 +436,29 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
                     <Outlet context={{ user, onUpdateUser }} />
                 </div>
                 
-                {/* Activity Feed Overlay Sidebar */}
+                {/* Activity Feed Overlay Sidebar - was a plain <div> with no
+                    role="dialog", no aria-modal, no Escape and no focus trap,
+                    unlike every other overlay in the app. Same useModalA11y
+                    hook as the modals and the profile menu above. */}
                 {showActivitySidebar && (
                     <>
                         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, backdropFilter: 'blur(2px)' }} onClick={() => setShowActivitySidebar(false)}></div>
-                        <div style={{
-                            position: 'fixed', top: 0, right: 0, bottom: 0, width: '350px', maxWidth: '100vw',
-                            background: 'var(--navy)', borderLeft: '1px solid var(--border)', zIndex: 1001,
-                            display: 'flex', flexDirection: 'column', boxShadow: '-5px 0 25px rgba(0,0,0,0.5)',
-                            animation: 'slideInRight 0.3s ease forwards'
-                        }}>
+                        <div
+                            ref={activityDrawerRef}
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="activity-drawer-title"
+                            style={{
+                                position: 'fixed', top: 0, right: 0, bottom: 0, width: '350px', maxWidth: '100vw',
+                                background: 'var(--navy)', borderLeft: '1px solid var(--border)', zIndex: 1001,
+                                display: 'flex', flexDirection: 'column', boxShadow: '-5px 0 25px rgba(0,0,0,0.5)',
+                                animation: 'slideInRight 0.3s ease forwards'
+                            }}
+                        >
                             <div style={{ padding: '20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--navy-dark)' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                     <Activity size={20} color="var(--gold)" />
-                                    <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)' }}>Activity Feed</h3>
+                                    <h3 id="activity-drawer-title" style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)' }}>Activity Feed</h3>
                                 </div>
                                 <button onClick={() => setShowActivitySidebar(false)} aria-label="Close activity feed" style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer' }}>
                                     <X size={20} />
@@ -471,17 +484,25 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
                                         const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
                                         return (
                                             <div key={act.id} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-                                                <div style={{
-                                                    width: '32px', height: '32px', borderRadius: '50%',
-                                                    background: 'var(--gold)',
-                                                    color: 'var(--action-fg)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                    fontWeight: 'bold', fontSize: '0.8rem', flexShrink: 0
-                                                }}>
+                                                {/* Was action-orange + bold, the same color reserved for
+                                                    interactive elements - implying the username is a link,
+                                                    and showing a second identity (username) for the same
+                                                    person the topbar already shows by full name. Neutral
+                                                    avatar + weight, username kept as a tooltip only. */}
+                                                <div
+                                                    title={act.username}
+                                                    style={{
+                                                        width: '32px', height: '32px', borderRadius: '50%',
+                                                        background: 'var(--surface-2)', border: '1px solid var(--border)',
+                                                        color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                        fontWeight: 600, fontSize: '0.8rem', flexShrink: 0
+                                                    }}
+                                                >
                                                     {initials}
                                                 </div>
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1 }}>
-                                                    <div style={{ fontSize: '0.9rem', color: 'var(--text)' }}>
-                                                        <strong style={{ color: 'var(--gold)' }}>{act.username}</strong>{' '}
+                                                    <div style={{ fontSize: '0.9rem', color: 'var(--text)' }} title={act.username}>
+                                                        <strong style={{ color: 'var(--text)', fontWeight: 600 }}>{act.full_name || act.username}</strong>{' '}
                                                         <span style={{ color: 'var(--text-dim)' }}>{act.action}</span>
                                                     </div>
                                                     <span style={{ fontSize: '0.7rem', color: 'var(--sky-dim)' }}>

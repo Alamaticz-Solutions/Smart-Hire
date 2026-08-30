@@ -2,17 +2,33 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Was /favicon.svg, which never existed anywhere in the repo (no
+         frontend/public/ at all) - every tab showed the browser's default
+         globe icon. Real Alamaticz-mark assets now live in frontend/public/. -->
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Hire AI – Intelligent Recruitment Platform by Alamaticz Solutions" />
+    <meta name="theme-color" content="#FAF8F4" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#16181E" media="(prefers-color-scheme: dark)" />
     <title>Hire AI | Intelligent Recruitment</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <!-- One request for every face the app actually uses (Outfit for
+         headings, Manrope for body, IBM Plex Mono for numerals/code) -
+         index.css used to @import Manrope separately (a second blocking
+         Google Fonts request) and this file loaded Inter, which zero rules
+         in the codebase reference. -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div id="root"></div>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <!-- html2pdf.bundle.min.js removed: grepped the whole frontend/src for
+         any call site (window.html2pdf / html2pdf() / an import) and found
+         none - "Export PDF" (CandidateDetailsModal.jsx) actually goes
+         through window.open + the browser's native print dialog. This was
+         a ~200KB synchronous script loading on every page, including
+         sign-in, doing nothing. -->
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

@@ -4,6 +4,7 @@ import apiClient from '../api/client'
 import alamaticzMark from '../assets/alamaticz-mark.png'
 import { auth } from '../firebase'
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth'
+import { usePageTitle } from '../hooks/usePageTitle'
 
 function getFirebaseEmail(email, username) {
     if (!email) return '';
@@ -16,8 +17,11 @@ function getFirebaseEmail(email, username) {
     return trimmed;
 }
 
+const LOGIN_MODE_TITLES = { login: 'Sign in', register: 'Create account', forgot: 'Reset password' }
+
 export default function LoginPage({ onLogin }) {
     const [mode, setMode] = useState('login')   // login | register | forgot | team-selection
+    usePageTitle(LOGIN_MODE_TITLES[mode] || 'Sign in')
     const [cred, setCred] = useState('')
     const [pass, setPass] = useState('')
     const [name, setName] = useState('')
@@ -471,9 +475,13 @@ export default function LoginPage({ onLogin }) {
                 {/* Team selection is now handled inside the Admin Portal */}
             </div>
 
-            {/* Footer */}
+            {/* Footer - was position:fixed, which overlapped the submit
+                button in register mode (that form is taller than most
+                viewports). Normal flow + marginTop:auto keeps it pinned to
+                the bottom on tall screens while letting .login-bg's own
+                overflow-y:auto handle anything that doesn't fit. */}
             <div style={{
-                position: 'fixed', bottom: '1.2rem', left: 0, right: 0, textAlign: 'center',
+                marginTop: 'auto', paddingTop: '24px', width: '100%', flexShrink: 0, textAlign: 'center',
                 color: 'var(--text-subtle)', fontSize: '0.77rem'
             }}>
                 © {new Date().getFullYear()} Alamaticz Solutions · Innovation · Excellence · Reliability

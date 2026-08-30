@@ -79,7 +79,18 @@ def get_activity_logs(username: str = Depends(require_approved_user)):
         with get_db_connection() as conn:
             conn.row_factory = dict_row_factory
             cur = conn.cursor()
-            cur.execute("SELECT * FROM activity_logs ORDER BY timestamp DESC")
+            # LEFT JOIN so the feed can show a real display name (the
+            # topbar already shows one) instead of the bare username -
+            # LEFT, not INNER, so a log row for a since-deleted user still
+            # shows up instead of silently vanishing from the feed.
+            cur.execute(
+                """
+                SELECT al.*, u.full_name
+                FROM activity_logs al
+                LEFT JOIN users u ON LOWER(u.username) = LOWER(al.username)
+                ORDER BY al.timestamp DESC
+                """
+            )
             logs = [dict(row) for row in cur.fetchall()]
         return logs
     except Exception as e:
