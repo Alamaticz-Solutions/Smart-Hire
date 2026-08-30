@@ -540,7 +540,7 @@ export default function AdminPage() {
                     </div>
 
                     {/* Filter and Table Control Card */}
-                    <div className="user-table-card">
+                    <div className="card card--table">
                         <div style={{ 
                             padding: '1.2rem 1.5rem', 
                             borderBottom: '1px solid var(--border)', 
@@ -773,7 +773,7 @@ export default function AdminPage() {
 
             {/* Team Members Tab */}
             {!loading && activeTab === 'matrix' && (
-                <div className="user-table-card">
+                <div className="card card--table">
                     <div style={{ padding: '1.2rem 1.5rem', borderBottom: '1px solid var(--border)' }}>
                         <h3 style={{ margin: 0, fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 700 }}>Team Members</h3>
                         <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
@@ -815,7 +815,7 @@ export default function AdminPage() {
 
             {/* Masked Keywords Tab */}
             {!loading && activeTab === 'keywords' && (
-                <div className="user-table-card">
+                <div className="card card--table">
                     <div style={{ padding: '1.2rem 1.5rem', borderBottom: '1px solid var(--border)' }}>
                         <h3 style={{ margin: 0, fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 700 }}>Masked Keywords</h3>
                         <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
@@ -959,7 +959,7 @@ export default function AdminPage() {
                             </button>
                         </div>
                         <div style={{ padding: '20px 24px' }}>
-                            <label className="modern-label" htmlFor="reject-reason-input" style={{ fontSize: '0.8rem', display: 'block', marginBottom: 8 }}>
+                            <label className="form-label" htmlFor="reject-reason-input" style={{ fontSize: '0.8rem', display: 'block', marginBottom: 8 }}>
                                 Reason (optional)
                             </label>
                             <textarea

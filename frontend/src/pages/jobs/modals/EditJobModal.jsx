@@ -25,53 +25,53 @@ export default function EditJobModal({
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
                     <div>
-                        <label className="modern-label">Job Title *</label>
-                        <div className="modern-input-group">
-                            <Briefcase size={16} className="modern-input-icon" />
+                        <label className="form-label">Job Title *</label>
+                        <div className="form-input-group">
+                            <Briefcase size={16} className="form-input-icon" />
                             <input
                                 type="text"
                                 value={editJobForm.title}
                                 onChange={e => setEditJobForm({...editJobForm, title: e.target.value})}
-                                className="modern-input"
+                                className="form-input form-input--icon-inset"
                             />
                         </div>
                     </div>
 
                     <div>
-                        <label className="modern-label">Client Name</label>
-                        <div className="modern-input-group">
-                            <Building size={16} className="modern-input-icon" />
+                        <label className="form-label">Client Name</label>
+                        <div className="form-input-group">
+                            <Building size={16} className="form-input-icon" />
                             <input
                                 type="text"
                                 value={editJobForm.client_name}
                                 onChange={e => setEditJobForm({...editJobForm, client_name: e.target.value})}
-                                className="modern-input"
+                                className="form-input form-input--icon-inset"
                             />
                         </div>
                     </div>
 
                     <div>
-                        <label className="modern-label">Client Phone</label>
-                        <div className="modern-input-group">
-                            <Phone size={16} className="modern-input-icon" />
+                        <label className="form-label">Client Phone</label>
+                        <div className="form-input-group">
+                            <Phone size={16} className="form-input-icon" />
                             <input
                                 type="text"
                                 value={editJobForm.client_phone}
                                 onChange={e => setEditJobForm({...editJobForm, client_phone: e.target.value})}
-                                className="modern-input"
+                                className="form-input form-input--icon-inset"
                             />
                         </div>
                     </div>
 
                     <div>
-                        <label className="modern-label">Contact Name</label>
-                        <div className="modern-input-group">
-                            <User size={16} className="modern-input-icon" />
+                        <label className="form-label">Contact Name</label>
+                        <div className="form-input-group">
+                            <User size={16} className="form-input-icon" />
                             <input
                                 type="text"
                                 value={editJobForm.contact_name}
                                 onChange={e => setEditJobForm({...editJobForm, contact_name: e.target.value})}
-                                className="modern-input"
+                                className="form-input form-input--icon-inset"
                             />
                         </div>
                     </div>
@@ -82,52 +82,52 @@ export default function EditJobModal({
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
                     <div>
-                        <label className="modern-label">Account Manager</label>
-                        <div className="modern-input-group">
-                            <User size={16} className="modern-input-icon" />
+                        <label className="form-label">Account Manager</label>
+                        <div className="form-input-group">
+                            <User size={16} className="form-input-icon" />
                             <input
                                 type="text"
                                 value={editJobForm.account_manager}
                                 onChange={e => setEditJobForm({...editJobForm, account_manager: e.target.value})}
-                                className="modern-input"
+                                className="form-input form-input--icon-inset"
                             />
                         </div>
                     </div>
 
                     <div>
-                        <label className="modern-label">Assigned Recruiter(s)</label>
-                        <div className="modern-input-group">
-                            <User size={16} className="modern-input-icon" />
+                        <label className="form-label">Assigned Recruiter(s)</label>
+                        <div className="form-input-group">
+                            <User size={16} className="form-input-icon" />
                             <input
                                 type="text"
                                 value={editJobForm.assigned_recruiter}
                                 onChange={e => setEditJobForm({...editJobForm, assigned_recruiter: e.target.value})}
-                                className="modern-input"
+                                className="form-input form-input--icon-inset"
                             />
                         </div>
                     </div>
 
                     <div>
-                        <label className="modern-label">Target Date</label>
-                        <div className="modern-input-group">
-                            <Calendar size={16} className="modern-input-icon" />
+                        <label className="form-label">Target Date</label>
+                        <div className="form-input-group">
+                            <Calendar size={16} className="form-input-icon" />
                             <input
                                 type="date"
                                 value={editJobForm.target_date}
                                 onChange={e => setEditJobForm({...editJobForm, target_date: e.target.value})}
-                                className="modern-input"
+                                className="form-input form-input--icon-inset"
                             />
                         </div>
                     </div>
 
                     <div>
-                        <label className="modern-label">Job Type</label>
-                        <div className="modern-input-group">
-                            <Briefcase size={16} className="modern-input-icon" />
+                        <label className="form-label">Job Type</label>
+                        <div className="form-input-group">
+                            <Briefcase size={16} className="form-input-icon" />
                             <select
                                 value={editJobForm.job_type}
                                 onChange={e => setEditJobForm({...editJobForm, job_type: e.target.value})}
-                                className="modern-select"
+                                className="form-input form-input--icon-inset"
                             >
                                 <option value="Full time">Full time</option>
                                 <option value="Part time">Part time</option>
@@ -143,13 +143,13 @@ export default function EditJobModal({
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
                     <div>
-                        <label className="modern-label">Job Opening Status</label>
-                        <div className="modern-input-group">
-                            <Target size={16} className="modern-input-icon" />
+                        <label className="form-label">Job Opening Status</label>
+                        <div className="form-input-group">
+                            <Target size={16} className="form-input-icon" />
                             <select
                                 value={editJobForm.job_status}
                                 onChange={e => setEditJobForm({...editJobForm, job_status: e.target.value})}
-                                className="modern-select"
+                                className="form-input form-input--icon-inset"
                             >
                                 <option value="In-progress">In-progress</option>
                                 <option value="On-hold">On-hold</option>
@@ -160,13 +160,13 @@ export default function EditJobModal({
                     </div>
 
                     <div>
-                        <label className="modern-label">Work Experience</label>
-                        <div className="modern-input-group">
-                            <Award size={16} className="modern-input-icon" />
+                        <label className="form-label">Work Experience</label>
+                        <div className="form-input-group">
+                            <Award size={16} className="form-input-icon" />
                             <select
                                 value={editJobForm.work_experience}
                                 onChange={e => setEditJobForm({...editJobForm, work_experience: e.target.value})}
-                                className="modern-select"
+                                className="form-input form-input--icon-inset"
                             >
                                 <option value="None">None</option>
                                 <option value="Fresher">Fresher</option>
@@ -178,13 +178,13 @@ export default function EditJobModal({
                     </div>
 
                     <div>
-                        <label className="modern-label">Industry</label>
-                        <div className="modern-input-group">
-                            <Building size={16} className="modern-input-icon" />
+                        <label className="form-label">Industry</label>
+                        <div className="form-input-group">
+                            <Building size={16} className="form-input-icon" />
                             <select
                                 value={editJobForm.industry}
                                 onChange={e => setEditJobForm({...editJobForm, industry: e.target.value})}
-                                className="modern-select"
+                                className="form-input form-input--icon-inset"
                             >
                                 <option value="None">None</option>
                                 <option value="IT">IT</option>
@@ -197,40 +197,40 @@ export default function EditJobModal({
                     </div>
 
                     <div>
-                        <label className="modern-label">Salary</label>
-                        <div className="modern-input-group">
-                            <DollarSign size={16} className="modern-input-icon" />
+                        <label className="form-label">Salary</label>
+                        <div className="form-input-group">
+                            <DollarSign size={16} className="form-input-icon" />
                             <input
                                 type="text"
                                 value={editJobForm.salary}
                                 onChange={e => setEditJobForm({...editJobForm, salary: e.target.value})}
                                 placeholder="e.g. 10 LPA"
-                                className="modern-input"
+                                className="form-input form-input--icon-inset"
                             />
                         </div>
                     </div>
 
                     <div style={{ gridColumn: 'span 2' }}>
-                        <label className="modern-label">Required Skills</label>
-                        <div className="modern-input-group">
-                            <Award size={16} className="modern-input-icon" />
+                        <label className="form-label">Required Skills</label>
+                        <div className="form-input-group">
+                            <Award size={16} className="form-input-icon" />
                             <input
                                 type="text"
                                 value={editJobForm.required_skills}
                                 onChange={e => setEditJobForm({...editJobForm, required_skills: e.target.value})}
                                 placeholder="e.g. Pega, CSSA"
-                                className="modern-input"
+                                className="form-input form-input--icon-inset"
                             />
                         </div>
                     </div>
                 </div>
 
                 <div>
-                    <label className="modern-label">Job Description *</label>
+                    <label className="form-label">Job Description *</label>
                     <textarea
                         value={editJobForm.description}
                         onChange={e => setEditJobForm({...editJobForm, description: e.target.value})}
-                        className="modern-textarea"
+                        className="form-input form-input--textarea"
                         style={{ minHeight: '140px' }}
                     />
                 </div>

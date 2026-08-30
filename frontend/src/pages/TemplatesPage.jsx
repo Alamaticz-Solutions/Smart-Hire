@@ -399,7 +399,7 @@ export default function TemplatesPage() {
 
                     {/* Resume Template Preset Card */}
                     <div className="card" style={{ padding: '20px', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px' }}>
-                        <label className="modern-label" style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gold)', marginBottom: '8px', display: 'block' }}>
+                        <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gold)', marginBottom: '8px', display: 'block' }}>
                             Default Resume Template
                         </label>
                         <select 
@@ -422,7 +422,7 @@ export default function TemplatesPage() {
 
                     {/* Theme Preset Card */}
                     <div className="card" style={{ padding: '20px', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px' }}>
-                        <label className="modern-label" style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gold)', marginBottom: '8px', display: 'block' }}>
+                        <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gold)', marginBottom: '8px', display: 'block' }}>
                             Select Email Theme Preset
                         </label>
                         <select 
@@ -515,7 +515,7 @@ export default function TemplatesPage() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, opacity: integrationsSettings.reply_theme === 'custom' ? 1 : 0.8 }}>
                             {/* Subject Field */}
                             <div>
-                                <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: '6px' }}>Subject Format</label>
+                                <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: '6px' }}>Subject Format</label>
                                 <input 
                                     value={integrationsSettings.reply_subject || ''}
                                     onChange={e => setIntegrationsSettings(prev => ({ ...prev, reply_subject: e.target.value }))}
@@ -531,7 +531,7 @@ export default function TemplatesPage() {
 
                             {/* Sub-Editor Tab selection */}
                             <div>
-                                <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: '6px' }}>Configure Email Bodies</label>
+                                <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: '6px' }}>Configure Email Bodies</label>
                                 <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: 'rgba(0,0,0,0.1)' }}>
                                     <button
                                         type="button"
@@ -565,7 +565,7 @@ export default function TemplatesPage() {
                             {/* Main Body Text Editor */}
                             <div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                                    <label className="modern-label" style={{ fontSize: '0.78rem', margin: 0 }}>
+                                    <label className="form-label" style={{ fontSize: '0.78rem', margin: 0 }}>
                                         {editorTab === 'missing' ? 'Missing Info Message Body' : 'Completed Application Message Body'}
                                     </label>
                                     <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>

@@ -239,7 +239,7 @@ export default function JobDetailPanel({
                         <textarea
                             value={jdInlineValue}
                             onChange={e => setJdInlineValue(e.target.value)}
-                            className="modern-textarea"
+                            className="form-input form-input--textarea"
                             style={{ minHeight: '180px' }}
                             autoFocus
                         />

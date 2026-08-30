@@ -1735,11 +1735,12 @@ tbody tr:last-child td {
   font-weight: 600;
 }
 
-.user-table-card {
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--r-xl);
-  box-shadow: var(--shadow);
+/* Was its own 22px-radius surface (.card is 10px) - .card--table shares
+   .card's actual tokens and adds only what a table wrapper needs: zero
+   padding and clipped corners so the header row's own corners round
+   along with the card. */
+.card--table {
+  padding: 0;
   overflow: hidden;
 }
 
@@ -2172,15 +2173,15 @@ tbody tr:last-child td {
   font-size: 0.85rem;
 }
 
-/* Premium Form Design System */
-.modern-form-card {
-  background: var(--card-bg);
-  border: 1px solid rgba(var(--sky-rgb), 0.22);
-  border-radius: var(--r-xl);
-  padding: 3rem;
-  box-shadow: var(--shadow);
-  position: relative;
-  overflow: hidden;
+/* Was its own "Premium Form Design System" with a sky-tinted border and
+   22px/48px radius/padding - one of three different card surface
+   treatments in the app (.card at 10px/24px, .user-table-card at 22px,
+   this one at 22px/48px). .card--spacious now covers the same "roomier
+   form container" need while sharing .card's actual border/radius/shadow
+   tokens, so a form card and every other card in the app read as the
+   same surface. */
+.card--spacious {
+  padding: 2rem;
 }
 
 .form-section-title {
@@ -2203,13 +2204,16 @@ tbody tr:last-child td {
   margin-top: 0;
 }
 
-.modern-input-group {
+/* Structural wrapper for a .form-input with a leading icon - not a
+   surface/visual treatment of its own, so it stays separate from the
+   .modern-* deletion above. Pair with .form-input.form-input--icon-inset. */
+.form-input-group {
   position: relative;
   display: flex;
   align-items: center;
 }
 
-.modern-input-icon {
+.form-input-icon {
   position: absolute;
   left: 14px;
   color: var(--text-muted);
@@ -2218,53 +2222,18 @@ tbody tr:last-child td {
   z-index: 10;
 }
 
-/* G-18: no other rule in the file shares .modern-input's selectors or
-   beats its specificity, so the !important block below was never
-   load-bearing - removed. */
-.modern-input,
-.modern-select,
-.modern-textarea {
-  width: 100%;
-  padding: 12px 14px 12px 42px;
-  border-radius: var(--r-md);
-  border: 1px solid rgba(var(--sky-rgb), 0.25);
-  background: var(--input-bg);
-  color: var(--text);
-  font-family: var(--fb);
-  font-size: 0.9rem;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.modern-textarea {
-  padding: 14px;
-  resize: vertical;
-}
-
-.modern-input-group:focus-within .modern-input-icon {
+.form-input-group:focus-within .form-input-icon {
   color: var(--gold);
 }
 
-.modern-input:focus,
-.modern-select:focus,
-.modern-textarea:focus {
-  border-color: var(--gold);
-  box-shadow: 0 0 0 4px rgba(var(--gold-rgb), 0.12);
+.form-input--icon-inset {
+  padding-left: 42px;
 }
 
-.modern-input:hover,
-.modern-select:hover,
-.modern-textarea:hover {
-  border-color: rgba(var(--sky-rgb), 0.5);
-}
-
-.modern-label {
-  display: block;
-  margin-bottom: 8px;
-  color: var(--text-muted);
-  font-size: 0.82rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04rem;
+.form-input.form-input--textarea {
+  padding: 14px;
+  resize: vertical;
+  min-height: unset;
 }
 
 @keyframes spin {

@@ -418,7 +418,7 @@ export default function ConnectPage() {
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, opacity: integrationsSettings.gmail_enabled === 1 ? 1 : 0.5, pointerEvents: integrationsSettings.gmail_enabled === 1 ? 'auto' : 'none' }}>
                                     <div>
-                                        <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Gmail Address</label>
+                                        <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Gmail Address</label>
                                         <input 
                                             value={integrationsSettings.gmail_email || ''}
                                             onChange={e => setIntegrationsSettings(prev => ({ ...prev, gmail_email: e.target.value }))}
@@ -427,7 +427,7 @@ export default function ConnectPage() {
                                         />
                                     </div>
                                     <div>
-                                        <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>App Password</label>
+                                        <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>App Password</label>
                                         <div style={{ position: 'relative' }}>
                                             <input
                                                 type={showSecrets.gmail_pass ? 'text' : 'password'}
@@ -466,7 +466,7 @@ export default function ConnectPage() {
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, opacity: integrationsSettings.outlook_enabled === 1 ? 1 : 0.5, pointerEvents: integrationsSettings.outlook_enabled === 1 ? 'auto' : 'none' }}>
                                     <div>
-                                        <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Outlook Email Address</label>
+                                        <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Outlook Email Address</label>
                                         <input 
                                             value={integrationsSettings.outlook_email || ''}
                                             onChange={e => setIntegrationsSettings(prev => ({ ...prev, outlook_email: e.target.value }))}
@@ -475,7 +475,7 @@ export default function ConnectPage() {
                                         />
                                     </div>
                                     <div>
-                                        <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Application ID (Client ID)</label>
+                                        <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Application ID (Client ID)</label>
                                         <input 
                                             value={integrationsSettings.ms_client_id || ''}
                                             onChange={e => setIntegrationsSettings(prev => ({ ...prev, ms_client_id: e.target.value }))}
@@ -484,7 +484,7 @@ export default function ConnectPage() {
                                         />
                                     </div>
                                     <div>
-                                        <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Tenant ID</label>
+                                        <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Tenant ID</label>
                                         <input 
                                             value={integrationsSettings.ms_tenant_id || ''}
                                             onChange={e => setIntegrationsSettings(prev => ({ ...prev, ms_tenant_id: e.target.value }))}
@@ -493,7 +493,7 @@ export default function ConnectPage() {
                                         />
                                     </div>
                                     <div>
-                                        <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Client Secret</label>
+                                        <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Client Secret</label>
                                         <div style={{ position: 'relative' }}>
                                             <input
                                                 type={showSecrets.ms_client_secret ? 'text' : 'password'}
@@ -515,7 +515,7 @@ export default function ConnectPage() {
 
                                 {/* Keywords List */}
                                 <div style={{ marginBottom: 16 }}>
-                                    <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Subject/Filename Match Keywords</label>
+                                    <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Subject/Filename Match Keywords</label>
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10, padding: 10, background: 'rgba(var(--navy-dark-rgb), 0.2)', borderRadius: 8, border: '1px solid var(--border)' }}>
                                         {(integrationsSettings.keywords ? integrationsSettings.keywords.split(',').map(k => k.trim()).filter(Boolean) : []).map(kw => (
                                             <span key={kw} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(var(--sky-rgb), 0.15)', border: '1px solid rgba(var(--sky-rgb), 0.3)', color: 'var(--sky-dim)', fontSize: '0.75rem', padding: '3px 8px', borderRadius: 6 }}>
@@ -894,7 +894,7 @@ export default function ConnectPage() {
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                                 <div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                                        <label className="modern-label" style={{ fontSize: '0.78rem', margin: 0 }}>Google Client ID</label>
+                                        <label className="form-label" style={{ fontSize: '0.78rem', margin: 0 }}>Google Client ID</label>
                                         <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.72rem', color: 'var(--sky-dim)', textDecoration: 'underline' }}>Find Key ↗</a>
                                     </div>
                                     <input 
@@ -906,7 +906,7 @@ export default function ConnectPage() {
                                 </div>
                                 <div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                                        <label className="modern-label" style={{ fontSize: '0.78rem', margin: 0 }}>Google Client Secret</label>
+                                        <label className="form-label" style={{ fontSize: '0.78rem', margin: 0 }}>Google Client Secret</label>
                                         <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.72rem', color: 'var(--sky-dim)', textDecoration: 'underline' }}>Find Secret ↗</a>
                                     </div>
                                     <div style={{ position: 'relative' }}>
@@ -928,7 +928,7 @@ export default function ConnectPage() {
                             </div>
                             <div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                                    <label className="modern-label" style={{ fontSize: '0.78rem', margin: 0 }}>Google Drive Target Folder ID</label>
+                                    <label className="form-label" style={{ fontSize: '0.78rem', margin: 0 }}>Google Drive Target Folder ID</label>
                                     <a href="https://drive.google.com" target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.72rem', color: 'var(--sky-dim)', textDecoration: 'underline' }}>Open Drive ↗</a>
                                 </div>
                                 <input 
