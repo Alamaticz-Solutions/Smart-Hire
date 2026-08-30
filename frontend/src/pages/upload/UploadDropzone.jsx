@@ -23,7 +23,11 @@ export default function UploadDropzone({
 }) {
     return (
         <div className="card">
-            <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem', fontWeight: 600, color: 'var(--sky)' }}>
+            {/* Was color:var(--sky) at weight 600, inline - a second card-title
+                treatment next to the table card's own (--text, weight 800)
+                32px below it. .card-title's own default already matches that;
+                no per-call-site override needed. */}
+            <div className="card-title">
                 <Upload size={18} /> Upload Resumes / Excel Sheets
             </div>
             <div

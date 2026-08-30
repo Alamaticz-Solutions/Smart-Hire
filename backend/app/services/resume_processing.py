@@ -734,9 +734,15 @@ def process_resume_logic(
             with get_db_connection() as conn:
                 cur = conn.cursor()
                 if placeholder_id:
+                    # Was "❌ Processing Failed: {safe_name}" packed into the
+                    # name field itself - redundant now that the frontend
+                    # renders a real "Error" status chip plus this
+                    # error_detail text, and it truncated mid-sentence in the
+                    # table's ~180px name column. Just the filename now, same
+                    # as any other candidate row.
                     cur.execute(
                         "UPDATE candidate_metadata SET full_name = ?, candidate_status = ?, error_detail = ? WHERE id = ?",
-                        (f"❌ Processing Failed: {safe_name}", "Error", error_detail, placeholder_id),
+                        (safe_name, "Error", error_detail, placeholder_id),
                     )
                     conn.commit()
         except Exception as db_err:

@@ -1441,6 +1441,11 @@ tbody tr:last-child td {
 .status-chip.status-engaged { background: var(--st-engaged-bg); color: var(--st-engaged-text); }
 .status-chip.status-offered { background: var(--st-offered-bg); color: var(--st-offered-text); }
 .status-chip.status-hired { background: var(--st-hired-bg); color: var(--st-hired-text); }
+/* "Error" isn't one of the 8 user-selectable pipeline statuses (see
+   candidateStatus.js) - it's a system-set failure state a failed resume
+   parse writes - so it had no matching class at all and rendered as an
+   unstyled grey pill, the single most important state in the table. */
+.status-chip.status-error { background: var(--danger-bg); color: var(--danger-fg); }
 
 /* ── Badge ────────────────────────────────────────────── */
 .badge {

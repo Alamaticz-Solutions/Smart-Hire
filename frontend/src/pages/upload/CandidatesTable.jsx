@@ -1,6 +1,6 @@
 import React, { useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Trash2, FileText, Filter, Download, RefreshCw, CheckSquare, Users, Search, X } from 'lucide-react'
+import { Trash2, FileText, Filter, Download, RefreshCw, CheckSquare, Users, Search, X, Plus } from 'lucide-react'
 import { exportToExcel, formatCandidatesForExcel } from '../../utils/excelUtils'
 import apiClient from '../../api/client'
 import ExpandableCell from '../../components/shared/ExpandableCell'
@@ -404,12 +404,16 @@ export default function CandidatesTable({
 
     return (
         <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, width: '100%' }}>
-            <div className="section-header" style={{ borderBottom: '1px solid rgba(var(--sky-rgb), 0.2)', paddingBottom: '1rem', marginBottom: '1rem' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    <div className="section-title"><Users size={18} /> Candidate Profiles</div>
-                </div>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', alignSelf: 'flex-start', marginTop: '10px' }}>
-                    <button className="btn btn-secondary" onClick={() => setShowFilter(true)} style={{ gap: 6, color: 'var(--sky)', borderColor: 'rgba(var(--sky-rgb), 0.3)' }}>
+            {/* Was six btn-secondary buttons, three recolored ad hoc (Filter/Add
+                Candidate in sky, Add Column in gold) with no primary action and
+                two fontWeight:900 "+" glyphs standing in for an icon - the
+                colors encoded nothing. One primary action now (Add candidate);
+                everything else is equal-weight quiet buttons. Baseline-aligned
+                with the section title instead of hanging 10px below it. */}
+            <div className="section-header" style={{ borderBottom: '1px solid rgba(var(--sky-rgb), 0.2)', paddingBottom: '1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+                <div className="section-title"><Users size={18} /> Candidate Profiles</div>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button className="btn btn-secondary" onClick={() => setShowFilter(true)} style={{ gap: 6 }}>
                         <Filter size={14} /> Filter
                         {activeFilterCount > 0 && (
                             <span style={{
@@ -432,20 +436,8 @@ export default function CandidatesTable({
                         title="Visible Columns"
                     />
 
-                    <button className="btn btn-secondary" onClick={() => {
-                        const initialForm = {};
-                        cols.forEach(c => {
-                            if (c.key !== '_actions') {
-                                initialForm[c.key] = '';
-                            }
-                        });
-                        setNewCandidateForm(initialForm);
-                        setShowAddCandidate(true);
-                    }} style={{ gap: 6, color: 'var(--sky)', borderColor: 'rgba(var(--sky-rgb), 0.3)' }}>
-                        <span style={{ fontWeight: 900 }}>+</span> Add Candidate
-                    </button>
-                    <button className="btn btn-secondary" onClick={() => setShowAddCol(true)} style={{ gap: 6, color: 'var(--gold)', borderColor: 'rgba(var(--gold-rgb), 0.3)' }}>
-                        <span style={{ fontWeight: 900 }}>+</span> Add Column
+                    <button className="btn btn-secondary" onClick={() => setShowAddCol(true)} style={{ gap: 6 }}>
+                        <Plus size={14} /> Add Column
                     </button>
                     <button
                         className="btn btn-secondary"
@@ -466,6 +458,18 @@ export default function CandidatesTable({
                             button's width jumped every click. The icon alone is enough. */}
                         <RefreshCw size={14} className={loadingCandidates ? 'spin' : ''} /> Refresh
                     </button>
+                    <button className="btn btn-primary" onClick={() => {
+                        const initialForm = {};
+                        cols.forEach(c => {
+                            if (c.key !== '_actions') {
+                                initialForm[c.key] = '';
+                            }
+                        });
+                        setNewCandidateForm(initialForm);
+                        setShowAddCandidate(true);
+                    }} style={{ gap: 6 }}>
+                        <Plus size={14} /> Add Candidate
+                    </button>
 
                 </div>
             </div>
@@ -477,12 +481,17 @@ export default function CandidatesTable({
                 </div>
             ) : (
                 <>
+                    {/* Was a full-width --danger-bg banner with a red border the
+                        instant a single checkbox was ticked - selection isn't an
+                        error, and the banner read as one. Neutral surface now;
+                        red is reserved for the one genuinely destructive action
+                        in it. */}
                     {selectedIds.size > 0 && (
                         <div style={{
                             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                             padding: '10px 18px', borderRadius: 10,
-                            background: 'var(--danger-bg)',
-                            border: '1px solid rgba(var(--red-rgb), 0.35)',
+                            background: 'var(--surface-2)',
+                            border: '1px solid var(--border)',
                             marginBottom: 4,
                             animation: 'fadeIn 0.2s ease'
                         }}>
@@ -508,7 +517,7 @@ export default function CandidatesTable({
                                         formatCandidatesForExcel(filteredCandidates.filter(c => selectedIds.has(c.id)), activeCols.filter(c => c.key !== '_actions')),
                                         'selected_candidates.xlsx'
                                     )}
-                                    className="btn btn-secondary"
+                                    className="btn btn-primary"
                                     style={{
                                         display: 'flex', alignItems: 'center', gap: 6,
                                         padding: '8px 18px', fontSize: '0.85rem', fontWeight: 700,
