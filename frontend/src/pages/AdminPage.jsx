@@ -105,21 +105,46 @@ export default function AdminPage() {
         }
     }
 
+    // Was fully unguarded: the button stayed enabled and unchanged until
+    // fetchRequests() resolved, so a slow connection invited a second click
+    // (a second approve/reject against the same already-actioned request).
+    // The rest of this file already guards permission toggles the same way
+    // via savingPermissionId - approve/reject were the one place that got
+    // missed.
+    const [pendingRequestId, setPendingRequestId] = useState(null)
+
     const handleApprove = async (id) => {
+        if (pendingRequestId === id) return
+        // Approving grants the requester real access to the app's candidate/
+        // job data - not reversible by just clicking again, so it gets the
+        // same confirm() treatment as any other access-granting action.
+        if (!await confirm({
+            title: 'Approve this request?',
+            message: 'This grants the requester access to the app and its candidate/job data.',
+            confirmLabel: 'Approve',
+            danger: false,
+        })) return
+        setPendingRequestId(id)
         try {
             await apiClient.post(`/api/admin/requests/${id}/approve`)
-            fetchRequests()
+            setRequests(prev => prev.filter(r => r.id !== id))
         } catch (err) {
             showToast(err.response?.data?.detail || 'Failed to approve request', 'error')
+        } finally {
+            setPendingRequestId(null)
         }
     }
 
     const handleReject = async (id, reason) => {
+        if (pendingRequestId === id) return
+        setPendingRequestId(id)
         try {
             await apiClient.post(`/api/admin/requests/${id}/reject`, reason ? { reason } : {})
-            fetchRequests()
+            setRequests(prev => prev.filter(r => r.id !== id))
         } catch (err) {
             showToast(err.response?.data?.detail || 'Failed to reject request', 'error')
+        } finally {
+            setPendingRequestId(null)
         }
     }
 
@@ -401,7 +426,7 @@ export default function AdminPage() {
                         fontWeight: activeTab === 'matrix' ? 'bold' : 'normal', fontSize: '1rem'
                     }}
                 >
-                    Recruiter Persona Matrix
+                    Team Members
                 </button>
                 <button
                     onClick={() => setActiveTab('keywords')}
@@ -457,10 +482,20 @@ export default function AdminPage() {
                                     </div>
                                 )}
                                 <div style={{ display: 'flex', gap: '1rem', marginTop: 'auto', paddingTop: '1rem' }}>
-                                    <button className="btn btn-primary" style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '0.5rem' }} onClick={() => handleApprove(req.id)}>
-                                        <CheckCircle size={16} /> Approve
+                                    <button
+                                        className="btn btn-primary"
+                                        style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '0.5rem' }}
+                                        disabled={pendingRequestId === req.id}
+                                        onClick={() => handleApprove(req.id)}
+                                    >
+                                        <CheckCircle size={16} /> {pendingRequestId === req.id ? 'Approving…' : 'Approve'}
                                     </button>
-                                    <button className="btn btn-danger" style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '0.5rem' }} onClick={() => { setRejectingRequestId(req.id); setRejectReason('') }}>
+                                    <button
+                                        className="btn btn-danger"
+                                        style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '0.5rem' }}
+                                        disabled={pendingRequestId === req.id}
+                                        onClick={() => { setRejectingRequestId(req.id); setRejectReason('') }}
+                                    >
                                         <XCircle size={16} /> Reject
                                     </button>
                                 </div>
@@ -566,22 +601,29 @@ export default function AdminPage() {
                                         
                                         // Generate beautiful initials and avatar colors
                                         const initials = (u.full_name || u.username).split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-                                        let avatarBg = 'var(--text-subtle)'; // default
+                                        // Was a single background color with hardcoded color:#fff text
+                                        // (.user-avatar-circle) - --border-strong (external) and
+                                        // --text-subtle (default) are both light mid-greys in light
+                                        // theme, so white initials on them are close to unreadable in
+                                        // a 20-row table where they're the only at-a-glance identifier.
+                                        // Reusing the same tinted-bg/saturated-fg pairs the status
+                                        // chips already use guarantees a readable pair in both themes.
+                                        let avatarBg = 'var(--surface-2)', avatarFg = 'var(--text)'; // default
                                         if (u.is_admin === 1 && u.is_hr === 1) {
-                                            avatarBg = 'var(--chart-3)'; // super-user
+                                            avatarBg = 'var(--warning-bg)'; avatarFg = 'var(--warning-fg)'; // super-user
                                         } else if (u.is_admin === 1) {
-                                            avatarBg = 'var(--chart-1)'; // admin
+                                            avatarBg = 'var(--danger-bg)'; avatarFg = 'var(--danger-fg)'; // admin
                                         } else if (u.is_hr === 1) {
-                                            avatarBg = 'var(--chart-2)'; // HR manager
+                                            avatarBg = 'var(--success-bg)'; avatarFg = 'var(--success-fg)'; // HR manager
                                         } else if (u.is_external === 1) {
-                                            avatarBg = 'var(--border-strong)'; // external
+                                            avatarBg = 'var(--info-bg)'; avatarFg = 'var(--info-fg)'; // external
                                         }
 
                                         return (
                                             <tr key={u.username} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.2s' }} className="table-user-row">
                                                 <td style={{ padding: '1rem 1.5rem' }}>
                                                     <div className="user-cell-profile">
-                                                        <div className="user-avatar-circle" style={{ background: avatarBg }}>
+                                                        <div className="user-avatar-circle" style={{ background: avatarBg, color: avatarFg }}>
                                                             {initials}
                                                         </div>
                                                         <div className="user-info-text">
@@ -729,11 +771,11 @@ export default function AdminPage() {
                 </div>
             )}
 
-            {/* Recruiter Persona Matrix Tab */}
+            {/* Team Members Tab */}
             {!loading && activeTab === 'matrix' && (
                 <div className="user-table-card">
                     <div style={{ padding: '1.2rem 1.5rem', borderBottom: '1px solid var(--border)' }}>
-                        <h3 style={{ margin: 0, fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 700 }}>Recruiter Persona Matrix</h3>
+                        <h3 style={{ margin: 0, fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 700 }}>Team Members</h3>
                         <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
                             Team members an admin can act as (see the persona switcher in the top bar).
                         </p>

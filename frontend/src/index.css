@@ -1732,7 +1732,11 @@ tbody tr:last-child td {
   font-family: var(--fh);
   font-weight: 800;
   font-size: 1rem;
-  color: #fff;
+  /* Was a hardcoded #fff with no contrast floor against the per-role
+     background - AdminPage.jsx now always supplies a paired foreground
+     color inline (the same tinted-bg/saturated-fg pairs the status chips
+     use), so this is just the fallback if a caller ever forgets to. */
+  color: var(--text);
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
 }
 
