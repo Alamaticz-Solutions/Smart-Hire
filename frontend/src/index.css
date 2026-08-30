@@ -2040,21 +2040,21 @@ tbody tr:last-child td {
   margin-bottom: 1.75rem;
 }
 
+/* Folded onto the app's shared surface tokens (var(--surface-2)/var(--border))
+   instead of hand-rolled sky/navy rgba() values, so this metadata grid reads
+   as the same "card" material as everywhere else - the per-theme overrides
+   these used to need are gone with them, since the tokens already carry
+   correct light/dark values. */
 .jd-param-card {
-  background: rgba(var(--navy-rgb), 0.22);
-  border: 1px solid rgba(var(--sky-rgb), 0.18);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   border-radius: var(--r-md);
   padding: 14px 18px;
-  transition: border-color 0.2s ease, transform 0.2s ease;
+  transition: border-color 0.2s ease;
   display: flex;
   flex-direction: column;
   position: relative;
   overflow: hidden;
-}
-
-[data-theme="light"] .jd-param-card {
-  background: rgba(var(--sky-rgb), 0.04);
-  border-color: rgba(var(--sky-rgb), 0.15);
 }
 
 .jd-param-label {
@@ -2081,15 +2081,17 @@ tbody tr:last-child td {
   flex-shrink: 0;
 }
 
-/* Skills Pills */
+/* Skill pills reuse the app's shared .chip treatment (surface-2/border,
+   gold on hover) instead of a one-off sky-tinted pill, so a skill tag here
+   looks like every other tag/chip in the app. */
 .jd-skill-pill {
   font-size: 0.78rem;
   font-weight: 600;
   padding: 6px 14px;
   border-radius: var(--r-full);
-  background: rgba(var(--sky-rgb), 0.08);
-  color: var(--sky-dim);
-  border: 1px solid rgba(var(--sky-rgb), 0.25);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
   transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
   display: inline-flex;
   align-items: center;
@@ -2097,16 +2099,10 @@ tbody tr:last-child td {
   cursor: default;
 }
 
-[data-theme="light"] .jd-skill-pill {
-  background: rgba(var(--sky-rgb), 0.08);
-  color: var(--sky);
-  border-color: rgba(var(--sky-rgb), 0.3);
-}
-
 .jd-skill-pill:hover {
-  background: rgba(var(--sky-rgb), 0.18);
-  border-color: rgba(var(--sky-rgb), 0.6);
-  color: var(--text);
+  background: rgba(var(--gold-rgb), 0.08);
+  border-color: var(--gold);
+  color: var(--gold);
 }
 
 /* Markdown Container */
@@ -2115,20 +2111,18 @@ tbody tr:last-child td {
   font-size: 0.95rem;
   line-height: 1.7;
   padding: 24px;
-  background: rgba(var(--navy-dark-rgb), 0.25);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   min-height: 200px;
   transition: border-color 0.2s ease;
 }
 
-[data-theme="light"] .jd-markdown-container {
-  background: rgba(248, 250, 252, 0.7);
-  border-color: rgba(0, 0, 0, 0.08);
-}
-
+/* This one is interactive (double-click to edit inline), so it keeps a
+   hover affordance - now the same border-gold token .card--actionable
+   uses, instead of a one-off sky-tinted hover. */
 .jd-markdown-container:hover {
-  border-color: rgba(var(--sky-rgb), 0.45);
+  border-color: var(--border-gold);
 }
 
 .jd-markdown-container p {
@@ -2145,7 +2139,7 @@ tbody tr:last-child td {
   font-weight: 700;
 }
 
-.jd-markdown-container h1 { font-size: 1.45rem; border-bottom: 1px solid rgba(var(--sky-rgb), 0.2); padding-bottom: 8px; }
+.jd-markdown-container h1 { font-size: 1.45rem; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
 .jd-markdown-container h2 { font-size: 1.3rem; }
 .jd-markdown-container h3 { font-size: 1.15rem; }
 
@@ -2166,10 +2160,10 @@ tbody tr:last-child td {
 
 .jd-markdown-container code {
   font-family: var(--fm);
-  background: rgba(var(--navy-rgb), 0.5);
+  background: var(--surface-2);
   padding: 3px 6px;
   border-radius: 5px;
-  color: var(--sky-dim);
+  color: var(--gold);
   font-size: 0.85rem;
 }
 
