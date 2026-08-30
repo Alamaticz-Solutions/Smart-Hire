@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { X, Trash2 } from 'lucide-react'
+import { X, Trash2, Filter } from 'lucide-react'
 
 // Shared table chrome extracted from upload/CandidatesTable.jsx and
 // jobs/CandidatesTable.jsx: the sticky draggable/hideable column header row,
@@ -51,6 +51,17 @@ export default function DataTable({
     const colSpan = activeCols.length + leadingColumns.length
     const virtualItems = rowVirtualizer.getVirtualItems()
 
+    // Was an always-rendered second header row - an empty "Search..." box
+    // under every single column, all the time, whether or not anyone wanted
+    // to filter that column. Modern data tables (Notion, Linear, Airtable)
+    // keep per-column filtering but put it behind a toggle so the grid
+    // isn't permanently doubled in header height for a feature most visits
+    // never use. Nothing is removed - same inputs, same columnFilters state,
+    // same "Clear all" - just collapsed by default with a discoverable
+    // toggle + active-count badge instead of always-on.
+    const [showFilters, setShowFilters] = useState(false)
+    const activeFilterCount = Object.values(columnFilters).filter(Boolean).length
+
     // The filter row's sticky `top` used to be a hardcoded 38px, but the
     // header row above it is 11px padding + ~11.7px uppercase text + 2px
     // border ~= 42px tall - while scrolled, the filter row overlapped the
@@ -81,6 +92,25 @@ export default function DataTable({
     // that still rely on natural document scroll (jobs/CandidatesTable.jsx,
     // nested under JobDetailPanel's own scroll) are unaffected.
     return (
+        <>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6, flexShrink: 0 }}>
+            <button
+                type="button"
+                onClick={() => setShowFilters(v => !v)}
+                className="btn btn-secondary"
+                style={{ padding: '5px 10px', fontSize: 'var(--fs-2)', gap: 6, color: showFilters ? 'var(--gold)' : undefined, borderColor: showFilters ? 'var(--border-gold)' : undefined }}
+                title={showFilters ? 'Hide per-column search' : 'Search within columns'}
+                aria-pressed={showFilters}
+            >
+                <Filter size={13} />
+                Column filters
+                {activeFilterCount > 0 && (
+                    <span style={{ background: 'var(--gold)', color: 'var(--action-fg)', borderRadius: 999, fontSize: 'var(--fs-1)', fontWeight: 800, minWidth: 16, height: 16, padding: '0 4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                        {activeFilterCount}
+                    </span>
+                )}
+            </button>
+        </div>
         <div ref={tableScrollRef} style={fillHeight
             // minHeight is a floor, not 0: on a short viewport where the rest of
             // the page (dropzone, toolbar) already eats most of the available
@@ -201,6 +231,7 @@ export default function DataTable({
                             );
                         })}
                     </tr>
+                    {showFilters && (
                     <tr style={{ background: 'rgba(var(--navy-dark-rgb), 0.5)' }}>
                         {leadingColumns.map(lc => (
                             <th key={`filter-${lc.key}`} style={{
@@ -270,6 +301,7 @@ export default function DataTable({
                             );
                         })}
                     </tr>
+                    )}
                 </thead>
                 <tbody ref={tbodyRef}>
                     {rows.length === 0 && noMatchMessage ? (
@@ -299,5 +331,6 @@ export default function DataTable({
                 </tbody>
             </table>
         </div>
+        </>
     )
 }
