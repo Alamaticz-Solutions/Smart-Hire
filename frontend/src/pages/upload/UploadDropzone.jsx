@@ -28,7 +28,7 @@ export default function UploadDropzone({
                 32px below it. .card-title's own default already matches that;
                 no per-call-site override needed. */}
             <div className="card-title">
-                <Upload size={18} /> Upload Resumes / Excel Sheets
+                <Upload size={18} /> Add candidates
             </div>
             <div
                 {...getRootProps({
