@@ -654,14 +654,20 @@ export default function CandidatesTable({
 
             {showAddCandidate && (
                 <div className="modal-overlay" style={{ zIndex: 999 }} onClick={() => setShowAddCandidate(false)}>
-                    <div ref={addCandidateModalRef} className="card" role="dialog" aria-modal="true" aria-labelledby="add-candidate-manual-title" onClick={e => e.stopPropagation()} style={{ width: 550, maxWidth: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+                    <div ref={addCandidateModalRef} className="card" role="dialog" aria-modal="true" aria-labelledby="add-candidate-manual-title" onClick={e => e.stopPropagation()} style={{ width: 680, maxWidth: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 15, paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
                             <h3 id="add-candidate-manual-title" style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)' }}>Add Candidate Manually</h3>
                             <button onClick={() => setShowAddCandidate(false)} aria-label="Close" style={{ background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><X size={18} /></button>
                         </div>
-                        <div style={{ overflowY: 'auto', flex: 1, paddingRight: 5, display: 'flex', flexDirection: 'column', gap: 15, marginBottom: 15 }}>
+                        {/* Two-column grid instead of a single scrolling stack - the field set
+                            is dynamic (custom columns via "Add Column"), so it isn't grouped into
+                            fixed sections by name, but halving the column count still roughly
+                            halves how far a user scrolls to reach Add Candidate. Placeholders that
+                            just echoed the label above the field ("Enter Total Exp") were dropped -
+                            the label already says that; only full_name stays required up front. */}
+                        <div style={{ overflowY: 'auto', flex: 1, paddingRight: 5, display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '15px 20px', marginBottom: 15, alignContent: 'start' }}>
                             {cols.filter(c => c.key !== '_actions' && c.key !== 'source').map(c => (
-                                <div key={c.key}>
+                                <div key={c.key} style={c.key === 'full_name' ? { gridColumn: '1 / -1' } : undefined}>
                                     <label style={{ display: 'block', marginBottom: 5, fontSize: '0.8rem', color: 'var(--text-dim)', fontWeight: 500 }}>
                                         {c.label} {c.key === 'full_name' ? '*' : ''}
                                     </label>
@@ -682,7 +688,7 @@ export default function CandidatesTable({
                                         <input
                                             value={newCandidateForm[c.key] || ''}
                                             onChange={e => setNewCandidateForm(p => ({ ...p, [c.key]: e.target.value }))}
-                                            placeholder={`Enter ${c.label}`}
+                                            placeholder={c.key === 'full_name' ? 'Full name' : undefined}
                                             type={c.key.includes('experience') || c.key.includes('exp') ? 'number' : 'text'}
                                             step={c.key.includes('experience') || c.key.includes('exp') ? '0.1' : undefined}
                                             style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
