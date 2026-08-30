@@ -320,12 +320,16 @@ export default function LoginPage({ onLogin }) {
                                 Forgot password?
                             </button>
                         </div>
+                        {/* Was below the submit button - on a filled-in form
+                            taller than the viewport (register mode especially)
+                            the error rendered off-screen, reading as "nothing
+                            happened" rather than "this failed". */}
+                        {error && <div className="form-error" style={{ marginBottom: '1rem' }} role="alert">{error}</div>}
+                        {info && <div className="form-success" style={{ marginBottom: '1rem' }} role="status">{info}</div>}
                         <button type="submit" className="btn btn-primary btn-full" disabled={isSubmitting}>
                             {isSubmitting ? <Loader2 size={16} className="spin" /> : <LogIn size={16} />}
                             {isSubmitting ? 'Signing in…' : 'Sign in'}
                         </button>
-                        {error && <div className="form-error" role="alert">{error}</div>}
-                        {info && <div className="form-success" role="status">{info}</div>}
                         <div className="login-footer" style={{ marginTop: '1.2rem' }}>
                             Don't have an account?{' '}
                             <button type="button" className="form-link" onClick={() => changeMode('register')}>
@@ -382,12 +386,14 @@ export default function LoginPage({ onLogin }) {
                             </div>
                             {fieldErrors.regPass2 && <div id="reg-password2-error" className="form-error" style={{ marginTop: 4 }} role="alert">{fieldErrors.regPass2}</div>}
                         </div>
+                        {/* Same fix as login mode: was below the submit button,
+                            off-screen on this taller form. */}
+                        {error && <div className="form-error" style={{ marginBottom: '1rem' }} role="alert">{error}</div>}
+                        {info && <div className="form-success" style={{ marginBottom: '1rem' }} role="status">{info}</div>}
                         <button type="submit" className="btn btn-primary btn-full" disabled={isSubmitting}>
                             {isSubmitting ? <Loader2 size={16} className="spin" /> : <UserPlus size={16} />}
                             {isSubmitting ? 'Creating account…' : 'Create account'}
                         </button>
-                        {error && <div className="form-error" role="alert">{error}</div>}
-                        {info && <div className="form-success" role="status">{info}</div>}
                         <div className="login-footer" style={{ marginTop: '1rem' }}>
                             Already have an account?{' '}
                             <button type="button" className="form-link" onClick={() => changeMode('login')}>

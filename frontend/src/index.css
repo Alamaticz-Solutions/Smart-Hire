@@ -950,8 +950,12 @@ body,
 
 .form-input {
   width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
   background: var(--input-bg);
-  border: 1.5px solid var(--border);
+  /* Was 1.5px - every other input in the app (filter inputs, etc.) is 1px;
+     this is the one place that drifted. */
+  border: 1px solid var(--border);
   border-radius: var(--r-md);
   padding: 12px 14px;
   color: var(--text);
@@ -981,8 +985,14 @@ body,
 }
 
 .password-toggle-btn {
+  /* Was a 26px circle (18px icon + 4px padding) - under the 44px touch
+     minimum on the one screen guaranteed to be used on a phone. Hit area
+     is now a real 44x44, right-aligned flush with the field's edge instead
+     of floating 12px in from it. */
   position: absolute;
-  right: 12px;
+  right: 2px;
+  width: 40px;
+  height: 40px;
   background: none;
   border: none;
   color: var(--text-muted);
@@ -990,7 +1000,6 @@ body,
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 4px;
   border-radius: 50%;
   transition: color 0.2s ease, background-color 0.2s ease;
 }
