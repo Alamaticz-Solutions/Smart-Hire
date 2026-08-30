@@ -3,7 +3,7 @@ import { useOutletContext, useNavigate } from 'react-router-dom'
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, ResponsiveContainer
 } from 'recharts'
-import { Users, Briefcase, ListChecks, Send, Timer, BarChart3, Activity as ActivityIcon, Mail, Upload, Check } from 'lucide-react'
+import { Briefcase, Timer, BarChart3, Activity as ActivityIcon, Mail, Upload, Check, ChevronRight } from 'lucide-react'
 import apiClient from '../api/client'
 import { useToast } from '../hooks/useToast'
 import ToastHost from '../components/shared/ToastHost'
@@ -133,11 +133,11 @@ export default function DashboardPage() {
     const noticeData = Object.entries(noticeCounts).map(([name, value]) => ({ name, value }))
 
     const kpis = [
-        { label: 'Total Candidates', value: totalCandidates, Icon: Users, onClick: () => navigate('/upload') },
-        { label: 'Open Jobs', value: openJobs, Icon: Briefcase, onClick: () => navigate('/jobs') },
-        { label: 'In Review', value: inReview, Icon: ListChecks, onClick: () => navigate('/upload') },
-        { label: 'Offers Out', value: offersOut, Icon: Send, onClick: () => navigate('/upload') },
-        { label: 'Immediate Joiners', value: immediateJoiners, Icon: Timer, onClick: () => navigate('/upload') },
+        { label: 'Total Candidates', value: totalCandidates, caption: 'Across all sources', onClick: () => navigate('/upload') },
+        { label: 'Open Jobs', value: openJobs, caption: 'Currently active', onClick: () => navigate('/jobs') },
+        { label: 'In Review', value: inReview, caption: 'Awaiting a decision', tone: inReview > 0 ? 'warning' : undefined, onClick: () => navigate('/upload') },
+        { label: 'Offers Out', value: offersOut, caption: 'Pending response', onClick: () => navigate('/upload') },
+        { label: 'Immediate Joiners', value: immediateJoiners, caption: 'Available now', tone: immediateJoiners > 0 ? 'positive' : undefined, onClick: () => navigate('/upload') },
     ]
 
     // G-21: a single 40px spinner replacing the entire page caused a full
@@ -159,23 +159,20 @@ export default function DashboardPage() {
                 or Jobs) instead of the old in-page "filter the table below" pattern,
                 which had no removable filter chip and no result count (S3.3). */}
             <div className="kpi-grid">
-                {kpis.map(({ label, value, Icon, onClick }) => (
+                {kpis.map(({ label, value, caption, tone, onClick }) => (
                     <button
                         type="button"
                         className="kpi-card"
                         key={label}
                         onClick={onClick}
-                        style={{ cursor: 'pointer', font: 'inherit', textAlign: 'left' }}
+                        style={{ cursor: 'pointer', font: 'inherit' }}
                     >
-                        <div style={{
-                            width: 36, height: 36, background: 'rgba(var(--gold-rgb), 0.12)',
-                            borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            marginBottom: 10,
-                        }}>
-                            <Icon size={18} color="var(--gold)" />
+                        <div className="kpi-card-top">
+                            <span className="kpi-label">{label}</span>
+                            <ChevronRight size={14} color="var(--text-subtle)" />
                         </div>
                         <div className="kpi-value">{value}</div>
-                        <div className="kpi-label">{label}</div>
+                        <div className={`kpi-caption${tone ? ` tone-${tone}` : ''}`}>{caption}</div>
                     </button>
                 ))}
             </div>

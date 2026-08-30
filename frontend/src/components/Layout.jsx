@@ -19,13 +19,13 @@ import { usePageTitle } from '../hooks/usePageTitle'
 // once, here, so every route gets the same real heading treatment instead
 // of three different ad hoc ones.
 const PAGE_META = {
-    '/': { title: 'Dashboard', subtitle: 'Overview of your recruiting pipeline and candidate insights.', Icon: LayoutDashboard },
-    '/jobs': { title: 'Jobs', subtitle: 'Track open roles and their candidate funnel status.', Icon: Briefcase },
-    '/upload': { title: 'Candidates', subtitle: 'Upload resumes and manage your candidate database.', Icon: Users },
-    '/chat': { title: 'Assistant', subtitle: 'Ask questions about your candidates in natural language.', Icon: MessageSquare },
-    '/connect': { title: 'Integrations', subtitle: 'Connect mailboxes and Drive storage.', Icon: Link },
-    '/templates': { title: 'Email Templates', subtitle: 'Draft automated email responses sent to candidates.', Icon: FileText },
-    '/admin': { title: 'Administration', subtitle: 'Manage system changes, user roles, and access control.', Icon: Shield },
+    '/': { title: 'Dashboard', subtitle: 'Overview of your recruiting pipeline and candidate insights.' },
+    '/jobs': { title: 'Jobs', subtitle: 'Track open roles and their candidate funnel status.' },
+    '/upload': { title: 'Candidates', subtitle: 'Upload resumes and manage your candidate database.' },
+    '/chat': { title: 'Assistant', subtitle: 'Ask questions about your candidates in natural language.' },
+    '/connect': { title: 'Integrations', subtitle: 'Connect mailboxes and Drive storage.' },
+    '/templates': { title: 'Email Templates', subtitle: 'Draft automated email responses sent to candidates.' },
+    '/admin': { title: 'Administration', subtitle: 'Manage system changes, user roles, and access control.' },
 }
 const PAGE_TITLES = Object.fromEntries(Object.entries(PAGE_META).map(([path, { title }]) => [path, title]))
 
@@ -265,12 +265,14 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
                         >
                             <Menu size={18} />
                         </button>
+                        {/* The sidebar already shows this page's icon next to its nav
+                            label one click away - repeating it here in a same-size box
+                            right next to a two-line title/subtitle block was the source
+                            of the "logo and header line don't align" report: the icon's
+                            own vertical center never matched the title baseline once a
+                            subtitle wrapped under it. Text-only heading, tighter
+                            title/subtitle gap, matching the audit's tightened topbar. */}
                         <div className="topbar-heading">
-                            {pageMeta?.Icon && (
-                                <span className="topbar-heading-icon">
-                                    <pageMeta.Icon size={20} color="var(--gold)" />
-                                </span>
-                            )}
                             <div style={{ minWidth: 0 }}>
                                 <h1 className="page-title">{pageTitle}</h1>
                                 {pageMeta?.subtitle && <p className="page-subtitle">{pageMeta.subtitle}</p>}
