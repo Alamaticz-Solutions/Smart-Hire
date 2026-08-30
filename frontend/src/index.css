@@ -797,14 +797,11 @@ body,
    dedicated class rather than an inline grid-template-columns override, so
    the 900px stack-to-one-column media query above still applies (an inline
    style would win over it regardless of viewport). */
+/* Matches the audit's tightened mockup exactly: two containers
+   (Pipeline by Stage, Recent Activity), not three - Notice Period was
+   never in that design. */
 .dashboard-charts-grid {
-  grid-template-columns: 1.3fr 1fr 1fr;
-}
-
-@media (max-width: 1200px) {
-  .dashboard-charts-grid {
-    grid-template-columns: 1fr 1fr;
-  }
+  grid-template-columns: 1.4fr 1fr;
 }
 
 @media (max-width: 900px) {

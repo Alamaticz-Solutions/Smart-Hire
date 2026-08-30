@@ -192,14 +192,6 @@ export default function CandidatesTable({
                 />
             ),
         },
-        {
-            key: '_sno',
-            width: '60px',
-            align: 'center',
-            filterCellColor: 'var(--gold)',
-            renderHeader: () => 'S.No',
-            renderFilterCell: () => '#',
-        },
     ]
 
     const renderRow = (row, ri, virtualRow) => (
@@ -224,9 +216,6 @@ export default function CandidatesTable({
                     onChange={() => toggleSelectCandidate(row.id)}
                     style={{ cursor: 'pointer', accentColor: 'var(--gold)', width: 15, height: 15 }}
                 />
-            </td>
-            <td style={{ ...TD_BASE, textAlign: 'center', fontWeight: 800, color: 'var(--gold)', borderRight: '1px solid rgba(var(--sky-rgb), 0.07)' }}>
-                {ri + 1}
             </td>
             {activeCols.map(({ key }) => {
                 const isEditing = editCell?.row === ri && editCell?.col === key

@@ -3,7 +3,7 @@ import { useOutletContext, useNavigate } from 'react-router-dom'
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, ResponsiveContainer
 } from 'recharts'
-import { Briefcase, Timer, BarChart3, Activity as ActivityIcon, Mail, Upload, Check, ChevronRight } from 'lucide-react'
+import { Briefcase, BarChart3, Activity as ActivityIcon, Mail, Upload, Check, ChevronRight } from 'lucide-react'
 import apiClient from '../api/client'
 import { useToast } from '../hooks/useToast'
 import ToastHost from '../components/shared/ToastHost'
@@ -51,7 +51,7 @@ const PIPELINE_STAGES = [
     { key: 'Hired', varName: '--st-hired-text' },
     { key: 'Rejected', varName: '--st-rejected-text' },
 ]
-const CHART_VAR_NAMES = ['--chart-1', '--chart-2', '--text-muted', '--surface', '--border', ...PIPELINE_STAGES.map(s => s.varName)]
+const CHART_VAR_NAMES = ['--text-muted', '--surface', '--border', ...PIPELINE_STAGES.map(s => s.varName)]
 
 const isImmediate = (val) => {
     if (val === 0 || val === '0') return true
@@ -123,15 +123,6 @@ export default function DashboardPage() {
         fill: chartColors[stage.varName],
     }))
 
-    const noticeCounts = {}
-    candidates.forEach(c => {
-        let k = String(c.notice_period ?? '').trim()
-        if (k === '0') k = 'Immediate'
-        else if (k !== '' && !isNaN(k)) k = `${k} days`
-        if (k) noticeCounts[k] = (noticeCounts[k] || 0) + 1
-    })
-    const noticeData = Object.entries(noticeCounts).map(([name, value]) => ({ name, value }))
-
     const kpis = [
         { label: 'Total Candidates', value: totalCandidates, caption: 'Across all sources', onClick: () => navigate('/upload') },
         { label: 'Open Jobs', value: openJobs, caption: 'Currently active', onClick: () => navigate('/jobs') },
@@ -145,7 +136,7 @@ export default function DashboardPage() {
     // + charts shape here means arrival only swaps content in place.
     if (loading) return (
         <div style={{ padding: '2rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '1.5rem' }} aria-busy="true" aria-label="Loading dashboard">
-            <SkeletonKPIRow count={4} />
+            <SkeletonKPIRow count={5} />
             <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <SkeletonBlock width={180} height={20} />
                 <SkeletonBlock height={220} radius={10} />
@@ -233,21 +224,6 @@ export default function DashboardPage() {
                                 <Tooltip contentStyle={{ background: chartColors['--surface'], border: '1px solid rgba(var(--gold-rgb), 0.3)', borderRadius: 10, color: 'var(--text)' }} />
                                 <Bar dataKey="value" radius={[6, 6, 0, 0]}>
                                     {pipelineData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-
-                    <div className="card">
-                        <div className="card-title"><Timer size={16} /> Notice Period</div>
-                        <ResponsiveContainer width="100%" height={280}>
-                            <BarChart data={noticeData} margin={{ top: 5, right: 10, bottom: 20, left: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke={chartColors['--border']} />
-                                <XAxis dataKey="name" tick={{ fill: chartColors['--text-muted'], fontSize: 12 }} angle={-30} textAnchor="end" />
-                                <YAxis tick={{ fill: chartColors['--text-muted'], fontSize: 12 }} allowDecimals={false} />
-                                <Tooltip contentStyle={{ background: chartColors['--surface'], border: '1px solid rgba(var(--gold-rgb), 0.3)', borderRadius: 10, color: 'var(--text)' }} />
-                                <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                                    {noticeData.map((_, i) => <Cell key={i} fill={chartColors[i % 2 === 0 ? '--chart-1' : '--chart-2']} />)}
                                 </Bar>
                             </BarChart>
                         </ResponsiveContainer>
