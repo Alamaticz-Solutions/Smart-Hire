@@ -419,14 +419,14 @@ export default function CandidatesTable({
     )
 
     return (
-        <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, width: '100%' }}>
+        <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, width: '100%', minHeight: 0 }}>
             {/* Was six btn-secondary buttons, three recolored ad hoc (Filter/Add
                 Candidate in sky, Add Column in gold) with no primary action and
                 two fontWeight:900 "+" glyphs standing in for an icon - the
                 colors encoded nothing. One primary action now (Add candidate);
                 everything else is equal-weight quiet buttons. Baseline-aligned
                 with the section title instead of hanging 10px below it. */}
-            <div className="section-header" style={{ borderBottom: '1px solid rgba(var(--sky-rgb), 0.2)', paddingBottom: '1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+            <div className="section-header" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, flexShrink: 0 }}>
                 <div className="section-title"><Users size={18} /> Candidates</div>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                     <button className="btn btn-secondary" onClick={() => setShowFilter(true)} style={{ gap: 6 }}>
@@ -558,6 +558,7 @@ export default function CandidatesTable({
                     )}
 
                     <DataTable
+                        fillHeight
                         tbodyRef={tableBodyRef}
                         ariaRowCount={filteredCandidates.length}
                         activeCols={activeCols}

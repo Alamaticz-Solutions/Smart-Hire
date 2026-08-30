@@ -22,7 +22,7 @@ export default function UploadDropzone({
     progress,
 }) {
     return (
-        <div className="card">
+        <div className="card" style={{ flexShrink: 0 }}>
             {/* Was color:var(--sky) at weight 600, inline - a second card-title
                 treatment next to the table card's own (--text, weight 800)
                 32px below it. .card-title's own default already matches that;

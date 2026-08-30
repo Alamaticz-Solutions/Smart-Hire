@@ -457,7 +457,7 @@ export default function UploadPage() {
     const getTableWidth = () => computeTableWidth(activeCols, 60 + 45) // + S.No column + checkbox column
 
     return (
-        <div style={{ padding: '2rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '2rem', minWidth: 0, width: '100%' }}>
+        <div style={{ padding: '2rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '2rem', minWidth: 0, width: '100%', height: '100%' }}>
 
             <UploadDropzone
                 getRootProps={getRootProps}

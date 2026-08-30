@@ -46,6 +46,7 @@ export default function DataTable({
     noMatchMessage,
     tbodyRef,
     ariaRowCount,
+    fillHeight = false,
 }) {
     const colSpan = activeCols.length + leadingColumns.length
     const virtualItems = rowVirtualizer.getVirtualItems()
@@ -73,8 +74,23 @@ export default function DataTable({
     // right:0 Actions column's declared width doesn't get eaten by the
     // scrollbar appearing on top of it (the actual cause of the Actions
     // column looking "fixed and overlapping").
+    // fillHeight: the table becomes the page's only vertical scroller instead
+    // of nesting its own scroll inside a page that also scrolls (a page has
+    // to actually be a fixed-height flex column above this for flex:1 to mean
+    // anything - see upload/CandidatesTable.jsx). Off by default so callers
+    // that still rely on natural document scroll (jobs/CandidatesTable.jsx,
+    // nested under JobDetailPanel's own scroll) are unaffected.
     return (
-        <div ref={tableScrollRef} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', borderRadius: 'var(--r-md)', border: '1px solid var(--border)', width: '100%', scrollbarGutter: 'stable' }}>
+        <div ref={tableScrollRef} style={fillHeight
+            // minHeight is a floor, not 0: on a short viewport where the rest of
+            // the page (dropzone, toolbar) already eats most of the available
+            // height, the table still needs room to be usable rather than
+            // collapsing to nothing - when that floor doesn't fit, the page's
+            // own scroll (.page-body) takes back over, same as before this
+            // page ever had a fillHeight table.
+            ? { overflowX: 'auto', overflowY: 'auto', flex: 1, minHeight: 320, borderRadius: 'var(--r-md)', border: '1px solid var(--border)', width: '100%', scrollbarGutter: 'stable' }
+            : { overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', borderRadius: 'var(--r-md)', border: '1px solid var(--border)', width: '100%', scrollbarGutter: 'stable' }
+        }>
             <table
                 role={ariaRowCount != null ? 'grid' : undefined}
                 aria-rowcount={ariaRowCount}
