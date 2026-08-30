@@ -231,6 +231,15 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
                     )}
                 </nav>
 
+                {!effectiveCollapsed && (
+                    <div style={{
+                        padding: '10px 16px', fontSize: 'var(--fs-1)', color: 'var(--text-subtle)',
+                        borderTop: '1px solid var(--border)', textAlign: 'center',
+                    }}>
+                        Developed by Alamaticz Solutions
+                    </div>
+                )}
+
                 {/* Below 1024px rail mode is automatic (isTabletWidth) and the
                     manual toggle can't override it, so hide a control that
                     would otherwise visibly do nothing. Moved from a full-width

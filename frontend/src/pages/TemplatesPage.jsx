@@ -15,6 +15,11 @@ import ConfirmDialog from '../components/shared/ConfirmDialog'
 // (word choice, closing salutation) varies. Display names also used to
 // each end in the word "Preset" inside a preset picker ("Professional
 // Preset (Default)") - dropped, the picker's own label already says preset.
+// Was a real-looking full name ("Somasekhar Kundurthi") hardcoded as the
+// sample recipient in this preview - a placeholder should read as
+// obviously fictional, not as if it could be an actual candidate's name.
+const PREVIEW_CANDIDATE_NAME = "Jordan Rivera";
+
 const THEME_PRESETS = {
   professional: {
     name: "Professional",
@@ -288,7 +293,7 @@ export default function TemplatesPage() {
     }
 
     const getPreviewText = (subjectTpl, bodyTpl) => {
-        const candidateName = "Somasekhar Kundurthi";
+        const candidateName = PREVIEW_CANDIDATE_NAME;
         const subjectVal = "React Developer Application";
         const refVal = "CAND-407";
         const missingFields = `* Total years of experience\n* Current CTC\n* Expected CTC`;
@@ -703,7 +708,7 @@ export default function TemplatesPage() {
                             </div>
                             <div>
                                 <span style={{ color: '#6B6F94', fontWeight: 500 }}>To: </span>
-                                <strong style={{ color: '#12173F' }}>Somasekhar Kundurthi</strong> &lt;candidate@gmail.com&gt;
+                                <strong style={{ color: '#12173F' }}>{PREVIEW_CANDIDATE_NAME}</strong> &lt;candidate@gmail.com&gt;
                             </div>
                             <div>
                                 <span style={{ color: '#6B6F94', fontWeight: 500 }}>Subject: </span>
