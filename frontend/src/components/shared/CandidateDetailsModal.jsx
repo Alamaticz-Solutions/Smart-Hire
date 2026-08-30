@@ -84,7 +84,11 @@ export default function CandidateDetailsModal({
     const modalRef = useModalA11y(true, onClose);
     const canEdit = editable !== undefined ? editable : Boolean(onToggleStatus);
     const canExportDocx = showExportDocx !== undefined ? showExportDocx : Boolean(onToggleStatus);
-    const canToggleFormatted = showFormattedToggle !== undefined ? showFormattedToggle : !onToggleStatus;
+    // Was `!onToggleStatus` - the JobsPage-style flow had no manual toggle at
+    // all, relying entirely on the auto-show-when-selected panel below to
+    // ever reveal the formatted resume. The toggle is now always available so
+    // that behavior can be replaced with an explicit user choice instead.
+    const canToggleFormatted = showFormattedToggle !== undefined ? showFormattedToggle : true;
 
     const [activeTab, setActiveTab] = useState('profile');
     const [jobs, setJobs] = useState([]);
@@ -99,8 +103,12 @@ export default function CandidateDetailsModal({
     const [editedFormState, setEditedFormState] = useState(null);
     const [savingEdited, setSavingEdited] = useState(false);
 
-    // Whether the formatted-resume panel should be showing right now.
-    const showFormattedPanel = onToggleStatus ? jobStatus === 'selected' : showAlamaticz;
+    // Whether the formatted-resume panel should be showing right now. Was
+    // auto-true once a candidate's job_status was 'selected' - the original
+    // resume the candidate actually submitted should be what opens by
+    // default; the company-formatted version is available on demand via the
+    // toggle above, same as everywhere else in the app now.
+    const showFormattedPanel = showAlamaticz;
 
     useEffect(() => {
         setIsEditingFormatted(false);
@@ -266,34 +274,22 @@ export default function CandidateDetailsModal({
                             Download, Close) inside a panel that's only ~50% of
                             the modal width - without wrap, it silently overflowed
                             the panel with no scrollbar, clipping buttons
-                            (including Close) completely out of reach. */}
-                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                            (including Close) completely out of reach. Every
+                            button now runs on the app's shared .btn family
+                            instead of one-off inline colors/shadows/font-weights
+                            per button, so this row reads as one consistent
+                            action group instead of six differently-styled ones. */}
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                             {canExportDocx && (
-                                <button
-                                    onClick={handleDownloadDocx}
-                                    style={{
-                                        background: 'var(--gold)', border: 'none',
-                                        color: 'var(--action-fg)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
-                                        fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 800,
-                                        display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s',
-                                        boxShadow: '0 4px 10px rgba(var(--gold-rgb), 0.2)'
-                                    }}
-                                    onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
-                                    onMouseLeave={e => e.currentTarget.style.transform = 'none'}
-                                >
+                                <button onClick={handleDownloadDocx} className="btn btn-primary" style={{ padding: '7px 14px', fontSize: 'var(--fs-2)' }}>
                                     <Download size={14} /> Alamaticz Format
                                 </button>
                             )}
                             {canToggleFormatted && (
                                 <button
                                     onClick={handleToggleFormatted}
-                                    style={{
-                                        background: showAlamaticz ? 'rgba(var(--gold-rgb), 0.2)' : 'var(--gold)', border: showAlamaticz ? '1px solid var(--gold)' : 'none',
-                                        color: showAlamaticz ? 'var(--gold)' : 'var(--action-fg)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
-                                        fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 800,
-                                        display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s',
-                                        boxShadow: showAlamaticz ? 'none' : '0 4px 10px rgba(var(--gold-rgb), 0.2)'
-                                    }}
+                                    className={showAlamaticz ? 'btn btn-secondary' : 'btn btn-primary'}
+                                    style={{ padding: '7px 14px', fontSize: 'var(--fs-2)' }}
                                 >
                                     <Eye size={14} /> {showAlamaticz ? 'Hide Alamaticz Format' : 'View Alamaticz Format'}
                                 </button>
@@ -301,76 +297,36 @@ export default function CandidateDetailsModal({
                             {onToggleStatus && jobStatus && (
                                 <button
                                     onClick={handleToggleStatusClick}
+                                    className="btn btn-secondary"
                                     style={{
-                                        background: jobStatus === 'selected' ? 'var(--success-bg)' : 'rgba(var(--gold-rgb), 0.15)',
-                                        border: jobStatus === 'selected' ? '1px solid rgba(var(--green-rgb), 0.35)' : '1px solid rgba(var(--gold-rgb), 0.35)',
-                                        color: jobStatus === 'selected' ? 'var(--success-fg)' : 'var(--gold)',
-                                        cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
-                                        fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 700,
-                                        display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s',
-                                        outline: 'none'
+                                        padding: '7px 14px', fontSize: 'var(--fs-2)',
+                                        color: jobStatus === 'selected' ? 'var(--success-fg)' : undefined,
+                                        borderColor: jobStatus === 'selected' ? 'rgba(var(--green-rgb), 0.35)' : undefined,
                                     }}
                                 >
                                     {jobStatus === 'selected' ? <><Check size={14} /> Selected for Job</> : <><Plus size={14} /> Select Candidate</>}
                                 </button>
                             )}
                             {onDeleteCandidate && (
-                                <button
-                                    onClick={() => onDeleteCandidate(candidate.id)}
-                                    style={{
-                                        background: 'var(--danger-bg)', border: '1px solid rgba(var(--red-rgb), 0.3)',
-                                        color: 'var(--danger-fg)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
-                                        fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 700,
-                                        display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s',
-                                        outline: 'none'
-                                    }}
-                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--red-rgb), 0.25)'}
-                                    onMouseLeave={e => e.currentTarget.style.background = 'var(--danger-bg)'}
-                                >
+                                <button onClick={() => onDeleteCandidate(candidate.id)} className="btn btn-danger" style={{ padding: '7px 14px', fontSize: 'var(--fs-2)' }}>
                                     <Trash2 size={14} /> Delete Candidate
                                 </button>
                             )}
                             {candidate.filename && !candidate.filename.toLowerCase().endsWith('.xlsx') && !candidate.filename.toLowerCase().endsWith('.xls') && !candidate.filename.toLowerCase().endsWith('.csv') && (
                                 isPdf ? (
-                                    <button
-                                        onClick={() => onViewPdf(candidate.filename, candidate.full_name)}
-                                        style={{
-                                            background: 'rgba(var(--sky-rgb), 0.15)', border: '1px solid rgba(var(--sky-rgb), 0.3)',
-                                            color: 'var(--sky-dim)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
-                                            fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 700,
-                                            display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s'
-                                        }}
-                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.25)'}
-                                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.15)'}
-                                    >
+                                    <button onClick={() => onViewPdf(candidate.filename, candidate.full_name)} className="btn btn-secondary" style={{ padding: '7px 14px', fontSize: 'var(--fs-2)' }}>
                                         <FileText size={14} /> Open in New Tab
                                     </button>
                                 ) : (
-                                    <a
-                                        href={getStaticUrl(candidate.filename)}
-                                        download={candidate.filename}
-                                        style={{
-                                            background: 'rgba(var(--sky-rgb), 0.15)', border: '1px solid rgba(var(--sky-rgb), 0.3)',
-                                            color: 'var(--sky-dim)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
-                                            fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 700,
-                                            display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s',
-                                            textDecoration: 'none'
-                                        }}
-                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.25)'}
-                                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.15)'}
-                                    >
+                                    <a href={getStaticUrl(candidate.filename)} download={candidate.filename} className="btn btn-secondary" style={{ padding: '7px 14px', fontSize: 'var(--fs-2)', textDecoration: 'none' }}>
                                         <Download size={14} /> Download Resume
                                     </a>
                                 )
                             )}
                             <button onClick={onClose} aria-label="Close" style={{
-                                background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
-                                color: 'var(--gold)', cursor: 'pointer', padding: '6px', borderRadius: '8px',
-                                display: 'flex', transition: 'all 0.2s'
-                            }}
-                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.2)'}
-                            onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.1)'}
-                            >
+                                background: 'none', border: 'none', color: 'var(--text-muted)',
+                                cursor: 'pointer', padding: 6, borderRadius: 'var(--r-sm)', display: 'flex',
+                            }}>
                                 <X size={18} />
                             </button>
                         </div>
