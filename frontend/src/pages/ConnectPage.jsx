@@ -6,6 +6,7 @@ import { useToast } from '../hooks/useToast'
 import ToastHost from '../components/shared/ToastHost'
 import { useConfirm } from '../hooks/useConfirm'
 import ConfirmDialog from '../components/shared/ConfirmDialog'
+import { formatApiError } from '../utils/apiError'
 
 export default function ConnectPage() {
     const { user } = useOutletContext()
@@ -90,15 +91,7 @@ export default function ConnectPage() {
             }
         } catch (err) {
             console.error("Save error:", err);
-            let errMsg = "Failed to save integration settings";
-            if (err.response?.data?.detail) {
-                errMsg = typeof err.response.data.detail === 'string' 
-                    ? err.response.data.detail 
-                    : JSON.stringify(err.response.data.detail);
-            } else if (err.message) {
-                errMsg = err.message;
-            }
-            showToast(errMsg, 'error');
+            showToast(formatApiError(err, 'Failed to save integration settings'), 'error');
         } finally {
             setSaving(false)
         }
@@ -113,7 +106,7 @@ export default function ConnectPage() {
             })
             setTestStatus({ status: res.data.status, message: res.data.message })
         } catch (err) {
-            setTestStatus({ status: 'error', message: 'Failed to run connection test: ' + (err.response?.data?.detail || err.message) })
+            setTestStatus({ status: 'error', message: formatApiError(err, 'Failed to run connection test.') })
         } finally {
             setTestingConnection(false)
         }
@@ -136,9 +129,9 @@ export default function ConnectPage() {
                 [indexKey]: { status: res.data.status, message: res.data.message } 
             }))
         } catch (err) {
-            setMailboxTestStatuses(prev => ({ 
-                ...prev, 
-                [indexKey]: { status: 'error', message: 'Connection failed: ' + (err.response?.data?.detail || err.message) } 
+            setMailboxTestStatuses(prev => ({
+                ...prev,
+                [indexKey]: { status: 'error', message: formatApiError(err, 'Connection failed.') }
             }))
         } finally {
             setTestingMailbox(null)
@@ -306,7 +299,7 @@ export default function ConnectPage() {
             setGdriveAuthCode('');
             showToast(`Connected successfully to ${email}!`, 'success');
         } catch (err) {
-            showToast(err.response?.data?.detail || 'Failed to exchange authorization code.', 'error');
+            showToast(formatApiError(err, 'Failed to exchange authorization code.'), 'error');
         } finally {
             setExchangingGdriveCode(false);
         }
