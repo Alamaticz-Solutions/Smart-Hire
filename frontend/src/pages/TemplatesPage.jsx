@@ -7,9 +7,17 @@ import ToastHost from '../components/shared/ToastHost'
 import { useConfirm } from '../hooks/useConfirm'
 import ConfirmDialog from '../components/shared/ConfirmDialog'
 
+// These three tones used to have three different sign-off identities ("HR
+// Team" / "The Talent Team" / "Your Friends at HR") for candidate-facing
+// email sent under the same Alamaticz name - reading as three different
+// departments replying, not one company with a tone choice. Sign-off is
+// now unified to "The Alamaticz Solutions Team" everywhere; only the tone
+// (word choice, closing salutation) varies. Display names also used to
+// each end in the word "Preset" inside a preset picker ("Professional
+// Preset (Default)") - dropped, the picker's own label already says preset.
 const THEME_PRESETS = {
   professional: {
-    name: "Professional Preset (Default)",
+    name: "Professional",
     subject: "Re: {subject} (Ref: {ref})",
     body_missing: `Dear {candidate_name},
 
@@ -25,8 +33,7 @@ We look forward to hearing from you.
 
 Best regards,
 
-HR Team
-Alamaticz Solutions`,
+The Alamaticz Solutions Team`,
     body_complete: `Dear {candidate_name},
 
 Thank you for your interest in Alamaticz Solutions and for submitting your application.
@@ -35,11 +42,10 @@ We appreciate the time you have taken to apply for this opportunity. Our recruit
 
 Best regards,
 
-HR Team
-Alamaticz Solutions`
+The Alamaticz Solutions Team`
   },
   creative: {
-    name: "Creative & Enthusiastic Preset",
+    name: "Enthusiastic",
     subject: "Excited to connect! Re: {subject} (Ref: {ref})",
     body_missing: `Hi {candidate_name}!
 
@@ -55,8 +61,7 @@ Can't wait to hear back from you!
 
 Cheers,
 
-The Talent Team
-Alamaticz Solutions`,
+The Alamaticz Solutions Team`,
     body_complete: `Hi {candidate_name}!
 
 Thanks for reaching out and sharing your application with us!
@@ -67,11 +72,10 @@ Have a fantastic day!
 
 Cheers,
 
-The Talent Team
-Alamaticz Solutions`
+The Alamaticz Solutions Team`
   },
   warm: {
-    name: "Warm & Friendly Preset",
+    name: "Warm",
     subject: "Thank you for applying! Re: {subject} (Ref: {ref})",
     body_missing: `Hello {candidate_name},
 
@@ -85,8 +89,7 @@ We really appreciate your support and look forward to reviewing your application
 
 Wishing you all the best,
 
-Your Friends at HR
-Alamaticz Solutions`,
+The Alamaticz Solutions Team`,
     body_complete: `Hello {candidate_name},
 
 We hope you are doing well! Thank you so much for sending over your application.
@@ -95,8 +98,7 @@ This is just a quick note to let you know we've received all your information. O
 
 Take care,
 
-Your Friends at HR
-Alamaticz Solutions`
+The Alamaticz Solutions Team`
   }
 };
 
@@ -280,7 +282,9 @@ export default function TemplatesPage() {
                 };
             });
         }
-        showToast(`Theme preset updated to: ${newTheme === 'custom' ? 'Custom Editable' : newTheme}`, 'info');
+        // Was the raw internal key (e.g. "creative") rather than the
+        // friendly preset name shown in the picker itself.
+        showToast(`Theme preset updated to: ${newTheme === 'custom' ? 'Custom Editable' : (THEME_PRESETS[newTheme]?.name || newTheme)}`, 'info');
     }
 
     const getPreviewText = (subjectTpl, bodyTpl) => {

@@ -1517,15 +1517,20 @@ tbody tr:last-child td {
   color: var(--text);
   animation: slideIn 0.3s ease;
   box-shadow: var(--shadow);
+  /* Tinted left edge in addition to the border-color tint, so the status
+     reads at a glance even at a quick skim, not just on close inspection. */
+  border-left-width: 3px;
 }
 
 .toast.success {
   border-color: rgba(var(--green-rgb), 0.4);
+  border-left-color: var(--success-fg);
 }
 .toast.success .toast-icon { color: var(--success-fg); }
 
 .toast.error {
   border-color: rgba(var(--red-rgb), 0.4);
+  border-left-color: var(--danger-fg);
 }
 .toast.error .toast-icon { color: var(--danger-fg); }
 
