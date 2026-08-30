@@ -23,7 +23,13 @@ export default function LoginPage({ onLogin }) {
     const [name, setName] = useState('')
     const [pass2, setPass2] = useState('')
     const [mobile, setMobile] = useState('')
-    const [fpInput, setFpInput] = useState('')
+    // Forgot-password now looks accounts up by username, not mobile - mobile
+    // is optional at registration and, checked against the real database,
+    // not a single existing user has one set, which made the mobile-based
+    // flow unreachable for every real account. Kept as its own field
+    // (rather than reusing `mobile`, which register's own optional-mobile
+    // input also binds to) so the two stay independent.
+    const [fpUsername, setFpUsername] = useState('')
     const [error, setError] = useState('')
     const [info, setInfo] = useState('')
 
@@ -66,6 +72,7 @@ export default function LoginPage({ onLogin }) {
         setSelectedMember(null)
         setEmail('')
         setForgotStep(1)
+        setFpUsername('')
         setFpOtp('')
         setFpNewPass('')
         setFpNewPass2('')
@@ -218,13 +225,17 @@ export default function LoginPage({ onLogin }) {
     const handleForgotRequest = async (e) => {
         e.preventDefault()
         setError(''); setInfo('')
-        if (!mobile) { setError('Please enter your registered Mobile Number.'); return }
+        if (!fpUsername) { setError('Please enter your username.'); return }
         if (isSubmitting) return
 
         setIsSubmitting(true)
         try {
-            const res = await apiClient.post('/api/auth/forgot-password/request', { mobile: mobile.trim() })
-            setInfo(res.data.message)
+            const res = await apiClient.post('/api/auth/forgot-password/request', { username: fpUsername.trim() })
+            // The reset code is emailed to whatever address is on file for this
+            // account (there's no SMS provider) - email_hint is a masked form
+            // of that address (e.g. "j***n@gmail.com") so the user can confirm
+            // where to look without the backend ever exposing the real one.
+            setInfo(res.data.email_hint ? `We've sent a reset code to ${res.data.email_hint}.` : res.data.message)
             // Dev-only: the backend can return the OTP directly in non-production setups
             // where no SMS/email delivery is configured. Never show this in a real build.
             if (import.meta.env.DEV && res.data.otp) {
@@ -251,7 +262,7 @@ export default function LoginPage({ onLogin }) {
         setIsSubmitting(true)
         try {
             const res = await apiClient.post('/api/auth/forgot-password/reset', {
-                mobile: mobile.trim(),
+                username: fpUsername.trim(),
                 otp: fpOtp.trim(),
                 new_password: fpNewPass
             })
@@ -388,22 +399,22 @@ export default function LoginPage({ onLogin }) {
                         {forgotStep === 1 ? (
                             <form onSubmit={handleForgotRequest}>
                                 <p style={{ color: 'var(--text-dim)', fontSize: '0.88rem', marginBottom: '1.2rem', textAlign: 'center' }}>
-                                    Enter your registered Mobile Number. We will send you a 6-digit OTP code to reset your password.
+                                    Enter your username. We'll email a 6-digit code to the address on file for that account.
                                 </p>
                                 <div className="form-group">
-                                    <label className="form-label" htmlFor="fp-mobile">Mobile Number</label>
-                                    <input id="fp-mobile" className="form-input" type="tel" placeholder="Enter your mobile number" autoComplete="tel"
-                                        value={mobile} onChange={e => setMobile(e.target.value)} required />
+                                    <label className="form-label" htmlFor="fp-username">Username</label>
+                                    <input id="fp-username" className="form-input" type="text" placeholder="Enter your username" autoComplete="username"
+                                        value={fpUsername} onChange={e => setFpUsername(e.target.value)} required />
                                 </div>
                                 <button type="submit" className="btn btn-primary btn-full" disabled={isSubmitting}>
                                     {isSubmitting ? <Loader2 size={16} className="spin" /> : <Send size={16} />}
-                                    {isSubmitting ? 'Sending…' : 'Request reset OTP'}
+                                    {isSubmitting ? 'Sending…' : 'Email me a reset code'}
                                 </button>
                             </form>
                         ) : (
                             <form onSubmit={handleForgotReset}>
                                 <p style={{ color: 'var(--text-dim)', fontSize: '0.88rem', marginBottom: '1.2rem', textAlign: 'center' }}>
-                                    We sent an OTP to <strong>{mobile}</strong>. Please enter the OTP and create your new password below.
+                                    Enter the code from your email below, along with your new password.
                                 </p>
                                 {simulatedOtp && (
                                     <div style={{

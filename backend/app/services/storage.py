@@ -15,6 +15,7 @@ app/core/config.py's own comment for the full path-depth explanation.
 import mimetypes
 import json
 import os
+import re
 from typing import Optional, Tuple
 
 from app.core.config import STORAGE_PROVIDER, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, AWS_BUCKET_NAME
@@ -212,46 +213,85 @@ def get_gdrive_oauth_token(client_id, client_secret, refresh_token):
     except Exception as e:
         return None, f"Network exception when getting Google token: {str(e)}"
 
-def upload_to_google_drive(file_path: str, filename: str) -> Tuple[Optional[str], Optional[str]]:
+def _get_gdrive_bearer_token() -> Tuple[Optional[str], Optional[str]]:
+    """Shared by upload_to_google_drive() and get_gdrive_file_bytes() - same
+    credential resolution (DB settings override env, service account takes
+    priority over OAuth) either way."""
     db_settings = get_db_integrations_settings()
-    folder_id = db_settings.get("gdrive_folder_id") or os.getenv("GDRIVE_FOLDER_ID")
     json_path = os.getenv("GDRIVE_SERVICE_ACCOUNT_JSON")
-    
+
     client_id = db_settings.get("gdrive_client_id") or os.getenv("GDRIVE_CLIENT_ID")
     client_secret = db_settings.get("gdrive_client_secret") or os.getenv("GDRIVE_CLIENT_SECRET")
     refresh_token = db_settings.get("gdrive_refresh_token") or os.getenv("GDRIVE_REFRESH_TOKEN")
-    
-    # Clean quotes and whitespace
+
     if client_id: client_id = client_id.strip('"\' ')
     if client_secret: client_secret = client_secret.strip('"\' ')
     if refresh_token: refresh_token = refresh_token.strip('"\' ')
-    if folder_id: folder_id = folder_id.strip('"\' ')
-    
-    import requests
-    
-    token = None
-    err = None
-    
+
     is_oauth_configured = (
         client_id and client_id != "your_gdrive_client_id_here" and
         client_secret and client_secret != "your_gdrive_client_secret_here" and
         refresh_token and refresh_token != "your_gdrive_refresh_token_here"
     )
-    
+
     if json_path and os.path.exists(json_path):
-        token, err = get_gdrive_access_token(json_path)
+        return get_gdrive_access_token(json_path)
     elif is_oauth_configured:
-        token, err = get_gdrive_oauth_token(client_id, client_secret, refresh_token)
-    else:
-        return None, "Google Drive configuration is incomplete or contains placeholder values."
-        
+        return get_gdrive_oauth_token(client_id, client_secret, refresh_token)
+    return None, "Google Drive configuration is incomplete or contains placeholder values."
+
+
+def is_gdrive_url(url: str) -> bool:
+    return bool(url) and "drive.google.com" in url
+
+
+def extract_gdrive_file_id(url: str) -> Optional[str]:
+    if not url:
+        return None
+    m = re.search(r"[?&]id=([^&]+)", url)
+    return m.group(1) if m else None
+
+
+def get_gdrive_file_bytes(file_id: str) -> Optional[bytes]:
+    """Read a resume's bytes via an authenticated Drive API call instead of
+    the public download link the file used to be shared with (see the
+    comment in upload_to_google_drive) - this is what makes it safe for
+    Drive files to no longer be public."""
+    token, err = _get_gdrive_bearer_token()
+    if err or not token:
+        logger.error(f"Failed to get Drive token for file {file_id}: {err}")
+        return None
+    try:
+        import requests
+        resp = requests.get(
+            f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+        if resp.status_code == 200:
+            return resp.content
+        logger.error(f"Drive file download failed for {file_id}: {resp.status_code} - {resp.text[:200]}")
+        return None
+    except Exception as e:
+        logger.error(f"Drive file download exception for {file_id}: {e}")
+        return None
+
+
+def upload_to_google_drive(file_path: str, filename: str) -> Tuple[Optional[str], Optional[str]]:
+    db_settings = get_db_integrations_settings()
+    folder_id = db_settings.get("gdrive_folder_id") or os.getenv("GDRIVE_FOLDER_ID")
+    if folder_id: folder_id = folder_id.strip('"\' ')
+
+    import requests
+
+    token, err = _get_gdrive_bearer_token()
     if err or not token:
         return None, err or "Google Drive authentication token is empty."
-        
+
     headers = {
         "Authorization": f"Bearer {token}"
     }
-    
+
     try:
         content_type, _ = mimetypes.guess_type(filename)
         if not content_type:
@@ -294,15 +334,15 @@ def upload_to_google_drive(file_path: str, filename: str) -> Tuple[Optional[str]
             return None, f"Google Drive upload failed: {resp.status_code} - {resp.text}"
             
         file_id = resp.json().get("id")
-        
-        # Share the file (make public so it can be downloaded via link)
-        perm_url = f"https://www.googleapis.com/drive/v3/files/{file_id}/permissions"
-        perm_data = {
-            "role": "reader",
-            "type": "anyone"
-        }
-        requests.post(perm_url, headers=headers, json=perm_data, timeout=10)
-        
+
+        # Resumes contain PII (name, phone, email) - the file is NOT shared
+        # publicly. It used to be granted role="reader", type="anyone" here,
+        # making every resume downloadable by anyone with the link. The
+        # `direct_url` below is kept only as a stable identifier (it embeds
+        # the Drive file id, which get_gdrive_file_bytes()/is_gdrive_url()
+        # parse back out) - reading the actual file now always goes through
+        # an authenticated Drive API call using the same service-account/
+        # OAuth credentials this upload used, never a public link.
         direct_url = f"https://drive.google.com/uc?export=download&id={file_id}"
         logger.info(f"Successfully uploaded {filename} to Google Drive: {direct_url}")
         return direct_url, None

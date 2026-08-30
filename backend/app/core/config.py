@@ -99,6 +99,13 @@ SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = os.getenv("SMTP_PORT", "587")
 IMAP_HOST = os.getenv("IMAP_HOST", "imap.gmail.com")
 
+# Was documented in backend/.env.example ("SMTP Mail Settings for Real OTP
+# Password Reset") but never actually read anywhere - the forgot-password
+# flow silently returned a generic "reset code sent" message even when no
+# SMTP mailbox was configured to send it. When true, request_otp surfaces a
+# real error in that case instead of a false "check your email".
+REQUIRE_REAL_EMAIL = _env_flag("REQUIRE_REAL_EMAIL")
+
 # ── External storage provider selection ─────────────────────────────────────
 STORAGE_PROVIDER = os.getenv("STORAGE_PROVIDER", "local").lower()
 

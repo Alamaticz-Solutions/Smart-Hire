@@ -339,23 +339,30 @@ def format_candidate_resume(candidate: dict, candidate_id: int) -> dict:
 
     if filename and not file_bytes and file_url:
         import requests
-        from app.services.storage import get_s3_presigned_url, is_s3_url
+        from app.services.storage import extract_gdrive_file_id, get_gdrive_file_bytes, get_s3_presigned_url, is_gdrive_url, is_s3_url
 
-        fetch_url = file_url
-        if is_s3_url(file_url):
-            # S3 resumes are no longer public - the stored file_url 403s on
-            # a bare GET now, so sign it first.
-            fetch_url = get_s3_presigned_url(filename) or file_url
-
-        try:
-            resp = requests.get(fetch_url, timeout=15)
-            if resp.status_code == 200:
-                file_bytes = resp.content
-                logger.info(f"Successfully fetched resume bytes from {file_url} for formatting")
+        # Neither S3 nor Drive resumes are public anymore (see storage.py) -
+        # a bare GET against the stored file_url now 403s for both, so each
+        # needs its own authenticated fetch instead of a plain requests.get.
+        if is_gdrive_url(file_url):
+            drive_id = extract_gdrive_file_id(file_url)
+            file_bytes = get_gdrive_file_bytes(drive_id) if drive_id else None
+            if file_bytes:
+                logger.info(f"Successfully fetched resume bytes from Drive ({file_url}) for formatting")
             else:
-                logger.warning(f"Failed to fetch resume bytes from {file_url}: status {resp.status_code}")
-        except Exception as fetch_err:
-            logger.error(f"Error fetching resume bytes from {file_url}: {fetch_err}")
+                logger.warning(f"Failed to fetch resume bytes from Drive: {file_url}")
+        else:
+            fetch_url = get_s3_presigned_url(filename) if is_s3_url(file_url) else file_url
+            fetch_url = fetch_url or file_url
+            try:
+                resp = requests.get(fetch_url, timeout=15)
+                if resp.status_code == 200:
+                    file_bytes = resp.content
+                    logger.info(f"Successfully fetched resume bytes from {file_url} for formatting")
+                else:
+                    logger.warning(f"Failed to fetch resume bytes from {file_url}: status {resp.status_code}")
+            except Exception as fetch_err:
+                logger.error(f"Error fetching resume bytes from {file_url}: {fetch_err}")
 
     temp_path = None
     if filename and file_bytes:

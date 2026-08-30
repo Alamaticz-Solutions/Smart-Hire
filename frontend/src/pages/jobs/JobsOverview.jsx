@@ -67,7 +67,14 @@ export default function JobsOverview({
             {/* Status Stats Overview Row */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginTop: '0.5rem' }}>
                 {['In-progress', 'On-hold', 'Filled', 'Closed'].map(status => {
-                    const count = jobs.filter(j => j.job_status === status).length;
+                    // A job with no job_status set (possible for older/manually-
+                    // created rows) fell into none of these four buckets, so
+                    // "Total Jobs" below - a plain jobs.length - didn't match
+                    // their sum. JobStatusChip already treats a missing status
+                    // as "In-progress" for display; count them the same way so
+                    // the numbers agree with what the chip on that job's own
+                    // card shows.
+                    const count = jobs.filter(j => (j.job_status || 'In-progress') === status).length;
                     const isActive = statusFilter === status;
 
                     return (

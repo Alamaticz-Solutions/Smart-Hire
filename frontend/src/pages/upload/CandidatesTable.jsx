@@ -97,6 +97,26 @@ export default function CandidatesTable({
     // each row's actual rendered height rather than trusting a fixed
     // estimate, since a few columns (full_name/current_organization/email)
     // allow text wrapping and can be taller than a single line.
+    // Retrying re-runs the same processing pipeline against the file bytes
+    // still sitting on the row (see the backend endpoint's comment) -
+    // previously the only recovery from a failure (most often a transient
+    // Groq rate-limit, not a bad file) was deleting the candidate and
+    // re-uploading the exact same file from scratch.
+    const [retryingIds, setRetryingIds] = React.useState(() => new Set())
+    const handleRetryCandidate = async (id) => {
+        if (retryingIds.has(id)) return
+        setRetryingIds(prev => new Set(prev).add(id))
+        try {
+            await apiClient.post(`/api/candidates/${id}/retry`)
+            showToast('Retrying - this candidate will update automatically once reprocessing finishes.', 'success')
+            load()
+        } catch (err) {
+            showToast(err.response?.data?.detail || 'Failed to retry processing', 'error')
+        } finally {
+            setRetryingIds(prev => { const next = new Set(prev); next.delete(id); return next })
+        }
+    }
+
     const addCandidateModalRef = useModalA11y(showAddCandidate, () => setShowAddCandidate(false))
     const addColModalRef = useModalA11y(showAddCol, () => setShowAddCol(false))
     const tableScrollRef = useRef(null)
@@ -238,12 +258,31 @@ export default function CandidatesTable({
                 if (key === 'candidate_status') {
                     const s = String(val || 'New').trim();
                     const statusClass = 'status-' + s.toLowerCase().replace(/\s+/g, '-');
+                    const isRetrying = retryingIds.has(row.id);
                     display = (
-                        <span
-                            className={`status-chip ${statusClass}`}
-                            title={s === 'Error' && row.error_detail ? row.error_detail : undefined}
-                        >
-                            {s}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <span
+                                className={`status-chip ${statusClass}`}
+                                title={s === 'Error' && row.error_detail ? row.error_detail : undefined}
+                            >
+                                {s}
+                            </span>
+                            {s === 'Error' && (
+                                <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); handleRetryCandidate(row.id) }}
+                                    disabled={isRetrying}
+                                    title={row.error_detail ? `Retry - last error: ${row.error_detail}` : 'Retry processing'}
+                                    style={{
+                                        background: 'none', border: '1px solid var(--border)', borderRadius: 5,
+                                        padding: '2px 6px', display: 'inline-flex', alignItems: 'center', gap: 4,
+                                        cursor: isRetrying ? 'default' : 'pointer', color: 'var(--text-dim)', fontSize: '0.72rem',
+                                        opacity: isRetrying ? 0.6 : 1,
+                                    }}
+                                >
+                                    <RefreshCw size={11} className={isRetrying ? 'spin' : undefined} /> {isRetrying ? 'Retrying…' : 'Retry'}
+                                </button>
+                            )}
                         </span>
                     );
                 } else if (isExp) {

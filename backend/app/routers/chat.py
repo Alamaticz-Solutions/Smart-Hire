@@ -262,7 +262,16 @@ def chat(body: ChatRequest, request: Request):
         is_user_admin = (user_row["is_admin"] == 1 or user_row["role"] == "admin" or is_admin_or_hr(username))
 
     embeddings, llm, loading = peek_models()
-    if embeddings is None or llm is None:
+    # Only the LLM is required for routes 1 & 2 (conversational replies and
+    # the structured DB-query path, which covers every one of the assistant's
+    # own suggested questions - "show all candidates", "who has Pega
+    # experience", etc). `embeddings` is only ever needed by route 3's
+    # semantic search fallback, checked separately below - it used to gate
+    # ALL THREE routes here, so with no HF_TOKEN configured (embeddings are
+    # deliberately left disabled in that case, permanently, not "still
+    # loading") every single chat message got a permanent "starting its
+    # engines" reply and never anything else, no matter how long you waited.
+    if llm is None:
         if loading:
             return {"type": "text", "answer": "⏳ Hire AI is currently warming up and downloading models. This may take a few minutes depending on your internet connection. Please try again shortly!"}
         else:
@@ -373,6 +382,16 @@ HR question: "{prompt}"
         pass  # Fall through to RAG
 
     # ── Route 3: RAG (PGVector) — for very specific resume content ────────────
+    if embeddings is None:
+        # Routes 1/2 above already handle name/skill/experience/location
+        # lookups without needing this - only reachable here when a question
+        # needed full-text semantic search over resume content specifically,
+        # which genuinely isn't possible without HF_TOKEN configured.
+        return {
+            "type": "text",
+            "answer": "I can answer questions about candidate names, skills, experience, and status, but detailed resume-content search isn't configured on this server yet. Try asking in terms of skills, experience, or location instead.",
+        }
+
     has_vectors = False
     try:
         with get_db_connection() as conn:

@@ -59,6 +59,7 @@ original function body before deletion.
 """
 
 import json
+import os
 import re
 from typing import Optional
 
@@ -66,13 +67,14 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from app.core.config import UPLOAD_DIR
 from app.core.logging import get_logger
 from app.db.row_helpers import dict_row_factory
 from app.db.session import get_db_connection
 from app.dependencies import assert_owns_or_admin, require_approved_user
 from app.services.auth import apply_user_hidden_fields, get_user_info, is_admin_or_hr, is_user_approved
 from app.services.matching import match_candidate_to_all_jobs
-from app.services.resume_processing import format_candidate_resume
+from app.services.resume_processing import format_candidate_resume, process_resume
 
 logger = get_logger(__name__)
 
@@ -513,6 +515,55 @@ def delete_candidate(candidate_id: int, username: str = Depends(require_approved
 
     _log_activity_db(username or "unknown", f"deleted candidate '{cname}'")
     return {"status": "deleted"}
+
+
+@router.post("/api/candidates/{candidate_id}/retry")
+def retry_candidate_processing(candidate_id: int, background_tasks: BackgroundTasks, username: str = Depends(require_approved_user)):
+    """Re-run processing for a candidate stuck in the "Error" state.
+
+    Previously the only way to recover from a failure (e.g. a transient
+    Groq rate-limit/quota error, which is the actual cause behind most
+    "Processing Failed" rows - see error_detail) was to delete the
+    candidate and re-upload the same file from scratch. The original bytes
+    are still sitting on the placeholder row (nothing clears file_bytes on
+    failure - see resume_processing.py's except block), so this just
+    re-runs the same pipeline against them instead of discarding and
+    starting over.
+    """
+    with get_db_connection() as conn:
+        conn.row_factory = dict_row_factory
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT created_by, filename, candidate_status, file_bytes FROM candidate_metadata WHERE id = ?",
+            (candidate_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Candidate not found")
+
+        created_by, filename, status, file_bytes = row["created_by"], row["filename"], row["candidate_status"], row["file_bytes"]
+        assert_owns_or_admin(created_by, username)
+
+        if status != "Error":
+            raise HTTPException(status_code=400, detail="Only candidates in the Error state can be retried.")
+        if not file_bytes:
+            raise HTTPException(status_code=400, detail="The original file is no longer available - please re-upload.")
+        if isinstance(file_bytes, memoryview):
+            file_bytes = file_bytes.tobytes()
+
+        cur.execute(
+            "UPDATE candidate_metadata SET full_name = ?, candidate_status = ?, error_detail = NULL WHERE id = ?",
+            (f"⏳ Retrying: {filename}", "Processing", candidate_id),
+        )
+        conn.commit()
+
+    path = os.path.join(UPLOAD_DIR, filename)
+    with open(path, "wb") as f:
+        f.write(file_bytes)
+
+    background_tasks.add_task(process_resume, filename, path, 1, username or "unknown", None, None, None, candidate_id)
+    _log_activity_db(username or "unknown", f"retried processing for '{filename}'")
+    return {"status": "retrying"}
 
 
 @router.post("/api/candidates/bulk-delete")

@@ -255,13 +255,24 @@ def serve_file_from_db(filename: str, request: Request, token: str | None = None
     conn.close()
 
     if file_url:
-        from app.services.storage import get_s3_presigned_url, is_s3_url
+        from app.services.storage import extract_gdrive_file_id, get_gdrive_file_bytes, get_s3_presigned_url, is_gdrive_url, is_s3_url
         from fastapi.responses import RedirectResponse
         if is_s3_url(file_url):
             signed = get_s3_presigned_url(filename)
             if signed:
                 return RedirectResponse(url=signed)
-        return RedirectResponse(url=file_url)
+        elif is_gdrive_url(file_url):
+            # Drive resumes are no longer shared publicly (see storage.py) -
+            # there's no signed-URL equivalent for Drive, so the file is
+            # fetched here, authenticated, and streamed straight through
+            # instead of redirecting to what used to be a public link.
+            drive_id = extract_gdrive_file_id(file_url)
+            drive_bytes = get_gdrive_file_bytes(drive_id) if drive_id else None
+            if drive_bytes:
+                file_bytes = drive_bytes
+                file_url = None
+        if file_url:
+            return RedirectResponse(url=file_url)
 
     if not file_bytes:
         raise HTTPException(status_code=404, detail="File not found")

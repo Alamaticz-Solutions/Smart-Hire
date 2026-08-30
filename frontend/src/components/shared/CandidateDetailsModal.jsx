@@ -408,6 +408,18 @@ export default function CandidateDetailsModal({
                     <div style={{ flex: 1, overflowY: 'auto', padding: '24px', color: 'var(--text)' }}>
                         {activeTab === 'profile' ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                {/* candidate.error_detail previously only ever showed up as an
+                                    HTML title tooltip on the status chip in the table - easy to
+                                    miss, and not shown here at all, where a recruiter actually
+                                    drills in to find out what went wrong. */}
+                                {candidate.candidate_status === 'Error' && candidate.error_detail && (
+                                    <div style={{
+                                        background: 'var(--danger-bg)', border: '1px solid rgba(var(--red-rgb), 0.3)',
+                                        borderRadius: 8, padding: '12px 16px', color: 'var(--danger-fg)', fontSize: '0.85rem'
+                                    }}>
+                                        <strong>Processing failed:</strong> {candidate.error_detail}
+                                    </div>
+                                )}
                                 {/* Grid fields */}
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
                                     <div>
