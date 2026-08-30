@@ -1240,28 +1240,29 @@ tbody tr:last-child td {
   flex-direction: row-reverse;
 }
 
+/* Was a 34px solid-action-orange circle for the assistant (the loudest
+   element in the transcript, in the color reserved for buttons, repeated
+   on every single answer) plus an unrelated blue-ringed circle for the
+   user - two avatar systems in one thread. Now one quiet-tint square for
+   the assistant; the user gets no avatar at all (a right-aligned bubble
+   is already enough to tell the two apart). */
 .msg-avatar {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-sm);
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--fh);
-  font-weight: 800;
-  font-size: 0.85rem;
+  font-weight: 700;
+  font-size: 0.72rem;
   flex-shrink: 0;
 }
 
 .msg-avatar.ai {
-  background: var(--gold);
-  color: var(--action-fg);
-}
-
-.msg-avatar.user-av {
-  background: rgba(var(--sky-rgb), 0.3);
-  border: 1px solid var(--sky);
-  color: var(--sky-dim);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
 }
 
 .msg-bubble {

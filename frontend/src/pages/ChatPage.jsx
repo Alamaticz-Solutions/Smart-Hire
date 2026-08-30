@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
-import { Send, Bot, User, RotateCcw, Trash2 } from 'lucide-react'
+import { Send, Bot, RotateCcw, Trash2, AlertTriangle } from 'lucide-react'
 import apiClient from '../api/client'
 import SkillBadges from '../components/shared/SkillBadges'
 import { useConfirm } from '../hooks/useConfirm'
 import ConfirmDialog from '../components/shared/ConfirmDialog'
 import CandidateDetailsModal from '../components/shared/CandidateDetailsModal'
+import { TH, TD_BASE } from '../hooks/useColumnConfig'
 
 const SUGGESTIONS = [
     'Show all candidates',
@@ -85,49 +86,63 @@ function CandidateTable({ rows, onSelectCandidate }) {
                 </colgroup>
                 <thead>
                     <tr>
+                        {/* Was gold at 700/11.8px - a second table-header language
+                            next to the Candidates table's --text-muted 800/11.7px
+                            (fixed there specifically because gold headers read as
+                            wrong). Shared TH now; the sort caret carries the accent
+                            instead of the whole label. */}
                         {COL_CONFIG.map(c => (
-                            <th key={c.key} style={{
-                                background: 'rgba(var(--navy-rgb), 0.95)', padding: '9px 10px', textAlign: 'left',
-                                fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.74rem',
-                                color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.04rem',
-                                borderBottom: '1px solid var(--border)',
-                            }}>
+                            <th key={c.key} style={TH}>
                                 <button
                                     type="button"
                                     onClick={() => toggleSort(c.key)}
                                     style={{ background: 'none', border: 'none', color: 'inherit', font: 'inherit', textTransform: 'inherit', letterSpacing: 'inherit', cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center', gap: 3 }}
                                 >
-                                    {c.label}{sort.key === c.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}
+                                    {c.label}
+                                    {sort.key === c.key && <span style={{ color: 'var(--gold)' }}>{sort.dir === 'asc' ? ' ▲' : ' ▼'}</span>}
                                 </button>
                             </th>
                         ))}
                     </tr>
                 </thead>
                 <tbody>
+                    {/* Was <tr onClick> with cursor:pointer as the only
+                        affordance - no hover, no focus, no keyboard route, and
+                        zebra banding used rgba(--navy-rgb,0.3), which vanishes
+                        in light theme the same way the old Candidates-table
+                        rows did. The name cell is now a real button (the only
+                        clickable target in the row) with the .data-row class
+                        (index.css) providing hover/focus/zebra consistently. */}
                     {sortedRows.map((row, i) => (
-                        <tr
-                            key={row.id ?? i}
-                            onClick={() => onSelectCandidate?.(row)}
-                            style={{ background: i % 2 === 0 ? 'rgba(var(--navy-rgb), 0.3)' : 'transparent', cursor: onSelectCandidate ? 'pointer' : 'default' }}
-                        >
+                        <tr key={row.id ?? i} className="data-row" data-zebra={i % 2 === 0 ? 'even' : undefined}>
                             {COL_CONFIG.map(({ key }) => {
                                 const val = row[key]
                                 const isExp = key === 'total_experience' || key === 'pega_experience'
+                                const content = key === 'skills'
+                                    ? <SkillBadges skills={val} />
+                                    : isExp
+                                        ? (val != null && val !== '' ? `${val} yrs` : '—')
+                                        : (val || '—')
                                 return (
                                     <td key={key} style={{
-                                        padding: '9px 10px',
-                                        borderBottom: '1px solid rgba(var(--sky-rgb), 0.08)',
-                                        verticalAlign: 'top',
-                                        color: key === 'full_name' ? 'var(--gold)' : key === 'email' ? 'var(--sky-dim)' : 'var(--text)',
-                                        fontWeight: key === 'full_name' ? 600 : undefined,
+                                        ...TD_BASE,
+                                        color: key === 'email' ? 'var(--sky-dim)' : 'var(--text)',
                                         wordBreak: key === 'email' || key === 'current_organization' ? 'break-all' : 'normal',
-                                        whiteSpace: key === 'skills' ? 'normal' : 'normal',
                                     }}>
-                                        {key === 'skills'
-                                            ? <SkillBadges skills={val} />
-                                            : isExp
-                                                ? (val != null && val !== '' ? `${val} yrs` : '—')
-                                                : (val || '—')}
+                                        {key === 'full_name' && onSelectCandidate ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => onSelectCandidate(row)}
+                                                style={{
+                                                    all: 'unset', cursor: 'pointer', color: 'var(--gold)', fontWeight: 600,
+                                                    textDecoration: 'underline', textUnderlineOffset: 2,
+                                                }}
+                                            >
+                                                {val || '—'}
+                                            </button>
+                                        ) : key === 'full_name' ? (
+                                            <span style={{ color: 'var(--gold)', fontWeight: 600 }}>{val || '—'}</span>
+                                        ) : content}
                                     </td>
                                 )
                             })}
@@ -146,15 +161,24 @@ function Message({ msg, onRetry, onSelectCandidate }) {
     const isError = msg.type === 'error'
     return (
         <div className={`message ${isUser ? 'user' : 'ai'}`}>
-            <div className={`msg-avatar ${isUser ? 'user-av' : 'ai'}`}>
-                {isUser ? <User size={16} /> : 'AI'}
-            </div>
+            {/* User messages no longer get an avatar at all - a right-aligned
+                bubble already reads as "you" without a second avatar system.
+                The assistant's quiet square (see .msg-avatar.ai) replaces
+                what used to be a solid action-orange circle. */}
+            {!isUser && <div className="msg-avatar ai">AI</div>}
             <div className="msg-bubble" style={isTable ? {
                 maxWidth: '100%', width: '100%', flex: 1,
+            } : isError ? {
+                background: 'var(--danger-bg)', borderColor: 'rgba(var(--red-rgb), 0.3)',
             } : undefined}>
                 {isError ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <span>{msg.content}</span>
+                    // Was indistinguishable from a real answer - no error color,
+                    // no icon - which read as the model refusing rather than a
+                    // failed request.
+                    <div role="alert" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--danger-fg)', fontWeight: 600 }}>
+                            <AlertTriangle size={16} /> {msg.content}
+                        </span>
                         <button
                             type="button"
                             className="btn btn-secondary"
@@ -206,7 +230,7 @@ export default function ChatPage() {
     })
     const [input, setInput] = useState('')
     const [loading, setLoading] = useState(false)
-    const bottomRef = useRef(null)
+    const messagesRef = useRef(null)
     const textareaRef = useRef(null)
     const { confirm, confirmDialogProps } = useConfirm()
     const [viewingCandidate, setViewingCandidate] = useState(null)
@@ -228,7 +252,20 @@ export default function ChatPage() {
         }
     }, [messages, user])
 
-    useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading])
+    // Was bottomRef.current?.scrollIntoView(...) on every message - since
+    // .chat-messages isn't the only scrollable ancestor (.main-content is
+    // too), this could scroll the whole app shell rather than just the
+    // message list, and it fought anyone who'd scrolled up to reread an
+    // earlier answer. Now scrolls only the message container itself, and
+    // only when already within ~100px of the bottom.
+    useEffect(() => {
+        const el = messagesRef.current
+        if (!el) return
+        const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+        if (distanceFromBottom < 100) {
+            el.scrollTop = el.scrollHeight
+        }
+    }, [messages, loading])
 
     // S6.5: auto-grow the textarea up to the CSS max-height (120px) instead
     // of scrolling inside a fixed 24px box.
@@ -292,7 +329,7 @@ export default function ChatPage() {
                     </div>
                 )}
                 {/* Messages */}
-                <div className="chat-messages">
+                <div className="chat-messages" ref={messagesRef}>
                     {messages.length === 0 && !loading ? (
                         <div className="chat-empty">
                             <div className="chat-empty-icon"><Bot size={28} /></div>
@@ -305,7 +342,6 @@ export default function ChatPage() {
                         messages.map((msg, i) => <Message key={i} msg={msg} onRetry={sendMessage} onSelectCandidate={setViewingCandidate} />)
                     )}
                     {loading && <TypingIndicator />}
-                    <div ref={bottomRef} />
                 </div>
 
                 {/* Suggestion Chips - kept visible past the first message (S6.3)
@@ -325,7 +361,7 @@ export default function ChatPage() {
                             ref={textareaRef}
                             rows={1}
                             className="chat-textarea"
-                            placeholder="Ask about candidates, experience, skills…  (Enter to send)"
+                            placeholder="Ask about candidates, experience, skills…"
                             value={input}
                             onChange={e => setInput(e.target.value)}
                             onKeyDown={handleKeyDown}
@@ -334,8 +370,11 @@ export default function ChatPage() {
                             {loading ? <div className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} /> : <Send size={16} />}
                         </button>
                     </div>
+                    {/* Was a "(Enter to send)" hint baked into the placeholder,
+                        which disappears the moment typing starts - exactly when
+                        it's still needed. Moved to this persistent line instead. */}
                     <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '0.5rem' }}>
-                        Hire AI may make mistakes — always verify important candidate information.
+                        Press Enter to send · Hire AI may make mistakes, always verify important candidate information.
                     </p>
                 </div>
             </div>
