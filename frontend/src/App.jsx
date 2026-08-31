@@ -14,6 +14,7 @@ const LoginPage = lazy(() => import('./pages/LoginPage'))
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const JobsPage = lazy(() => import('./pages/JobsPage'))
 const UploadPage = lazy(() => import('./pages/UploadPage'))
+const CandidatePage = lazy(() => import('./pages/CandidatePage'))
 const ChatPage = lazy(() => import('./pages/ChatPage'))
 const AdminPage = lazy(() => import('./pages/AdminPage'))
 const ConnectPage = lazy(() => import('./pages/ConnectPage'))
@@ -49,6 +50,13 @@ export default function App() {
     )
     const resolvedTheme = theme === 'system' ? (systemPrefersDark ? 'dark' : 'light') : theme
 
+    // Accent hue picker (redesign): amber (default) | violet | teal.
+    // Applied as data-accent on <html>; index.css has per-accent token
+    // override blocks. main.jsx sets this pre-render to avoid a flash.
+    const [accent, setAccent] = useState(() => {
+        return localStorage.getItem('hire_ai_accent') || 'amber'
+    })
+
     useEffect(() => {
         const mq = window.matchMedia('(prefers-color-scheme: dark)')
         const handler = (e) => setSystemPrefersDark(e.matches)
@@ -60,6 +68,11 @@ export default function App() {
         document.documentElement.setAttribute('data-theme', resolvedTheme)
         localStorage.setItem('hire_ai_theme', theme)
     }, [theme, resolvedTheme])
+
+    useEffect(() => {
+        document.documentElement.setAttribute('data-accent', accent)
+        localStorage.setItem('hire_ai_accent', accent)
+    }, [accent])
 
     useEffect(() => {
         // The backend derives the trusted identity from a signed session
@@ -95,6 +108,11 @@ export default function App() {
         localStorage.removeItem('hire_ai_user')
     }
     const updateUser = (u) => { setUser(u); localStorage.setItem('hire_ai_user', JSON.stringify(u)) }
+    const changeAccent = (a) => setAccent(a)
+
+    // External (client) accounts only ever see the job shortlists shared
+    // with them - every other route redirects them to /jobs.
+    const isExternal = user?.is_external === 1
 
     return (
         <BrowserRouter>
@@ -102,11 +120,12 @@ export default function App() {
             <Suspense fallback={<RouteLoadingFallback />}>
                 <Routes>
                     <Route path="/login" element={user ? <Navigate to="/" /> : <LoginPage onLogin={login} />} />
-                    <Route element={user ? <Layout user={user} onLogout={logout} theme={theme} resolvedTheme={resolvedTheme} setTheme={setTheme} onUpdateUser={updateUser} /> : <Navigate to="/login" />}>
-                        <Route path="/" element={<DashboardPage />} />
-                        <Route path="/jobs" element={(user?.is_hr === 1 || user?.is_external === 1) ? <JobsPage /> : <Navigate to="/" />} />
-                        <Route path="/upload" element={<UploadPage />} />
-                        <Route path="/chat" element={<ChatPage />} />
+                    <Route element={user ? <Layout user={user} onLogout={logout} theme={theme} resolvedTheme={resolvedTheme} setTheme={setTheme} accent={accent} onChangeAccent={changeAccent} onUpdateUser={updateUser} /> : <Navigate to="/login" />}>
+                        <Route path="/" element={isExternal ? <Navigate to="/jobs" /> : <DashboardPage />} />
+                        <Route path="/jobs" element={(user?.is_hr === 1 || user?.is_admin === 1 || user?.is_external === 1) ? <JobsPage /> : <Navigate to="/" />} />
+                        <Route path="/upload" element={isExternal ? <Navigate to="/jobs" /> : <UploadPage />} />
+                        <Route path="/candidates/:id" element={isExternal ? <Navigate to="/jobs" /> : <CandidatePage />} />
+                        <Route path="/chat" element={isExternal ? <Navigate to="/jobs" /> : <ChatPage />} />
                         <Route path="/admin" element={(user?.is_admin === 1 || user?.role === 'admin') && user?.is_external !== 1 ? <AdminPage /> : <Navigate to="/" />} />
                         <Route path="/connect" element={(user?.is_admin === 1 || user?.role === 'admin') && user?.is_external !== 1 ? <ConnectPage /> : <Navigate to="/" />} />
                         <Route path="/templates" element={(user?.is_admin === 1 || user?.role === 'admin') && user?.is_external !== 1 ? <TemplatesPage /> : <Navigate to="/" />} />

@@ -35,7 +35,15 @@ const THEME_OPTIONS = [
     { value: 'system', label: 'Match system', Icon: Monitor },
 ]
 
-export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme, onUpdateUser }) {
+// Accent hue picker — swatch colours are the dark-theme --action value for
+// each hue (see the data-accent blocks in index.css). amber is the default.
+const ACCENTS = [
+    { value: 'amber', label: 'Amber', swatch: '#E9A93F' },
+    { value: 'violet', label: 'Violet', swatch: '#8B8BF5' },
+    { value: 'teal', label: 'Teal', swatch: '#4FC7C7' },
+]
+
+export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme, accent, onChangeAccent, onUpdateUser }) {
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const profileMenuRef = useModalA11y(showProfileMenu, () => setShowProfileMenu(false));
     const [showActivitySidebar, setShowActivitySidebar] = useState(false);
@@ -148,15 +156,21 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
         }
     };
 
-    const primaryNavItems = [
-        { to: '/', label: PAGE_TITLES['/'], Icon: LayoutDashboard },
-        ...((user?.is_hr === 1 || user?.is_external === 1) ? [{ to: '/jobs', label: PAGE_TITLES['/jobs'], Icon: Briefcase }] : []),
-        { to: '/upload', label: PAGE_TITLES['/upload'], Icon: Users },
-        { to: '/chat', label: PAGE_TITLES['/chat'], Icon: MessageSquare },
-    ]
+    // External (client) accounts only ever see the job shortlists shared with
+    // them — App.jsx redirects every other route to /jobs, so the nav must not
+    // offer Dashboard / Candidates / Assistant either.
+    const isExternal = user?.is_external === 1
+    const primaryNavItems = isExternal
+        ? [{ to: '/jobs', label: PAGE_TITLES['/jobs'], Icon: Briefcase }]
+        : [
+            { to: '/', label: PAGE_TITLES['/'], Icon: LayoutDashboard },
+            ...((user?.is_hr === 1 || user?.is_admin === 1) ? [{ to: '/jobs', label: PAGE_TITLES['/jobs'], Icon: Briefcase }] : []),
+            { to: '/upload', label: PAGE_TITLES['/upload'], Icon: Users },
+            { to: '/chat', label: PAGE_TITLES['/chat'], Icon: MessageSquare },
+        ]
 
     const workspaceNavItems = []
-    if (user?.role === 'admin' || user?.is_admin === 1) {
+    if ((user?.role === 'admin' || user?.is_admin === 1) && !isExternal) {
         workspaceNavItems.push({ to: '/connect', label: PAGE_TITLES['/connect'], Icon: Link })
         workspaceNavItems.push({ to: '/templates', label: PAGE_TITLES['/templates'], Icon: FileText })
         workspaceNavItems.push({ to: '/admin', label: PAGE_TITLES['/admin'], Icon: Shield })
@@ -178,13 +192,34 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
             )}
             {/* Sidebar */}
             <aside className={`sidebar${effectiveCollapsed ? ' collapsed' : ''}${mobileSidebarOpen ? ' mobile-open' : ''}`}>
-                <div className="sidebar-brand">
+                <div className="sidebar-brand" style={{ flexWrap: 'wrap', justifyContent: 'center' }}>
                     <img
                         src={alamaticzMark}
                         alt="Alamaticz Solutions"
                         style={{ width: 32, height: 32, objectFit: 'contain', flexShrink: 0 }}
                     />
                     {!effectiveCollapsed && <span className="sidebar-brand-name">Hire AI</span>}
+                    {/* Collapse control lives on the brand row (not a sidebar-edge
+                        tab). Below 1024px rail mode is automatic and the manual
+                        toggle can't override it, so it's hidden there. */}
+                    {!isTabletWidth && (
+                        <button
+                            type="button"
+                            className="brand-rail-toggle"
+                            onClick={() => setSidebarCollapsed(c => !c)}
+                            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                            style={{
+                                marginLeft: effectiveCollapsed ? 0 : 'auto',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                width: 28, height: 28, flexShrink: 0, cursor: 'pointer',
+                                border: '1px solid var(--border)', borderRadius: 'var(--r-sm)',
+                                background: 'var(--surface-2)', color: 'var(--text-dim)',
+                            }}
+                        >
+                            {sidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+                        </button>
+                    )}
                 </div>
 
                 <nav className="sidebar-nav" aria-label="Primary">
@@ -240,23 +275,6 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
                     </div>
                 )}
 
-                {/* Below 1024px rail mode is automatic (isTabletWidth) and the
-                    manual toggle can't override it, so hide a control that
-                    would otherwise visibly do nothing. Moved from a full-width
-                    footer button to a small tab on the sidebar's own edge -
-                    doesn't compete with the nav for vertical space, and stays
-                    reachable regardless of how tall the nav list gets. */}
-                {!isTabletWidth && (
-                    <button
-                        type="button"
-                        className="sidebar-collapse-edge-btn"
-                        onClick={() => setSidebarCollapsed(c => !c)}
-                        aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                        title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                    >
-                        {sidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-                    </button>
-                )}
             </aside>
 
             {/* Main */}
@@ -300,6 +318,37 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
                             too, not just the color change it's meant for - and a 15px
                             gap from the profile chip next to it while every other
                             topbar gap is 12px. */}
+                        {/* Accent hue picker — sets data-accent on <html> via
+                            App.jsx; index.css has a per-hue token override block. */}
+                        {onChangeAccent && (
+                            <div
+                                role="radiogroup"
+                                aria-label="Accent colour"
+                                style={{ display: 'flex', alignItems: 'center', gap: 4, height: 44, background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--r-full)', padding: '0 8px' }}
+                            >
+                                {ACCENTS.map(({ value, label, swatch }) => {
+                                    const selected = (accent || 'amber') === value
+                                    return (
+                                        <button
+                                            key={value}
+                                            type="button"
+                                            role="radio"
+                                            aria-checked={selected}
+                                            aria-label={label}
+                                            title={label}
+                                            onClick={() => onChangeAccent(value)}
+                                            style={{
+                                                width: 18, height: 18, borderRadius: '50%', cursor: 'pointer', padding: 0,
+                                                background: swatch,
+                                                border: selected ? '2px solid var(--text)' : '2px solid transparent',
+                                                boxShadow: selected ? '0 0 0 1px var(--border)' : 'none',
+                                                transition: 'border-color 0.15s',
+                                            }}
+                                        />
+                                    )
+                                })}
+                            </div>
+                        )}
                         <div
                             role="radiogroup"
                             aria-label="Theme"

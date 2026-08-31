@@ -191,6 +191,80 @@
 }
 
 
+/* ═══════════════════════════════════════════════════════
+   Accent hue picker — amber (default) · violet · teal
+   Set data-accent on <html> (App.jsx / main.jsx). These
+   retarget the ONE interactive accent (--action and its
+   family); the legacy --gold alias already points at
+   --action, so every var(--gold) / var(--gold-rgb) call
+   site across the app re-skins for free. --gold-rgb is a
+   hand-kept literal triplet (not derivable in CSS) so it
+   is set alongside --action-rgb in every block.
+   Source order: these follow the [data-theme] blocks so
+   they win at equal specificity, and the
+   [data-theme="light"] variant of each beats the dark one.
+   ═══════════════════════════════════════════════════════ */
+:root[data-accent="amber"],
+[data-accent="amber"][data-theme="dark"] {
+  --action: #E9A93F;
+  --action-hover: #F2BC5C;
+  --action-fg: #241705;
+  --action-quiet-bg: #2E2210;
+  --action-rgb: 233, 169, 63;
+  --gold-rgb: 233, 169, 63;
+  --focus: #F2BC5C;
+}
+[data-theme="light"][data-accent="amber"] {
+  --action: #8A5B06;
+  --action-hover: #6F4905;
+  --action-fg: #FFFFFF;
+  --action-quiet-bg: #FAF0DA;
+  --action-rgb: 138, 91, 6;
+  --gold-rgb: 138, 91, 6;
+  --focus: #6F4905;
+}
+
+:root[data-accent="violet"],
+[data-accent="violet"][data-theme="dark"] {
+  --action: #8B8BF5;
+  --action-hover: #6F6DEE;
+  --action-fg: #0C0E1C;
+  --action-quiet-bg: #1D2040;
+  --action-rgb: 139, 139, 245;
+  --gold-rgb: 139, 139, 245;
+  --focus: #A9A9F8;
+}
+[data-theme="light"][data-accent="violet"] {
+  --action: #4F4BD9;
+  --action-hover: #3F3BC4;
+  --action-fg: #FFFFFF;
+  --action-quiet-bg: #EDEDFC;
+  --action-rgb: 79, 75, 217;
+  --gold-rgb: 79, 75, 217;
+  --focus: #3F3BC4;
+}
+
+:root[data-accent="teal"],
+[data-accent="teal"][data-theme="dark"] {
+  --action: #4FC7C7;
+  --action-hover: #33B3B3;
+  --action-fg: #05201F;
+  --action-quiet-bg: #10302F;
+  --action-rgb: 79, 199, 199;
+  --gold-rgb: 79, 199, 199;
+  --focus: #7AD6D6;
+}
+[data-theme="light"][data-accent="teal"] {
+  --action: #10756F;
+  --action-hover: #0B5D58;
+  --action-fg: #FFFFFF;
+  --action-quiet-bg: #E4F2F0;
+  --action-rgb: 16, 117, 111;
+  --gold-rgb: 16, 117, 111;
+  --focus: #0B5D58;
+}
+
+
 /* ── Reset ────────────────────────────────────────────── */
 *,
 *::before,

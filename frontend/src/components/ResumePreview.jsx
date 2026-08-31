@@ -953,7 +953,7 @@ function ModernResumePreview({ data }) {
     } = data;
 
     return (
-        <div style={{ flex: 1, overflowY: 'auto', background: '#525659', padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <div style={{ flex: 1, overflowY: 'auto', background: '#e9eaed', padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <div style={{ width: '100%', maxWidth: '800px', background: '#fff', padding: '40px 50px', boxShadow: '0 4px 20px rgba(0,0,0,0.2)', fontFamily: '\'Segoe UI\', Roboto, sans-serif', color: '#333', fontSize: '13px', lineHeight: '1.6' }}>
                 <div style={{ borderBottom: '3px solid #00bcd4', paddingBottom: '20px', marginBottom: '20px' }}>
                     <h1 style={{ margin: 0, fontSize: '2.2rem', color: '#2c3e50', letterSpacing: '1px' }}>{full_name}</h1>
@@ -1077,7 +1077,7 @@ function ClassicResumePreview({ data }) {
     } = data;
 
     return (
-        <div style={{ flex: 1, overflowY: 'auto', background: '#525659', padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <div style={{ flex: 1, overflowY: 'auto', background: '#e9eaed', padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <div style={{ width: '100%', maxWidth: '800px', background: '#fff', padding: '50px 60px', boxShadow: '0 4px 20px rgba(0,0,0,0.2)', fontFamily: '\'Times New Roman\', Times, serif', color: '#000', fontSize: '14px', lineHeight: '1.5' }}>
                 <div style={{ textAlign: 'center', marginBottom: '30px' }}>
                     <h1 style={{ margin: 0, fontSize: '2.5rem', textTransform: 'uppercase', letterSpacing: '2px' }}>{full_name}</h1>
