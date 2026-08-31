@@ -8,6 +8,7 @@ import ColumnVisibilityPopover from '../../components/shared/ColumnVisibilityPop
 import DataTable from '../../components/shared/DataTable'
 import { useModalA11y } from '../../hooks/useModalA11y'
 import { CANDIDATE_STATUSES } from '../../utils/candidateStatus'
+import { displayCandidateName } from '../../utils/nameDisplay'
 
 // Extracted from UploadPage.jsx: the "Table" card — header toolbar (Filter
 // button, Columns visibility popover, Add Candidate, Add Column, Download
@@ -398,7 +399,7 @@ export default function CandidatesTable({
                                 title="View Candidate Details"
                             >
                                 <FileText size={14} style={{ flexShrink: 0, color: 'var(--gold)' }} />
-                                {display}
+                                {display === '—' ? display : displayCandidateName(display)}
                             </button>
                         ) : display}
                     </td>

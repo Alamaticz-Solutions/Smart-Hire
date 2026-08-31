@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { useOutletContext } from 'react-router-dom'
-import apiClient, { getStaticUrl } from '../api/client'
+import { useOutletContext, useNavigate } from 'react-router-dom'
+import apiClient from '../api/client'
 import useColumnConfig from '../hooks/useColumnConfig'
 import useDraggableColumns from '../hooks/useDraggableColumns'
 import { useToast } from '../hooks/useToast'
@@ -11,7 +11,6 @@ import ConfirmDialog from '../components/shared/ConfirmDialog'
 import { computeTableWidth } from '../utils/tableWidth'
 import { applySavedColumnOrder } from '../utils/columnOrder'
 import { useInlineCellEdit } from '../hooks/useInlineCellEdit'
-import CandidateDetailsModal from '../components/shared/CandidateDetailsModal'
 import UploadDropzone from './upload/UploadDropzone'
 import CandidatesTable from './upload/CandidatesTable'
 import FilterModal from './upload/FilterModal'
@@ -20,6 +19,7 @@ import ResumeViewerModal from './upload/ResumeViewerModal'
 /* ─── Page ────────────────────────────────────────────────────────────────── */
 export default function UploadPage() {
     const { user } = useOutletContext()
+    const navigate = useNavigate()
     const [candidates, setCandidates] = useState(() => {
         try {
             return JSON.parse(sessionStorage.getItem('cached_candidates')) || [];
@@ -35,7 +35,6 @@ export default function UploadPage() {
     const [showAddCandidate, setShowAddCandidate] = useState(false)
     const [newCandidateForm, setNewCandidateForm] = useState({})
     const [viewingPdf, setViewingPdf] = useState(null)
-    const [selectedCandidateForDetails, setSelectedCandidateForDetails] = useState(null)
     const [showFilter, setShowFilter] = useState(false)
     const [filters, setFilters] = useState({ minTotalExp: '', minPegaExp: '', certs: [] })
     const [customFilters, setCustomFilters] = useState([])
@@ -415,7 +414,6 @@ export default function UploadPage() {
             });
             setCandidates(p => p.filter(c => c.id !== id));
             setTotalCandidates(t => Math.max(0, t - 1));
-            setSelectedCandidateForDetails(null);
             showToast('Deleted')
         } catch { showToast('Delete failed', 'error') }
     }
@@ -518,7 +516,7 @@ export default function UploadPage() {
                 setCandidates={setCandidates}
                 showToast={showToast}
                 confirm={confirm}
-                setSelectedCandidateForDetails={setSelectedCandidateForDetails}
+                setSelectedCandidateForDetails={(row) => row && navigate(`/candidates/${row.id}`, { state: { candidate: row } })}
                 loadingCandidates={loadingCandidates}
                 load={load}
                 loadCols={loadCols}
@@ -548,18 +546,6 @@ export default function UploadPage() {
                 viewingPdf={viewingPdf}
                 onClose={() => setViewingPdf(null)}
             />
-
-            {selectedCandidateForDetails && (
-                <CandidateDetailsModal
-                    candidate={selectedCandidateForDetails}
-                    onClose={() => setSelectedCandidateForDetails(null)}
-                    onViewPdf={(filename, name) => {
-                        setSelectedCandidateForDetails(null);
-                        setViewingPdf({ url: getStaticUrl(filename), name });
-                    }}
-                    onDeleteCandidate={del}
-                />
-            )}
         </div>
     )
 }

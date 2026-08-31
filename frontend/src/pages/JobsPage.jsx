@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X } from 'lucide-react';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, useNavigate } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
 import apiClient, { getStaticUrl } from '../api/client';
 import useColumnConfig from '../hooks/useColumnConfig';
@@ -27,6 +27,7 @@ import ShareModal from './jobs/modals/ShareModal';
 
 export default function JobsPage() {
     const { user } = useOutletContext();
+    const navigate = useNavigate();
     const isExternal = user?.is_external === 1;
     const isAdmin = user?.role === 'admin' || user?.is_admin === 1 || user?.is_hr === 1;
 
@@ -811,7 +812,7 @@ export default function JobsPage() {
                             setCandidates={setCandidates}
                             showToast={showToast}
                             confirm={confirm}
-                            setSelectedCandidateForDetails={setSelectedCandidateForDetails}
+                            setSelectedCandidateForDetails={(row) => row && navigate(`/candidates/${row.id}`, { state: { candidate: row } })}
                             setSelectedCellText={setSelectedCellText}
                             handleStatusChange={handleStatusChange}
                             setEditingCandidate={setEditingCandidate}
@@ -871,7 +872,11 @@ export default function JobsPage() {
                 isSavingJob={isSavingJob}
             />
 
-            {/* Candidate Details Modal */}
+            {/* Candidate Details Modal — now unreachable: the shortlist name cell
+                routes to /candidates/:id (CandidatePage) instead of opening this
+                overlay, per the "make it a page, not a floating window" change.
+                Left in place (never rendered, since selectedCandidateForDetails
+                stays null) pending a follow-up cleanup pass. */}
             {/*
               onToggleStatus + onDeleteCandidate present, no editable/showExportDocx/
               showFormattedToggle overrides: this reproduces JobsPage's original

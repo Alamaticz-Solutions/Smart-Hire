@@ -8,6 +8,7 @@ import ExpandableCell from '../../components/shared/ExpandableCell';
 import ColumnVisibilityPopover from '../../components/shared/ColumnVisibilityPopover';
 import DataTable from '../../components/shared/DataTable';
 import { CANDIDATE_STATUSES } from '../../utils/candidateStatus';
+import { displayCandidateName } from '../../utils/nameDisplay';
 
 // Extracted from JobsPage.jsx: the Matched/Selected tabs plus the whole
 // candidates spreadsheet section (columns selector popover, Excel export,
@@ -417,7 +418,7 @@ export default function CandidatesTable({
                                     title="View Candidate Profile & Jobs"
                                 >
                                     <FileText size={14} style={{ flexShrink: 0, color: 'var(--gold)' }} />
-                                    {display}
+                                    {display === '—' ? display : displayCandidateName(display)}
                                     {row.is_qualified ? (
                                         <span style={{ fontSize: '0.72rem', background: 'rgba(var(--gold-rgb), 0.2)', padding: '2px 6px', borderRadius: '10px', color: 'var(--gold)', marginLeft: '6px', display: 'inline-flex', alignItems: 'center', gap: '3px' }} title="Qualified candidate">
                                             <Star size={12} fill="currentColor" /> Qualified
