@@ -42,6 +42,7 @@ export default function CandidatesTable({
     toggleColumnVisibility,
     handleShowAllColumns,
     handleHideAllColumns,
+    moveColumn,
     draggedColKey,
     dragOverColKey,
     handleDragStart,
@@ -492,8 +493,9 @@ export default function CandidatesTable({
                             handleHideAllColumns={handleHideAllColumns}
                             showColVisibility={showColVisibility}
                             setShowColVisibility={setShowColVisibility}
+                            moveColumn={moveColumn}
                             align="right"
-                            title="Columns Visibility"
+                            title="Columns"
                         />
                         <button
                             className="btn btn-secondary"

@@ -143,24 +143,14 @@ export default function DataTable({
                         ))}
                         {activeCols.map(c => {
                             const isActions = c.key === '_actions';
-                            const isDragged = draggedColKey === c.key;
-                            const isDragTarget = dragOverColKey === c.key;
 
-                            let backgroundStyle = isActions ? 'var(--table-header-bg)' : TH.background;
-                            if (isDragTarget && !isDragged) {
-                                backgroundStyle = 'rgba(var(--gold-rgb), 0.18)';
-                            }
-
+                            // Column reordering moved out of the header (no more
+                            // drag-to-reorder directly on the table) and into the
+                            // "Columns" popover's up/down controls — the header
+                            // now only labels the column and offers hide/delete.
                             return (
                                 <th
                                     key={c.key}
-                                    draggable={!isActions}
-                                    onDragStart={(e) => !isActions && handleDragStart(e, c.key)}
-                                    onDragOver={(e) => !isActions && handleDragOver(e, c.key)}
-                                    onDragEnter={(e) => !isActions && handleDragEnter(e, c.key)}
-                                    onDragLeave={() => !isActions && clearDragOver()}
-                                    onDragEnd={() => !isActions && handleDragEnd()}
-                                    onDrop={(e) => !isActions && handleDrop(e, c.key)}
                                     style={{
                                         ...TH,
                                         // isActions used to also get position:sticky;right:0 here
@@ -172,14 +162,9 @@ export default function DataTable({
                                         position: 'sticky',
                                         top: 0,
                                         zIndex: 12,
-                                        background: backgroundStyle,
-                                        cursor: isActions ? 'default' : (isDragged ? 'grabbing' : 'grab'),
-                                        opacity: isDragged ? 0.4 : 1,
-                                        borderLeft: (isDragTarget && !isDragged) ? '2px dashed var(--gold)' : '2px dashed transparent',
-                                        borderRight: (isDragTarget && !isDragged) ? '2px dashed var(--gold)' : '2px dashed transparent',
-                                        transition: 'all 0.2s ease-in-out'
+                                        background: isActions ? 'var(--table-header-bg)' : TH.background,
                                     }}
-                                    title={isActions ? c.label : `${c.label} (Drag to reorder)`}
+                                    title={c.label}
                                 >
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '6px' }}>
                                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.label}</span>

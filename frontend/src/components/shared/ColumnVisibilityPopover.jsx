@@ -1,10 +1,15 @@
-import { X, Eye } from 'lucide-react'
+import { X, Eye, ArrowUp, ArrowDown } from 'lucide-react'
 
 // Shared "Columns" button + popover, extracted from upload/CandidatesTable.jsx
 // and jobs/CandidatesTable.jsx — the two were pixel-for-pixel identical except
 // for popover alignment (upload: left-anchored under the button; jobs:
 // right-anchored) and the title/button layout in the popover header, both
 // exposed here as props rather than hardcoded.
+//
+// `moveColumn(key, dir)` (optional): when provided, each row gets up/down
+// controls to reorder that column (dir -1 / +1). This is the ONLY column
+// reorder affordance now — drag-to-reorder was removed from the table
+// header itself.
 export default function ColumnVisibilityPopover({
     cols,
     hiddenColumnKeys,
@@ -13,9 +18,11 @@ export default function ColumnVisibilityPopover({
     handleHideAllColumns,
     showColVisibility,
     setShowColVisibility,
+    moveColumn,
     align = 'left',
     title = 'Visible Columns',
 }) {
+    const reorderable = cols.filter(c => c.key !== '_actions')
     return (
         <div style={{ position: 'relative' }}>
             <button
@@ -70,27 +77,58 @@ export default function ColumnVisibilityPopover({
                         </button>
                     </div>
 
+                    {moveColumn && (
+                        <p style={{ margin: 0, fontSize: 'var(--fs-1)', color: 'var(--text-subtle)' }}>
+                            Use the arrows to reorder columns; the checkbox shows or hides one.
+                        </p>
+                    )}
                     <div style={{ maxHeight: '250px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        {cols.filter(c => c.key !== '_actions').map(c => {
+                        {reorderable.map((c, i) => {
                             const isChecked = !hiddenColumnKeys.includes(c.key);
                             return (
-                                <label
+                                <div
                                     key={c.key}
                                     style={{
                                         display: 'flex', alignItems: 'center', gap: '8px', fontSize: 'var(--fs-3)',
-                                        color: isChecked ? 'var(--text)' : 'var(--text-dim)', cursor: 'pointer',
+                                        color: isChecked ? 'var(--text)' : 'var(--text-dim)',
                                         padding: '4px 6px', borderRadius: '4px', transition: 'all 0.15s',
                                         background: isChecked ? 'transparent' : 'rgba(var(--sky-rgb), 0.02)'
                                     }}
                                 >
-                                    <input
-                                        type="checkbox"
-                                        checked={isChecked}
-                                        onChange={() => toggleColumnVisibility(c.key)}
-                                        style={{ cursor: 'pointer' }}
-                                    />
-                                    <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{c.label}</span>
-                                </label>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', flex: 1, minWidth: 0 }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={isChecked}
+                                            onChange={() => toggleColumnVisibility(c.key)}
+                                            style={{ cursor: 'pointer' }}
+                                        />
+                                        <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{c.label}</span>
+                                    </label>
+                                    {moveColumn && (
+                                        <span style={{ display: 'flex', gap: '2px', flexShrink: 0 }}>
+                                            <button
+                                                type="button"
+                                                onClick={() => moveColumn(c.key, -1)}
+                                                disabled={i === 0}
+                                                aria-label={`Move ${c.label} left`}
+                                                title="Move left"
+                                                style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: i === 0 ? 'default' : 'pointer', opacity: i === 0 ? 0.3 : 1, padding: 2, display: 'inline-flex' }}
+                                            >
+                                                <ArrowUp size={13} />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => moveColumn(c.key, 1)}
+                                                disabled={i === reorderable.length - 1}
+                                                aria-label={`Move ${c.label} right`}
+                                                title="Move right"
+                                                style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: i === reorderable.length - 1 ? 'default' : 'pointer', opacity: i === reorderable.length - 1 ? 0.3 : 1, padding: 2, display: 'inline-flex' }}
+                                            >
+                                                <ArrowDown size={13} />
+                                            </button>
+                                        </span>
+                                    )}
+                                </div>
                             );
                         })}
                     </div>

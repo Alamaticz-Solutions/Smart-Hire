@@ -55,7 +55,6 @@ export default function UploadPage() {
     const [loadingCandidates, setLoadingCandidates] = useState(() => {
         try { return !sessionStorage.getItem('cached_candidates'); } catch { return true; }
     })
-    const [selectedIds, setSelectedIds] = useState(new Set())
     const [isAddingCandidate, setIsAddingCandidate] = useState(false)
 
     // Column width map: shared base widths plus UploadPage's own `sender_email` column
@@ -251,15 +250,13 @@ export default function UploadPage() {
     const loadCols = () => apiClient.get(`/api/columns`).then(r => {
         const base = (r.data.base || []).map(c => ({ key: c.col_key, label: c.col_label, pct: getColumnWidth(c.col_key), col_key: c.col_key, col_label: c.col_label }))
         const custom = (r.data.custom || []).map(c => ({ key: c.col_key, label: c.col_label, pct: '120px', col_key: c.col_key, col_label: c.col_label, isCustom: true }))
-        // No more '_actions' column: it only ever held a single per-row
-        // Delete button, which was also the sticky-right column that kept
-        // visually overlapping the scrollbar (see DataTable.jsx's
-        // scrollbar-gutter fix). Deleting is now checkbox-select +
-        // "Delete Selected" only, matching the pattern this table already
-        // used for bulk delete/export - one delete affordance, not two.
+        // Per-row actions column (View / Delete). The bulk checkbox-select +
+        // "Delete Selected" flow was removed, so each row needs its own
+        // delete affordance again; pinned last and never reorderable.
+        const actionsCol = { key: '_actions', label: 'Actions', pct: '110px' }
         const allLoaded = [...base, ...custom]
 
-        setCols(applySavedColumnOrder(allLoaded, 'hire_ai_col_order'))
+        setCols([...applySavedColumnOrder(allLoaded, 'hire_ai_col_order'), actionsCol])
     }).catch(() => {
         // G-20: used to fail silently, leaving whatever default columns
         // useColumnConfig started with and no signal that the real column
@@ -418,41 +415,23 @@ export default function UploadPage() {
         } catch { showToast('Delete failed', 'error') }
     }
 
-    const toggleSelectCandidate = (id) => {
-        setSelectedIds(prev => {
-            const next = new Set(prev)
-            if (next.has(id)) next.delete(id)
-            else next.add(id)
-            return next
+    // Reorder a column one step left/right. `_actions` is pinned last and
+    // never participates. This is the only reorder path now (the "Columns"
+    // popover's up/down controls) — drag-to-reorder was removed.
+    const moveColumn = (key, dir) => {
+        setCols(prev => {
+            const movable = prev.filter(c => c.key !== '_actions')
+            const pinned = prev.filter(c => c.key === '_actions')
+            const i = movable.findIndex(c => c.key === key)
+            const j = i + dir
+            if (i < 0 || j < 0 || j >= movable.length) return prev
+            const next = [...movable]
+            ;[next[i], next[j]] = [next[j], next[i]]
+            return [...next, ...pinned]
         })
     }
-    const toggleSelectAll = () => {
-        if (selectedIds.size === filteredCandidates.length) {
-            setSelectedIds(new Set())
-        } else {
-            setSelectedIds(new Set(filteredCandidates.map(c => c.id)))
-        }
-    }
-    const bulkDelete = async () => {
-        if (selectedIds.size === 0) return
-        if (!await confirm({
-            title: 'Delete selected candidates?',
-            message: `This permanently removes ${selectedIds.size} candidate${selectedIds.size === 1 ? '' : 's'} from the database. This cannot be undone.`,
-            confirmLabel: 'Delete',
-            confirmText: selectedIds.size > 4 ? String(selectedIds.size) : undefined,
-        })) return
-        try {
-            await apiClient.post(`/api/candidates/bulk-delete`, { ids: [...selectedIds] }, {
-                headers: { 'x-user-username': user?.username }
-            })
-            setCandidates(prev => prev.filter(c => !selectedIds.has(c.id)))
-            setTotalCandidates(t => Math.max(0, t - selectedIds.size))
-            setSelectedIds(new Set())
-            showToast(`Deleted ${selectedIds.size} candidate(s)`)
-        } catch { showToast('Bulk delete failed', 'error') }
-    }
 
-    const getTableWidth = () => computeTableWidth(activeCols, 60 + 45) // + S.No column + checkbox column
+    const getTableWidth = () => computeTableWidth(activeCols, 0)
 
     return (
         <div style={{ padding: '2rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '2rem', minWidth: 0, width: '100%', height: '100%' }}>
@@ -502,11 +481,8 @@ export default function UploadPage() {
                 newColForm={newColForm}
                 setNewColForm={setNewColForm}
                 handleAddCol={handleAddCol}
-                selectedIds={selectedIds}
-                setSelectedIds={setSelectedIds}
-                toggleSelectCandidate={toggleSelectCandidate}
-                toggleSelectAll={toggleSelectAll}
-                bulkDelete={bulkDelete}
+                moveColumn={moveColumn}
+                del={del}
                 editCell={editCell}
                 setEditCell={setEditCell}
                 editVal={editVal}

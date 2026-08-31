@@ -209,6 +209,21 @@ export default function JobsPage() {
         draggedColKey, dragOverColKey,
         handleDragStart, handleDragOver, handleDragEnter, handleDragEnd, handleDrop, clearDragOver,
     } = useDraggableColumns(cols, setCols);
+    // Reorder a column one step (dir -1 / +1) from the "Columns" popover —
+    // the only reorder path now that drag-to-reorder is off the header.
+    // `_actions` is pinned last and excluded.
+    const moveColumn = (key, dir) => {
+        setCols(prev => {
+            const movable = prev.filter(c => c.key !== '_actions');
+            const pinned = prev.filter(c => c.key === '_actions');
+            const i = movable.findIndex(c => c.key === key);
+            const j = i + dir;
+            if (i < 0 || j < 0 || j >= movable.length) return prev;
+            const next = [...movable];
+            [next[i], next[j]] = [next[j], next[i]];
+            return [...next, ...pinned];
+        });
+    };
     const [columnFilters, setColumnFilters] = useState({});
     const [editCell, setEditCell] = useState(null);
     const [editVal, setEditVal] = useState('');
@@ -788,6 +803,7 @@ export default function JobsPage() {
                             toggleColumnVisibility={toggleColumnVisibility}
                             handleShowAllColumns={handleShowAllColumns}
                             handleHideAllColumns={handleHideAllColumns}
+                            moveColumn={moveColumn}
                             draggedColKey={draggedColKey}
                             dragOverColKey={dragOverColKey}
                             handleDragStart={handleDragStart}

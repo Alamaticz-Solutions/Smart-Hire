@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Trash2, FileText, Filter, Download, RefreshCw, CheckSquare, Users, Search, X, Plus } from 'lucide-react'
+import { Trash2, FileText, Filter, Download, RefreshCw, Eye, Users, Search, X, Plus } from 'lucide-react'
 import { exportToExcel, formatCandidatesForExcel } from '../../utils/excelUtils'
 import apiClient from '../../api/client'
 import ExpandableCell from '../../components/shared/ExpandableCell'
@@ -65,11 +65,8 @@ export default function CandidatesTable({
     newColForm,
     setNewColForm,
     handleAddCol,
-    selectedIds,
-    setSelectedIds,
-    toggleSelectCandidate,
-    toggleSelectAll,
-    bulkDelete,
+    moveColumn,
+    del,
     editCell,
     setEditCell,
     editVal,
@@ -173,28 +170,6 @@ export default function CandidatesTable({
         measureElement: (el) => el.getBoundingClientRect().height,
     })
 
-    const leadingColumns = [
-        {
-            key: '_select',
-            width: '45px',
-            align: 'center',
-            headerCursor: 'pointer',
-            headerTitle: selectedIds.size === filteredCandidates.length ? 'Deselect all' : 'Select all',
-            onHeaderClick: toggleSelectAll,
-            renderHeader: () => (
-                <input
-                    type="checkbox"
-                    aria-label={`Select all ${filteredCandidates.length} filtered candidates`}
-                    checked={filteredCandidates.length > 0 && selectedIds.size === filteredCandidates.length}
-                    onChange={toggleSelectAll}
-                    ref={el => { if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < filteredCandidates.length }}
-                    style={{ cursor: 'pointer', accentColor: 'var(--gold)', width: 15, height: 15 }}
-                    onClick={e => e.stopPropagation()}
-                />
-            ),
-        },
-    ]
-
     const renderRow = (row, ri, virtualRow) => (
         // Row hover/selection used to be JS mouse handlers overwriting
         // style.background directly, which made index.css's own tbody
@@ -206,19 +181,37 @@ export default function CandidatesTable({
             data-index={virtualRow.index}
             ref={rowVirtualizer.measureElement}
             className="data-row"
-            data-selected={selectedIds.has(row.id) || undefined}
             data-zebra={ri % 2 === 0 ? 'even' : undefined}
         >
-            <td style={{ ...TD_BASE, textAlign: 'center', padding: '10px 6px' }}>
-                <input
-                    type="checkbox"
-                    aria-label={`Select ${row.full_name || 'candidate'}`}
-                    checked={selectedIds.has(row.id)}
-                    onChange={() => toggleSelectCandidate(row.id)}
-                    style={{ cursor: 'pointer', accentColor: 'var(--gold)', width: 15, height: 15 }}
-                />
-            </td>
             {activeCols.map(({ key }) => {
+                /* ── Actions column (View / Delete) ── */
+                if (key === '_actions') {
+                    return (
+                        <td key={key} style={{ ...TD_BASE, textAlign: 'center', overflow: 'visible', verticalAlign: 'middle' }}>
+                            <div style={{ display: 'flex', gap: 6, justifyContent: 'center', alignItems: 'center' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedCandidateForDetails(row)}
+                                    aria-label={`View ${row.full_name || 'candidate'}`}
+                                    title="View candidate"
+                                    style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-dim)', cursor: 'pointer', width: 30, height: 30, borderRadius: 'var(--r-md)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                                >
+                                    <Eye size={14} />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => del(row.id)}
+                                    aria-label={`Delete ${row.full_name || 'candidate'}`}
+                                    title="Delete candidate"
+                                    style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--danger-fg)', cursor: 'pointer', width: 30, height: 30, borderRadius: 'var(--r-md)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                                >
+                                    <Trash2 size={14} />
+                                </button>
+                            </div>
+                        </td>
+                    )
+                }
+
                 const isEditing = editCell?.row === ri && editCell?.col === key
                 const val = row[key] ?? ''
                 const isExp = key === 'total_experience' || key === 'pega_experience' || key === 'cdh_exp'
@@ -438,8 +431,9 @@ export default function CandidatesTable({
                         handleHideAllColumns={handleHideAllColumns}
                         showColVisibility={showColVisibility}
                         setShowColVisibility={setShowColVisibility}
+                        moveColumn={moveColumn}
                         align="left"
-                        title="Visible Columns"
+                        title="Columns"
                     />
 
                     <button className="btn btn-secondary" onClick={() => setShowAddCol(true)} style={{ gap: 6 }}>
@@ -487,72 +481,11 @@ export default function CandidatesTable({
                 </div>
             ) : (
                 <>
-                    {/* Was a full-width --danger-bg banner with a red border the
-                        instant a single checkbox was ticked - selection isn't an
-                        error, and the banner read as one. Neutral surface now;
-                        red is reserved for the one genuinely destructive action
-                        in it. */}
-                    {selectedIds.size > 0 && (
-                        <div style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                            padding: '10px 18px', borderRadius: 10,
-                            background: 'var(--surface-2)',
-                            border: '1px solid var(--border)',
-                            marginBottom: 4,
-                            animation: 'fadeIn 0.2s ease'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <CheckSquare size={18} style={{ color: 'var(--gold)' }} />
-                                <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text)' }}>
-                                    {selectedIds.size} candidate{selectedIds.size !== 1 ? 's' : ''} selected
-                                </span>
-                                <button
-                                    onClick={() => setSelectedIds(new Set())}
-                                    style={{
-                                        background: 'none', border: 'none', color: 'var(--text-dim)',
-                                        cursor: 'pointer', fontSize: '0.8rem', textDecoration: 'underline'
-                                    }}
-                                >Clear</button>
-                            </div>
-                            <div style={{ display: 'flex', gap: 8 }}>
-                                {/* S4.6: bulk selection previously had only one action
-                                    (delete) - the other operation a recruiter actually
-                                    does at volume with a selection is exporting it. */}
-                                <button
-                                    onClick={() => exportToExcel(
-                                        formatCandidatesForExcel(filteredCandidates.filter(c => selectedIds.has(c.id)), activeCols.filter(c => c.key !== '_actions')),
-                                        'selected_candidates.xlsx'
-                                    )}
-                                    className="btn btn-primary"
-                                    style={{
-                                        display: 'flex', alignItems: 'center', gap: 6,
-                                        padding: '8px 18px', fontSize: '0.85rem', fontWeight: 700,
-                                        borderRadius: 8
-                                    }}
-                                >
-                                    <Download size={16} /> Export Selected
-                                </button>
-                                <button
-                                    onClick={bulkDelete}
-                                    className="btn btn-danger"
-                                    style={{
-                                        display: 'flex', alignItems: 'center', gap: 6,
-                                        padding: '8px 18px', fontSize: '0.85rem', fontWeight: 700,
-                                        borderRadius: 8
-                                    }}
-                                >
-                                    <Trash2 size={16} /> Delete Selected ({selectedIds.size})
-                                </button>
-                            </div>
-                        </div>
-                    )}
-
                     <DataTable
                         fillHeight
                         tbodyRef={tableBodyRef}
                         ariaRowCount={filteredCandidates.length}
                         activeCols={activeCols}
-                        leadingColumns={leadingColumns}
                         TH={TH}
                         TD_BASE={TD_BASE}
                         getTableWidth={getTableWidth}
