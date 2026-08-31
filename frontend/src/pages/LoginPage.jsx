@@ -281,17 +281,39 @@ export default function LoginPage({ onLogin }) {
 
     return (
         <div className="login-bg">
+            <aside className="login-hero">
+                <div className="login-hero-glow" aria-hidden="true" />
+                <div className="login-hero-brand">
+                    <img src={alamaticzMark} alt="Alamaticz Solutions" style={{ width: 30, height: 30, objectFit: 'contain' }} />
+                    <span>Hire AI</span>
+                </div>
+                <div className="login-hero-copy">
+                    <span className="login-hero-eyebrow">Recruitment intelligence</span>
+                    <h1>Your pipeline, read and ranked before you open a résumé.</h1>
+                    <p>Hire AI parses inbound applications from your mailbox, extracts structured candidate data, and keeps every open role&rsquo;s funnel current.</p>
+                    <div className="login-hero-stats">
+                        <div><span className="stat-value">Parse</span><span className="stat-label">résumés from mail</span></div>
+                        <div><span className="stat-value">Rank</span><span className="stat-label">against each role</span></div>
+                        <div><span className="stat-value">Track</span><span className="stat-label">the whole funnel</span></div>
+                    </div>
+                </div>
+                <div className="login-hero-foot">Developed by Alamaticz Solutions</div>
+            </aside>
+
+            <div className="login-side">
             <div className="login-card">
                 {/* Brand */}
-                <div className="login-brand">
+                <div className="login-brand" style={{ textAlign: 'left', marginBottom: '1.6rem' }}>
                     <img
+                        className="login-card-mark"
                         src={alamaticzMark}
                         alt="Alamaticz Solutions"
-                        style={{ width: 76, height: 76, objectFit: 'contain', marginBottom: 4 }}
                     />
-                    <div className="login-title">Hire AI</div>
-                    <div className="login-subtitle">
-                        {mode === 'register' ? 'Create your account' : mode === 'forgot' ? 'Reset your password' : 'Intelligent Recruitment'}
+                    <div className="login-title" style={{ display: 'block', textAlign: 'left' }}>
+                        {mode === 'register' ? 'Create your account' : mode === 'forgot' ? 'Reset your password' : 'Welcome back'}
+                    </div>
+                    <div className="login-subtitle" style={{ letterSpacing: 0, textTransform: 'none', fontSize: '0.9rem', marginTop: 6 }}>
+                        {mode === 'register' ? 'Request access to the Hire AI workspace.' : mode === 'forgot' ? 'We’ll send a one-time code to reset it.' : 'Sign in with your Alamaticz work account.'}
                     </div>
                 </div>
 
@@ -486,10 +508,11 @@ export default function LoginPage({ onLogin }) {
                 the bottom on tall screens while letting .login-bg's own
                 overflow-y:auto handle anything that doesn't fit. */}
             <div style={{
-                marginTop: 'auto', paddingTop: '24px', width: '100%', flexShrink: 0, textAlign: 'center',
+                marginTop: '24px', paddingTop: '4px', width: '100%', maxWidth: 420, flexShrink: 0, textAlign: 'center',
                 color: 'var(--text-subtle)', fontSize: '0.77rem'
             }}>
                 © {new Date().getFullYear()} Alamaticz Solutions · Innovation · Excellence · Reliability
+            </div>
             </div>
         </div>
     )
