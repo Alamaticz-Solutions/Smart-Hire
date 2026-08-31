@@ -1041,8 +1041,8 @@ body,
 /* ── Login: marketing hero + form column ──────────────────
    Overrides the base .login-bg (single centred card) with a
    two-column split on wide screens; collapses back to the
-   card-only layout below 900px. Tokens are cleanup's own
-   (--action*/--text-*), so it re-skins with the accent picker. */
+   card-only layout below 900px. Uses cleanup's own action and
+   text tokens, so it re-skins with the accent picker. */
 @media (min-width: 900px) {
   .login-bg {
     flex-direction: row;
