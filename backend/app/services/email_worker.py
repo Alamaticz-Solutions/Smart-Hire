@@ -489,13 +489,24 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                     header_text2 = f"Subject: {subject_header}\nDate: {date_header}\nFrom: {from_header}\n\n"
                     msg_id = hashlib.md5(header_text2.encode('utf-8', errors='ignore')).hexdigest()
 
-            # Check if already processed
+            # Check if already processed or being processed by another worker
             with get_db_connection() as conn:
                 cur = conn.cursor()
                 cur.execute("SELECT 1 FROM processed_emails WHERE msg_uid = ?", (msg_id,))
                 exists = cur.fetchone()
 
             if exists:
+                continue
+
+            # Mark email as processing immediately to prevent multiple workers from picking it up
+            # and to prevent infinite retry loops if an exception occurs later
+            try:
+                with get_db_connection() as conn:
+                    cur = conn.cursor()
+                    cur.execute("INSERT INTO processed_emails (msg_uid) VALUES (?)", (msg_id,))
+                    conn.commit()
+            except Exception:
+                # Already inserted by another concurrent worker
                 continue
 
             # Extract Subject, From, Body
@@ -526,10 +537,6 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                 is_bounce = True
 
             if is_bounce:
-                with get_db_connection() as conn:
-                    cur = conn.cursor()
-                    cur.execute("INSERT OR IGNORE INTO processed_emails (msg_uid) VALUES (?)", (msg_id,))
-                    conn.commit()
                 logger.info(f"Skipping bounce/automated message from {decoded_from} with subject '{decoded_subject}' to prevent infinite auto-reply loop.")
                 continue
 
@@ -821,15 +828,7 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                 except Exception as reply_err:
                     logger.error(f"ERROR sending follow-up email reply: {reply_err}")
 
-                # Mark email as read and processed
-                try:
-                    with get_db_connection() as conn:
-                        cur = conn.cursor()
-                        cur.execute("INSERT INTO processed_emails (msg_uid) VALUES (?)", (msg_id,))
-                        conn.commit()
-                except Exception as mark_err:
-                    logger.error(f"ERROR marking email as processed: {mark_err}")
-
+                # Email is already marked as processed at the top of the loop
                 continue
 
             # Check if the email contains any resume attachments (.pdf or .docx)
@@ -912,6 +911,10 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                             except Exception as db_err:
                                 logger.error(f"ERROR: Failed to fetch candidate metadata for auto-acknowledgement: {db_err}")
 
+                            if candidate and (candidate.get("candidate_status") == "Error" or "⏳ Processing" in candidate.get("full_name", "")):
+                                logger.warning(f"Candidate {safe_name} processing failed or incomplete. Skipping auto-reply.")
+                                continue
+
                             candidate_name = 'Candidate'
                             missing_fields = []
                             if candidate:
@@ -971,11 +974,7 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                     except Exception as smtp_err:
                         logger.error(f"ERROR: Failed sending auto-acknowledgement: {smtp_err}")
 
-            # Insert to processed_emails
-            with get_db_connection() as conn:
-                cur = conn.cursor()
-                cur.execute("INSERT OR IGNORE INTO processed_emails (msg_uid) VALUES (?)", (msg_id,))
-                conn.commit()
+            # Email already marked as processed at the start of the loop
 
         except Exception as msg_err:
             logger.error(f"ERROR: Failed processing single email: {msg_err}")
