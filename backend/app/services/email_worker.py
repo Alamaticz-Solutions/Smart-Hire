@@ -582,9 +582,11 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                                 content_bytes_b64 = att.get('contentBytes', '')
                                 if content_bytes_b64 and att_name:
                                     att_content_bytes = base64.b64decode(content_bytes_b64)
-                                    # Prevent duplicates if MIME already had it
-                                    if not any(a[0] == att_name for a in attachments):
-                                        attachments.append((att_name, att_content_bytes))
+                                    # Prefer Graph API attachment over MIME parsing
+                                    # because Graph API MIME $value often strips attachment content.
+                                    # Remove existing attachment with same name to prevent duplicates and bad data.
+                                    attachments = [a for a in attachments if a[0].lower() != att_name.lower()]
+                                    attachments.append((att_name, att_content_bytes))
                 except Exception as g_err:
                     logger.error(f"Error fetching explicit Graph API attachments for {graph_m_id}: {g_err}")
 
