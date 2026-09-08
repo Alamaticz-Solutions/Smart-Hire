@@ -878,7 +878,8 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                                     "is_approved": 1,
                                     "created_by": "email_worker",
                                     "file_bytes": content,
-                                    "file_url": None
+                                    "file_url": None,
+                                    "source": "Email"
                                 })
                                 process_resume(safe_name, fpath, is_approved=1, username="email_worker", email_message=body_text, sender_email=sender_email, file_url=None, placeholder_id=placeholder_id)
                                 processed_attachment = True
