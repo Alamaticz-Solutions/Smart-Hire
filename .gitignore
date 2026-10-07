@@ -43,3 +43,8 @@ backend/Client_secret.json
 # Frontend build output & stray Vite temp config files
 frontend/dist/
 frontend/vite.config.js.timestamp-*.mjs
+
+# Local-only artifacts
+.infinity-rules-mcp/
+backend/static/
+backend/x

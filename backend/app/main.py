@@ -62,7 +62,7 @@ from app.services.session_tokens import verify_session_token  # noqa: E402
 # any site to make credentialed calls. Default to the common local dev
 # origins so nothing breaks out of the box; production deploys should set
 # CORS_ALLOWED_ORIGINS explicitly.
-_default_cors_origins = "http://localhost:5173,http://127.0.0.1:5173"
+_default_cors_origins = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:5175,http://127.0.0.1:5175"
 CORS_ALLOWED_ORIGINS = [
     o.strip() for o in os.getenv("CORS_ALLOWED_ORIGINS", _default_cors_origins).split(",") if o.strip()
 ]
