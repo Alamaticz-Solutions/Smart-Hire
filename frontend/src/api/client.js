@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { installEnvelope } from './envelope';
 
 /**
  * Shared axios instance for all API calls.
@@ -78,6 +79,8 @@ apiClient.interceptors.request.use((config) => {
     }
     return config;
 });
+
+installEnvelope(apiClient);
 
 export default apiClient;
 

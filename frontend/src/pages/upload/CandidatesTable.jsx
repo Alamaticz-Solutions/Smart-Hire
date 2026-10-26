@@ -329,6 +329,9 @@ export default function CandidatesTable({
                             )}
                         </span>
                     );
+                } else if (key === 'mail_received_at') {
+                    const received = val ? new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(String(val)) ? val : `${val}Z`) : null  // stored in UTC
+                    display = received && !isNaN(received) ? received.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '—';
                 } else if (isExp) {
                     display = (val !== '' && val != null ? (val === '[HIDDEN]' ? '[HIDDEN]' : `${val} yrs`) : '—');
                 } else if (key === 'notice_period' || key === 'availability_in_days') {

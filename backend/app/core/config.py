@@ -136,3 +136,31 @@ POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
 POSTGRES_USER = os.getenv("POSTGRES_USER")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
 POSTGRES_DB = os.getenv("POSTGRES_DB")
+
+
+# ── SQLAlchemy database URL ──────────────────────────────────────────────────
+# PostgreSQL when POSTGRES_DATABASE_URL (or the discrete POSTGRES_* values) is
+# configured; otherwise the local SQLite file at STATS_DB (development/tests).
+from sqlalchemy.engine import URL as _URL, make_url as _make_url  # noqa: E402
+
+
+def _build_database_url() -> _URL:
+    if POSTGRES_DATABASE_URL:
+        url = _make_url(POSTGRES_DATABASE_URL)
+        if url.drivername in ("postgres", "postgresql"):
+            url = url.set(drivername="postgresql+psycopg2")
+        return url
+    if POSTGRES_HOST and POSTGRES_USER and POSTGRES_PASSWORD and POSTGRES_DB:
+        return _URL.create(
+            "postgresql+psycopg2",
+            username=POSTGRES_USER,
+            password=POSTGRES_PASSWORD,
+            host=POSTGRES_HOST,
+            port=int(POSTGRES_PORT),
+            database=POSTGRES_DB,
+        )
+    return _URL.create("sqlite", database=STATS_DB)
+
+
+DATABASE_URL = _build_database_url()
+IS_POSTGRES = DATABASE_URL.get_backend_name() == "postgresql"

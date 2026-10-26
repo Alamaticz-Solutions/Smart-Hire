@@ -1,15 +1,27 @@
-langchain-community
-langchain-groq
-python-dotenv
-docx2txt
-pymupdf
-fastapi
-uvicorn
-python-multipart
-openpyxl
-psycopg2-binary
-pgvector
-boto3
-requests
-google-auth
-python-docx
+# Core runtime — compatible-release pins (tested versions).
+fastapi~=0.142
+uvicorn~=0.54
+python-multipart~=0.0.32
+python-dotenv~=1.2
+requests~=2.32
+
+# AI
+langchain-community~=0.4
+langchain-core~=1.6
+langchain-groq~=1.1
+langchain-text-splitters~=1.1
+
+# Documents
+pymupdf~=1.28
+docx2txt~=0.9
+python-docx~=1.2
+openpyxl~=3.1
+
+# Database / vector store
+psycopg2-binary~=2.9
+pgvector~=0.5
+SQLAlchemy~=2.0
+
+# Storage providers
+boto3~=1.43
+google-auth~=2.61

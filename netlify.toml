@@ -1,0 +1,11 @@
+# Optional: host the React app on Netlify and the API on Render.
+# Set VITE_API_URL (Netlify env) to the Render service URL before building.
+[build]
+  base    = "frontend"
+  command = "npm run build"
+  publish = "dist"
+
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200

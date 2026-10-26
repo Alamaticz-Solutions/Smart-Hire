@@ -42,25 +42,68 @@ _active_groq_key: Optional[str] = None
 _model_lock = threading.Lock()
 
 
+
+_DEFAULT_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+# The legacy api-inference.huggingface.co host has been retired; hosted
+# feature-extraction now lives behind the HF router.
+_HF_ROUTER_URL = "https://router.huggingface.co/hf-inference/models/{model}/pipeline/feature-extraction"
+
+
+def _build_embeddings():
+    """Resolve an embedding backend.
+
+    ``EMBEDDINGS_PROVIDER`` selects the strategy:
+
+    * ``auto`` (default) - hosted HuggingFace API when ``HF_TOKEN`` is set and
+      answers a probe request, otherwise a local sentence-transformers model.
+    * ``api``   - hosted API only.
+    * ``local`` - local model only (needs ``sentence-transformers``; ~500 MB RAM).
+    * ``off``   - disable embeddings (semantic search / RAG answers unavailable).
+
+    Both backends use the same model, so vectors are interchangeable with the
+    ones already stored in the database.
+    """
+    provider = os.getenv("EMBEDDINGS_PROVIDER", "auto").strip().lower()
+    model = os.getenv("EMBEDDING_MODEL", _DEFAULT_EMBEDDING_MODEL)
+    if provider == "off":
+        logger.warning("Embeddings disabled (EMBEDDINGS_PROVIDER=off).")
+        return None
+
+    token = os.getenv("HF_TOKEN")
+    if provider in ("auto", "api") and token:
+        try:
+            from langchain_community.embeddings import HuggingFaceInferenceAPIEmbeddings
+
+            api = HuggingFaceInferenceAPIEmbeddings(
+                api_key=token, model_name=model, api_url=_HF_ROUTER_URL.format(model=model)
+            )
+            api.embed_query("health check")  # fail fast: no credits / bad token
+            logger.info("Embeddings: HuggingFace hosted API (%s)", model)
+            return api
+        except Exception as exc:
+            logger.warning("Hosted embeddings unavailable: %s", exc)
+            if provider == "api":
+                return None
+
+    if provider in ("auto", "local"):
+        try:
+            from langchain_huggingface import HuggingFaceEmbeddings
+
+            local = HuggingFaceEmbeddings(model_name=model)
+            logger.info("Embeddings: local model (%s)", model)
+            return local
+        except Exception as exc:
+            logger.warning("Local embedding model unavailable: %s", exc)
+    return None
+
+
 def get_models():
     """Lazily load and cache the embeddings + Groq LLM clients (blocks while loading)."""
     global _embeddings, _llm, _models_loading, _active_groq_key
     with _model_lock:
         _models_loading = True
         if _embeddings is None:
-            try:
-                hf_token = os.getenv("HF_TOKEN")
-                if hf_token:
-                    from langchain_community.embeddings import HuggingFaceInferenceAPIEmbeddings
-                    _embeddings = HuggingFaceInferenceAPIEmbeddings(
-                        api_key=hf_token, model_name="sentence-transformers/all-MiniLM-L6-v2"
-                    )
-                else:
-                    logger.warning("HF_TOKEN not set. Embeddings disabled to prevent OOM on Render Free Tier.")
-                    _embeddings = None
-            except Exception as e:
-                logger.warning("Failed to load Embeddings: %s", e)
-                _embeddings = None
+            _embeddings = _build_embeddings()
 
         # Reload env vars dynamically in case the key changed in the file.
         try:

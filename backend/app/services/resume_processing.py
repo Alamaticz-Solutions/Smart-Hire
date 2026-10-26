@@ -48,15 +48,14 @@ import re
 from typing import Optional
 
 from langchain_community.document_loaders import Docx2txtLoader
-from langchain_community.vectorstores import PGVector
 from langchain_core.documents import Document
 from langchain_core.messages import HumanMessage
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from app.core.config import STATS_DB, UPLOAD_DIR
+from app.core.config import UPLOAD_DIR
 from app.core.logging import get_logger
-from app.db.row_helpers import row_to_dict
-from app.db.session import get_db_connection
+from app.db.engine import session_scope
+from app.repositories import CandidateRepository, CustomColumnRepository
+from app.services import vector_store
 from app.services.ai_clients import _processing_lock, get_models
 from app.services.json_parsing import parse_llm_json
 from app.services.matching import match_candidate_to_all_jobs
@@ -214,57 +213,20 @@ def _invoke_resume_formatter(text: str, llm) -> dict:
 
 
 def log_candidate(data: dict) -> Optional[int]:
-    """Insert/update a `candidate_metadata` row.
+    """Insert a candidate (or update it when ``data`` carries an ``id``).
 
-    Local copy of main.py's `log_candidate` (original lines 761-801), which
-    is a general candidate-persistence helper owned by whichever agent ends
-    up owning `routers/candidates.py`. Duplicated here (rather than
-    importing from main.py, which would re-run the whole app module) so
-    `process_resume_logic` keeps working standalone; safe to delete once a
-    shared `app.services.candidates` module exists and this call site is
-    repointed at it.
+    Returns the candidate id. Unknown keys are ignored and blank strings are
+    stored as NULL (see ``CandidateRepository``).
     """
-    with get_db_connection() as conn:
-        cur = conn.cursor()
-        cur.execute("PRAGMA table_info(candidate_metadata)")
-        existing_cols = {c[1] for c in cur.fetchall()}
-
-        cols = [c for c in data.keys() if c in existing_cols and c != "id"]
-        vals = []
-        for c in cols:
-            val = data.get(c)
-            if c == "file_bytes":
-                vals.append(val)
-            else:
-                if val == "" or val is None:
-                    vals.append(None)
-                elif isinstance(val, (dict, list)):
-                    import json
-
-                    vals.append(json.dumps(val))
-                else:
-                    vals.append(val)
-
+    with session_scope() as session:
+        candidates = CandidateRepository(session)
         existing_id = data.get("id")
-
         if existing_id is not None:
-            new_id = existing_id
-            if cols:
-                set_clause = ", ".join([f"{c} = ?" for c in cols])
-                cur.execute(f"UPDATE candidate_metadata SET {set_clause} WHERE id = ?", vals + [existing_id])
-        else:
-            new_id = None
-            if cols:
-                cur.execute(
-                    f"INSERT INTO candidate_metadata ({','.join(cols)}) VALUES ({','.join(['?'] * len(cols))})",
-                    vals,
-                )
-                new_id = cur.lastrowid
-        conn.commit()
-        return new_id
+            candidates.update(existing_id, data)
+            return existing_id
+        return candidates.insert(data)
 
 
-# ── Background resume pre-formatting (main.py original lines 1707-1802) ───
 def pre_format_candidate_resume(candidate_id: int, text: str, filename: str):
     """Pre-compute and cache the formatted-resume JSON for a candidate, best-effort.
 
@@ -292,13 +254,8 @@ def pre_format_candidate_resume(candidate_id: int, text: str, filename: str):
         data = _invoke_resume_formatter(text, llm)
         data["original_page_count"] = original_page_count
 
-        with get_db_connection() as conn:
-            cur = conn.cursor()
-            cur.execute(
-                "UPDATE candidate_metadata SET formatted_json = ? WHERE id = ?",
-                (_json_dumps(data), candidate_id),
-            )
-            conn.commit()
+        with session_scope() as session:
+            CandidateRepository(session).set_formatted_json(candidate_id, _json_dumps(data))
         logger.info(f"Successfully pre-formatted and cached resume for candidate ID {candidate_id}")
     except Exception as e:
         logger.warning(f"Failed to pre-format candidate resume ID {candidate_id} in background: {e}")
@@ -441,13 +398,8 @@ def format_candidate_resume(candidate: dict, candidate_id: int) -> dict:
 
         # Cache the result in DB.
         try:
-            with get_db_connection() as conn:
-                cur = conn.cursor()
-                cur.execute(
-                    "UPDATE candidate_metadata SET formatted_json = ? WHERE id = ?",
-                    (json.dumps(data), candidate_id),
-                )
-                conn.commit()
+            with session_scope() as session:
+                CandidateRepository(session).set_formatted_json(candidate_id, json.dumps(data))
         except Exception as e_cache:
             logger.error(f"Error caching formatted resume: {e_cache}")
 
@@ -500,7 +452,6 @@ def process_resume_logic(
     candidate_id = None
     try:
         _, llm = get_models()
-        embeddings, _ = get_models()
 
         # Load document.
         if safe_name.lower().endswith(".pdf"):
@@ -511,10 +462,10 @@ def process_resume_logic(
         text = "\n".join([d.page_content for d in docs])
 
         # Fetch custom columns for the prompt.
-        with get_db_connection() as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT col_key, col_label, description FROM custom_columns")
-            custom_cols = cur.fetchall()
+        with session_scope() as session:
+            custom_cols = [
+                (c.col_key, c.col_label, c.description) for c in CustomColumnRepository(session).list_all()
+            ]
 
         custom_fields_str = ""
         if custom_cols:
@@ -606,80 +557,50 @@ def process_resume_logic(
                         data[num_field] = ""
         # -- End Data Validation & Normalization --
 
-        # Only match if a candidate with the same filename already exists (excluding the current placeholder).
-        with get_db_connection() as conn:
-            cur = conn.cursor()
-            match_id = None
-            if placeholder_id:
-                cur.execute("SELECT id FROM candidate_metadata WHERE filename = ? AND id != ? LIMIT 1", (safe_name, placeholder_id))
-            else:
-                cur.execute("SELECT id FROM candidate_metadata WHERE filename = ? LIMIT 1", (safe_name,))
-            row = cur.fetchone()
-            if row:
-                match_id = row[0]
+        # Attach to an existing candidate with the same filename (excluding the placeholder).
+        external_url = file_url
+        if not external_url:
+            from app.services.storage import STORAGE_PROVIDER, upload_to_external_storage
 
-            # Ensure file is uploaded to external storage if provider is configured and file_url not provided.
-            if not file_url:
-                from app.services.storage import STORAGE_PROVIDER, upload_to_external_storage
+            if STORAGE_PROVIDER != "local":
+                url, err = upload_to_external_storage(path, safe_name)
+                if not err:
+                    external_url = url
+                else:
+                    logger.warning(f"External upload in background failed: {err}")
+        file_url = external_url
 
-                if STORAGE_PROVIDER != "local":
-                    url, err = upload_to_external_storage(path, safe_name)
-                    if not err:
-                        file_url = url
-                    else:
-                        logger.warning(f"External upload in background failed: {err}")
+        with session_scope() as session:
+            candidates = CandidateRepository(session)
+            match_id = candidates.find_by_filename(safe_name, exclude_id=placeholder_id)
 
             if match_id:
-                # Match found! Retrieve the file_bytes and file_url from the placeholder first.
-                cur.execute("PRAGMA table_info(candidate_metadata)")
-                allowed_cols = {c[1] for c in cur.fetchall()}
-
-                placeholder_bytes = None
-                placeholder_url = None
-
-                if "file_url" in allowed_cols:
-                    if placeholder_id:
-                        cur.execute("SELECT file_bytes, file_url FROM candidate_metadata WHERE id = ? LIMIT 1", (placeholder_id,))
-                    else:
-                        cur.execute("SELECT file_bytes, file_url FROM candidate_metadata WHERE filename = ? LIMIT 1", (safe_name,))
-                    placeholder_row = cur.fetchone()
-                    if placeholder_row:
-                        placeholder_bytes = placeholder_row[0]
-                        placeholder_url = placeholder_row[1]
-                else:
-                    if placeholder_id:
-                        cur.execute("SELECT file_bytes FROM candidate_metadata WHERE id = ? LIMIT 1", (placeholder_id,))
-                    else:
-                        cur.execute("SELECT file_bytes FROM candidate_metadata WHERE filename = ? LIMIT 1", (safe_name,))
-                    placeholder_row = cur.fetchone()
-                    if placeholder_row:
-                        placeholder_bytes = placeholder_row[0]
-
-                # Match found! Delete the placeholder record we created in upload_resume.
+                placeholder = candidates.get_row(placeholder_id) if placeholder_id else None
+                placeholder_bytes = placeholder.get("file_bytes") if placeholder else None
+                placeholder_url = placeholder.get("file_url") if placeholder else None
                 if placeholder_id:
-                    cur.execute("DELETE FROM candidate_metadata WHERE id = ?", (placeholder_id,))
+                    candidates.delete(placeholder_id)  # the matched profile wins
 
-                # Fetch the existing candidate metadata to merge values.
-                cur.execute("SELECT * FROM candidate_metadata WHERE id = ?", (match_id,))
-                existing_row = row_to_dict(cur.fetchone(), cursor=cur)
+                existing_row = candidates.get_row(match_id) or {}
+                allowed_cols = candidates.column_names
 
                 updates = {}
                 for k, v in data.items():
-                    if k in allowed_cols and k != "id" and k != "filename" and k != "file_bytes" and k != "file_url":
+                    if k in allowed_cols and k not in ("id", "filename", "file_bytes", "file_url"):
                         if v is not None and v != "":
                             existing_val = existing_row.get(k)
-                            if username == "email_worker" or existing_val is None or str(existing_val).strip() == "" or existing_val == 0.0 or existing_val == 0:
+                            if (
+                                username == "email_worker" or existing_val is None
+                                or str(existing_val).strip() == "" or existing_val == 0.0 or existing_val == 0
+                            ):
                                 updates[k] = v
-                # Always update or attach the filename to the matched candidate.
                 updates["filename"] = safe_name
                 if placeholder_bytes and not file_url:
                     updates["file_bytes"] = placeholder_bytes
-
                 if file_url:
                     updates["file_url"] = file_url
                 elif placeholder_url:
                     updates["file_url"] = placeholder_url
-
                 if username == "email_worker":
                     updates["source"] = "uploaded from mail"
                     if email_message:
@@ -687,13 +608,12 @@ def process_resume_logic(
                     if sender_email:
                         updates["sender_email"] = sender_email
 
-                if updates:
-                    set_clause = ", ".join(f"{k}=?" for k in updates)
-                    cur.execute(f"UPDATE candidate_metadata SET {set_clause} WHERE id=?", list(updates.values()) + [match_id])
-
+                candidates.update(match_id, updates)
                 candidate_id = match_id
-                logger.info(f"Auto-attached uploaded resume {safe_name} to existing candidate profile ID {match_id} ({data.get('full_name', '')})")
-                conn.commit()
+                logger.info(
+                    f"Auto-attached uploaded resume {safe_name} to existing candidate profile ID {match_id} "
+                    f"({data.get('full_name', '')})"
+                )
             else:
                 data["filename"] = safe_name
                 data["candidate_status"] = "New"
@@ -701,11 +621,7 @@ def process_resume_logic(
                 data["created_by"] = username
                 if file_url:
                     data["file_url"] = file_url
-
-                # If we uploaded externally, don't store bytes in DB.
-                if file_url:
-                    data["file_bytes"] = None
-
+                    data["file_bytes"] = None  # stored externally: do not keep bytes in the DB
                 if username == "email_worker":
                     data["source"] = "uploaded from mail"
                     if email_message:
@@ -713,8 +629,10 @@ def process_resume_logic(
                     if sender_email:
                         data["sender_email"] = sender_email
                 if placeholder_id:
-                    data["id"] = placeholder_id
-                candidate_id = log_candidate(data)
+                    candidates.update(placeholder_id, data)
+                    candidate_id = placeholder_id
+                else:
+                    candidate_id = candidates.insert(data)
 
     except Exception as e:
         import traceback
@@ -731,47 +649,18 @@ def process_resume_logic(
         # Instead of deleting the placeholder (which makes the candidate disappear),
         # update it with a failed status so the user can see it failed and retry.
         try:
-            with get_db_connection() as conn:
-                cur = conn.cursor()
-                if placeholder_id:
-                    # Was "❌ Processing Failed: {safe_name}" packed into the
-                    # name field itself - redundant now that the frontend
-                    # renders a real "Error" status chip plus this
-                    # error_detail text, and it truncated mid-sentence in the
-                    # table's ~180px name column. Just the filename now, same
-                    # as any other candidate row.
-                    cur.execute(
-                        "UPDATE candidate_metadata SET full_name = ?, candidate_status = ?, error_detail = ? WHERE id = ?",
-                        (safe_name, "Error", error_detail, placeholder_id),
+            if placeholder_id:
+                with session_scope() as session:
+                    CandidateRepository(session).update(
+                        placeholder_id,
+                        {"full_name": safe_name, "candidate_status": "Error", "error_detail": error_detail},
                     )
-                    conn.commit()
         except Exception as db_err:
             logger.error(f"Error updating placeholder status in DB: {db_err}")
         return
 
-    # Add to PGVector.
-    try:
-        # First, remove old embeddings for this resume to prevent duplicates.
-        try:
-            with get_db_connection() as conn:
-                cur = conn.cursor()
-                cur.execute("DELETE FROM langchain_pg_embedding WHERE cmetadata->>'source' = ?", (safe_name,))
-                conn.commit()
-        except Exception as embed_err:
-            logger.error(f"Failed to delete old embeddings: {embed_err}")
-
-        for d in docs:
-            d.metadata["source"] = safe_name
-        splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-        chunks = splitter.split_documents(docs)
-        PGVector.from_documents(
-            documents=chunks,
-            embedding=embeddings,
-            connection_string=os.getenv("POSTGRES_DATABASE_URL"),
-            collection_name="resume_embeddings",
-        )
-    except Exception:
-        pass
+    # Index the resume text for semantic search (best effort).
+    vector_store.index_documents(docs, safe_name)
 
     # Automatically match this candidate to all active JDs in the database
     # (original main.py line 2085; `match_candidate_to_all_jobs` now lives

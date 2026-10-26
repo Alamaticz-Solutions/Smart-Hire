@@ -36,7 +36,7 @@ export default function UploadPage() {
     const [newCandidateForm, setNewCandidateForm] = useState({})
     const [viewingPdf, setViewingPdf] = useState(null)
     const [showFilter, setShowFilter] = useState(false)
-    const [filters, setFilters] = useState({ minTotalExp: '', minPegaExp: '', certs: [] })
+    const [filters, setFilters] = useState({ minTotalExp: '', minPegaExp: '', certs: [], mailFrom: '', mailTo: '' })
     const [customFilters, setCustomFilters] = useState([])
     const [columnFilters, setColumnFilters] = useState({})
      const [activeTab, setActiveTab] = useState('all') // 'all' or 'qualified'
@@ -121,6 +121,13 @@ export default function UploadPage() {
         if (filters.minTotalExp !== '' && tExp < parseFloat(filters.minTotalExp)) return false;
         if (filters.minPegaExp !== '' && pExp < parseFloat(filters.minPegaExp)) return false;
 
+        if (filters.mailFrom || filters.mailTo) {
+            const day = String(candidate.mail_received_at || '').slice(0, 10)  // YYYY-MM-DD
+            if (!day) return false
+            if (filters.mailFrom && day < filters.mailFrom) return false
+            if (filters.mailTo && day > filters.mailTo) return false
+        }
+
         if (filters.certs.length > 0) {
             const cStr = (candidate.certifications || '').toLowerCase();
             const hasCerts = filters.certs.some(cert => cStr.includes(cert.toLowerCase()));
@@ -155,6 +162,7 @@ export default function UploadPage() {
         (filters.minTotalExp !== '' ? 1 : 0) +
         (filters.minPegaExp !== '' ? 1 : 0) +
         (filters.certs.length > 0 ? 1 : 0) +
+        (filters.mailFrom || filters.mailTo ? 1 : 0) +
         customFilters.filter(cf => cf.col && cf.val).length
 
     // Pagination: GET /api/candidates used to always return every visible

@@ -35,3 +35,24 @@ npm run dev
 ```
 
 The application will be available at `http://localhost:5173`.
+
+### 3. Run the tests
+
+```bash
+cd backend
+pip install -r requirements-dev.txt
+pytest
+```
+
+Tests use a temporary SQLite database and never touch the configured PostgreSQL server.
+
+### API response format
+
+Every JSON endpoint answers with the same envelope:
+
+```json
+{ "success": true, "message": "OK", "data": {}, "meta": null, "error": null, "request_id": "ab12cd34ef56" }
+```
+
+Errors use `success: false`, a human `message` (also in `detail`) and `error.code`
+(`not_found`, `forbidden`, `validation_error`, ...).

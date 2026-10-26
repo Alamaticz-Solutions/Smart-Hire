@@ -20,35 +20,29 @@ from typing import Optional, Tuple
 
 from app.core.config import STORAGE_PROVIDER, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, AWS_BUCKET_NAME
 from app.core.logging import get_logger
-from app.db.session import get_db_connection
+from app.db.engine import session_scope
+from app.repositories import IntegrationSettingsRepository
 
 logger = get_logger(__name__)
 
 
-def get_db_integrations_settings():
+def get_db_integrations_settings() -> dict:
+    """Drive settings saved in the Connect tab (they override env values)."""
     try:
-        with get_db_connection() as conn:
-            cur = conn.cursor()
-            cur.execute("PRAGMA table_info(integrations_settings)")
-            cols = {c[1] for c in cur.fetchall()}
-
-            if 'gdrive_client_id' in cols:
-                cur.execute("""
-                    SELECT drive_enabled, gdrive_client_id, gdrive_client_secret, gdrive_refresh_token, gdrive_folder_id
-                    FROM integrations_settings LIMIT 1
-                """)
-                row = cur.fetchone()
-                if row:
-                    return {
-                        "drive_enabled": row[0],
-                        "gdrive_client_id": row[1],
-                        "gdrive_client_secret": row[2],
-                        "gdrive_refresh_token": row[3],
-                        "gdrive_folder_id": row[4]
-                    }
-    except Exception as e:
-        logger.error(f"Failed to fetch integrations settings from database: {e}")
+        with session_scope() as session:
+            row = IntegrationSettingsRepository(session).get()
+            if row is not None:
+                return {
+                    "drive_enabled": row.drive_enabled,
+                    "gdrive_client_id": row.gdrive_client_id,
+                    "gdrive_client_secret": row.gdrive_client_secret,
+                    "gdrive_refresh_token": row.gdrive_refresh_token,
+                    "gdrive_folder_id": row.gdrive_folder_id,
+                }
+    except Exception as exc:
+        logger.error(f"Failed to fetch integrations settings from database: {exc}")
     return {}
+
 
 def is_external_storage_enabled() -> bool:
     if STORAGE_PROVIDER != "local":

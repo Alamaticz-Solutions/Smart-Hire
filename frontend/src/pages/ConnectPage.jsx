@@ -44,8 +44,38 @@ export default function ConnectPage() {
         gmail_pass: '',
         outlook_enabled: 0,
         outlook_email: '',
-        additional_emails: '[]'
+        additional_emails: '[]',
+        auto_reply_enabled: 0,
+        mail_import_from: '',
+        mail_import_to: '',
+        skip_automated_senders: 1
     })
+    const [replyLog, setReplyLog] = useState({ counts: { pending: 0, sent: 0, skipped: 0, failed: 0 }, recent: [], failed: [] })
+
+    const [showFailed, setShowFailed] = useState(false)
+
+    const downloadFailedReplies = async () => {
+        try {
+            const res = await apiClient.get('/api/integrations/replies/failed.xlsx', { responseType: 'blob' })
+            const url = URL.createObjectURL(res.data)
+            const link = document.createElement('a')
+            link.href = url
+            link.download = 'failed_replies.xlsx'
+            link.click()
+            URL.revokeObjectURL(url)
+        } catch (err) {
+            console.error('Error downloading failed replies:', err)
+        }
+    }
+
+    const fetchReplyLog = useCallback(async () => {
+        try {
+            const res = await apiClient.get('/api/integrations/replies')
+            setReplyLog(res.data)
+        } catch (err) {
+            console.error('Error fetching reply log:', err)
+        }
+    }, [])
 
     const [newEmailForm, setNewEmailForm] = useState({ 
         email_user: '', 
@@ -66,13 +96,14 @@ export default function ConnectPage() {
                 headers: { 'x-user-username': user?.username }
             })
             setIntegrationsSettings(res.data)
+            fetchReplyLog()
         } catch (err) {
             console.error('Error fetching integrations settings:', err)
             showToast('Failed to load integration settings', 'error')
         } finally {
             setLoadingSettings(false)
         }
-    }, [user?.username])
+    }, [user?.username, fetchReplyLog])
 
     useEffect(() => {
         if (user?.role === 'admin' || user?.is_admin === 1) {
@@ -398,6 +429,139 @@ export default function ConnectPage() {
                             </label>
                         </div>
 
+                        {/* Mail import window + auto-reply */}
+                        <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 16, background: 'rgba(0,0,0,0.1)', marginBottom: 16 }}>
+                            <h3 style={{ margin: '0 0 12px', color: 'var(--gold)', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <Mail size={16} /> Mail import &amp; replies
+                            </h3>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                                <div>
+                                    <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Import mail received from</label>
+                                    <input
+                                        type="date"
+                                        value={integrationsSettings.mail_import_from || ''}
+                                        max={integrationsSettings.mail_import_to || undefined}
+                                        onChange={e => setIntegrationsSettings(prev => ({ ...prev, mail_import_from: e.target.value }))}
+                                        style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)' }}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Import mail received until (inclusive)</label>
+                                    <input
+                                        type="date"
+                                        value={integrationsSettings.mail_import_to || ''}
+                                        min={integrationsSettings.mail_import_from || undefined}
+                                        onChange={e => setIntegrationsSettings(prev => ({ ...prev, mail_import_to: e.target.value }))}
+                                        style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)' }}
+                                    />
+                                </div>
+                            </div>
+                            <p style={{ margin: '8px 0 16px', fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
+                                Only mail received inside this window is imported. Leave a date empty for no limit. Mail outside the window is left untouched, so widening the range later imports it.
+                            </p>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 12 }}>
+                                <div>
+                                    <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Skip automated senders</div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>Ignore noreply@, notifications@, invoice@, newsletters and similar machine-generated mail.</div>
+                                </div>
+                                <label className="switch-container sm">
+                                    <input
+                                        type="checkbox"
+                                        className="switch-input"
+                                        checked={integrationsSettings.skip_automated_senders !== 0}
+                                        onChange={e => setIntegrationsSettings(prev => ({ ...prev, skip_automated_senders: e.target.checked ? 1 : 0 }))}
+                                        aria-label="Skip automated senders"
+                                    />
+                                    <span className="switch-slider"></span>
+                                </label>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+                                <div>
+                                    <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+                                        Auto-reply to candidates: {integrationsSettings.auto_reply_enabled === 1 ? 'ON' : 'OFF'}
+                                    </div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', maxWidth: 520 }}>
+                                        When OFF the app only reads the mailbox and never sends anything. Acknowledgements for imported mail wait in a queue; when you switch this ON, each waiting candidate gets one reply, and anyone already replied to is never emailed again. Remember to click Save.
+                                    </div>
+                                </div>
+                                <label className="switch-container sm">
+                                    <input
+                                        type="checkbox"
+                                        className="switch-input"
+                                        checked={integrationsSettings.auto_reply_enabled === 1}
+                                        onChange={e => {
+                                            const turnOn = e.target.checked
+                                            if (turnOn && !window.confirm(`Turn auto-reply ON?\n\n${replyLog.counts.pending} candidate(s) are waiting for an acknowledgement and will be emailed after you save. People already replied to will not be emailed again.`)) return
+                                            setIntegrationsSettings(prev => ({ ...prev, auto_reply_enabled: turnOn ? 1 : 0 }))
+                                        }}
+                                        aria-label="Auto-reply to candidates"
+                                    />
+                                    <span className="switch-slider"></span>
+                                </label>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
+                                {[['pending', 'Waiting'], ['sent', 'Sent'], ['skipped', 'Skipped'], ['failed', 'Failed']].map(([key, label]) => (
+                                    <span key={key} style={{ padding: '4px 10px', borderRadius: 999, border: '1px solid var(--border)', fontSize: '0.75rem', color: key === 'failed' && replyLog.counts[key] > 0 ? '#fca5a5' : 'var(--text-dim)' }}>
+                                        {label}: <strong>{replyLog.counts[key] ?? 0}</strong>
+                                    </span>
+                                ))}
+                                <button type="button" onClick={fetchReplyLog} style={{ background: 'none', border: 'none', color: 'var(--gold)', cursor: 'pointer', fontSize: '0.75rem' }}>Refresh</button>
+                            </div>
+                            {replyLog.counts.failed > 0 && (
+                                <div style={{ marginTop: 12, border: '1px solid rgba(252,165,165,0.35)', borderRadius: 8, padding: 12 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                        <strong style={{ fontSize: '0.8rem', color: '#fca5a5' }}>
+                                            {replyLog.counts.failed} repl{replyLog.counts.failed === 1 ? 'y' : 'ies'} could not be sent
+                                        </strong>
+                                        <span style={{ display: 'flex', gap: 8 }}>
+                                            <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowFailed(v => !v)}>
+                                                {showFailed ? 'Hide list' : 'Preview list'}
+                                            </button>
+                                            <button type="button" className="btn btn-outline btn-sm" onClick={downloadFailedReplies}>
+                                                Download Excel
+                                            </button>
+                                        </span>
+                                    </div>
+                                    {showFailed && (
+                                        <div style={{ marginTop: 10, maxHeight: 220, overflow: 'auto' }}>
+                                            <table style={{ width: '100%', fontSize: '0.72rem', borderCollapse: 'collapse' }}>
+                                                <thead>
+                                                    <tr style={{ textAlign: 'left', color: 'var(--text-subtle)' }}>
+                                                        <th style={{ padding: '4px 6px' }}>Candidate email</th>
+                                                        <th style={{ padding: '4px 6px' }}>Subject</th>
+                                                        <th style={{ padding: '4px 6px' }}>Reason</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {replyLog.failed.map(r => (
+                                                        <tr key={r.id} style={{ borderTop: '1px solid var(--border)' }}>
+                                                            <td style={{ padding: '4px 6px' }}>{r.recipient}</td>
+                                                            <td style={{ padding: '4px 6px' }}>{r.subject}</td>
+                                                            <td style={{ padding: '4px 6px', color: '#fca5a5' }}>{r.error}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            {replyLog.recent.length > 0 && (
+                                <div style={{ marginTop: 10, maxHeight: 150, overflowY: 'auto', fontSize: '0.72rem', color: 'var(--text-dim)' }}>
+                                    {replyLog.recent.map(r => (
+                                        <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '3px 0', borderBottom: '1px solid var(--border)' }}>
+                                            <span>{r.recipient}</span>
+                                            <span title={r.error || ''}>{r.status}{r.sent_at ? ` · ${String(r.sent_at).slice(0, 10)}` : ''}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 20, opacity: integrationsSettings.email_enabled === 1 ? 1 : 0.5, pointerEvents: integrationsSettings.email_enabled === 1 ? 'auto' : 'none' }}>
                             {/* Gmail Integration Credentials */}
                             <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 16, background: 'rgba(0,0,0,0.1)' }}>
@@ -488,7 +652,7 @@ export default function ConnectPage() {
                                         <input 
                                             value={integrationsSettings.ms_tenant_id || ''}
                                             onChange={e => setIntegrationsSettings(prev => ({ ...prev, ms_tenant_id: e.target.value }))}
-                                            placeholder="common or tenant id"
+                                            placeholder="Directory (tenant) ID, e.g. b587dd2a-d8d0-4622-8337-b655855c1604 (not 'common')"
                                             style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
                                         />
                                     </div>

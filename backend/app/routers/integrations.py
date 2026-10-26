@@ -1,72 +1,50 @@
-"""Integrations settings / connection-test routes.
+"""Integration settings endpoints (administrators only).
 
-Moved verbatim (same paths/methods/logic) from app/main.py:
-  - GET    /api/integrations                     (main.py ~4821-4958)
-  - POST   /api/integrations                      (main.py ~4960-5101)
-  - POST   /api/integrations/gdrive/exchange       (main.py ~5108-5172)
-  - POST   /api/integrations/test                  (main.py ~5180-5269)
-  - GET    /api/integrations/status                 (main.py ~5271-5398)
-  - POST   /api/settings/test-email-template        (main.py ~5457-5523)
-
-Plus the Pydantic request models that were colocated with them in main.py:
-  IntegrationSettingsRequest, GDriveExchangeRequest, TestMailboxRequest,
-  TestEmailTemplateRequest.
-
-The `/api/integrations/test` and `/api/integrations/status` routes
-originally each hand-rolled their own ~90-130 line IMAP-login-probe and
-Microsoft-Graph-token-probe logic (four near-identical copies total across
-the two routes). Both now call the shared `test_imap_connection` /
-`test_graph_connection` helpers in app.services.integrations_test instead
--- see that module's docstring for the extraction details. One cosmetic
-side effect of the dedup: the generic-IMAP success message in
-`/api/integrations/status` changes from the original literal
-"Successfully connected to Mailbox!" to "Successfully connected to
-{email_user}!" (matching the shared helper's message, which is what every
-other IMAP-success branch already returned) -- purely a message-text
-change, no behavior change.
-
-`THEME_TEMPLATES` and `send_email_via_graph` are imported from
-app.services.email_worker (same agent, same phase) rather than duplicated
-here -- see that module's docstring for why it owns them.
-
-DB access uses `get_db_connection()` (app.db.session) instead of raw
-`sqlite3.connect(STATS_DB, ...)` so connections are always closed.
+Covers mailbox / Drive settings, the Google OAuth code exchange, connection
+tests and the reply-template test mail.
 """
+import io
 import json
-import sqlite3
+import os
+import smtplib
 import urllib.parse
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
+import requests
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
+from app.core.config import UPLOAD_DIR
 from app.core.logging import get_logger
-from app.db.session import get_db_connection
+from app.core.responses import EnvelopeRoute
+from app.db.engine import get_session
+from app.models import IntegrationSettings
+from app.repositories import (
+    ActivityRepository,
+    CandidateRepository,
+    IntegrationSettingsRepository,
+    MailReplyRepository,
+)
+from app.services.mail_filters import parse_day
 from app.services.auth import get_user_role
 from app.services.email_worker import THEME_TEMPLATES, send_email_via_graph
 from app.services.integrations_test import test_graph_connection, test_imap_connection
 
 logger = get_logger(__name__)
 
-router = APIRouter()
+router = APIRouter(route_class=EnvelopeRoute)
+
+MASK = "****"
+MAIL_SOURCE = "uploaded from mail"
+DEFAULT_THEME = "professional"
+_SECRET_FIELDS = ("email_pass", "gdrive_client_secret", "gdrive_refresh_token", "ms_client_secret", "gmail_pass")
 
 
-def _log_activity_db(username: str, action: str) -> None:
-    """Insert one row into activity_logs. Mirrors main.py's log_activity_db /
-    the private copy in app/routers/health.py -- used here only by
-    save_integrations_settings.
-    """
-    if not username:
-        username = "unknown"
-    try:
-        with get_db_connection() as conn:
-            cur = conn.cursor()
-            cur.execute("INSERT INTO activity_logs (username, action) VALUES (?, ?)", (username, action))
-            conn.commit()
-    except Exception as e:
-        logger.error(f"Error logging activity: {e}")
-
-
+# ── schemas ────────────────────────────────────────────────────────────────
 class IntegrationSettingsRequest(BaseModel):
     email_enabled: int
     imap_host: str
@@ -77,7 +55,7 @@ class IntegrationSettingsRequest(BaseModel):
     email_pass: str
     keywords: str
     drive_enabled: int
-    reply_theme: Optional[str] = "professional"
+    reply_theme: Optional[str] = DEFAULT_THEME
     reply_subject: Optional[str] = "Re: {subject} (Ref: {ref})"
     reply_body_missing: Optional[str] = None
     reply_body_complete: Optional[str] = None
@@ -97,6 +75,11 @@ class IntegrationSettingsRequest(BaseModel):
     additional_emails: Optional[str] = "[]"
     theme_usage_counts: Optional[str] = "{}"
     default_resume_template: Optional[str] = "alamaticz"
+    # Mail import guards
+    auto_reply_enabled: Optional[int] = 0
+    mail_import_from: Optional[str] = None   # YYYY-MM-DD (inclusive)
+    mail_import_to: Optional[str] = None     # YYYY-MM-DD (inclusive)
+    skip_automated_senders: Optional[int] = 1
 
 
 class GDriveExchangeRequest(BaseModel):
@@ -119,525 +102,381 @@ class TestEmailTemplateRequest(BaseModel):
     body_template: str
 
 
-@router.get("/api/integrations")
-def get_integrations_settings(request: Request):
+# ── helpers ────────────────────────────────────────────────────────────────
+def _require_admin(request: Request) -> str:
     username = request.headers.get("x-user-username")
-    role = get_user_role(username)
-    if role != "admin":
+    if get_user_role(username) != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")
+    return username
 
-    with get_db_connection() as conn:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT email_enabled, imap_host, imap_port, smtp_host, smtp_port,
-                   email_user, email_pass, keywords, drive_enabled,
-                   reply_theme, reply_subject, reply_body_missing, reply_body_complete,
-                   gdrive_client_id, gdrive_client_secret, gdrive_refresh_token, gdrive_folder_id, gdrive_email,
-                   ms_client_id, ms_client_secret, ms_tenant_id,
-                   additional_emails, theme_usage_counts,
-                   gmail_enabled, gmail_email, gmail_pass, outlook_enabled, outlook_email, default_resume_template
-            FROM integrations_settings LIMIT 1
-        """)
-        row = cur.fetchone()
 
-    if not row:
+def _masked(value: Optional[str]) -> str:
+    return MASK if value else ""
+
+
+def _loads(raw: Optional[str], default):
+    try:
+        return json.loads(raw) if raw else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _resolve_templates(theme: Optional[str], subject, body_missing, body_complete) -> tuple[str, str, str]:
+    """Preset themes win; custom/unknown themes use saved text with professional fallbacks."""
+    fallback = THEME_TEMPLATES[DEFAULT_THEME]
+    name = theme or DEFAULT_THEME
+    if name in THEME_TEMPLATES and name != "custom":
+        preset = THEME_TEMPLATES[name]
+        return preset["subject"], preset["body_missing"], preset["body_complete"]
+    return (
+        subject or fallback["subject"],
+        body_missing or fallback["body_missing"],
+        body_complete or fallback["body_complete"],
+    )
+
+
+def _is_outlook(host: Optional[str]) -> bool:
+    host = (host or "").lower()
+    return "office365" in host or "outlook" in host
+
+
+# ── settings ───────────────────────────────────────────────────────────────
+@router.get("/api/integrations")
+def get_integrations_settings(request: Request, session: Session = Depends(get_session)):
+    _require_admin(request)
+    row = IntegrationSettingsRepository(session).get()
+
+    if row is None:
+        professional = THEME_TEMPLATES[DEFAULT_THEME]
         return {
             "email_enabled": 0, "imap_host": "imap.gmail.com", "imap_port": 993,
             "smtp_host": "smtp.gmail.com", "smtp_port": 587, "email_user": "",
             "email_pass": "", "keywords": "resume,alamaticz,solution,job", "drive_enabled": 0,
-            "reply_theme": "professional",
+            "reply_theme": DEFAULT_THEME,
             "reply_subject": "Re: {subject} (Ref: {ref})",
-            "reply_body_missing": THEME_TEMPLATES["professional"]["body_missing"],
-            "reply_body_complete": THEME_TEMPLATES["professional"]["body_complete"],
-            "gdrive_client_id": "",
-            "gdrive_client_secret": "",
-            "gdrive_refresh_token": "",
-            "gdrive_folder_id": "",
-            "gdrive_email": "",
-            "ms_client_id": "",
-            "ms_client_secret": "",
-            "ms_tenant_id": "common",
-            "gmail_enabled": 0,
-            "gmail_email": "",
-            "gmail_pass": "",
-            "outlook_enabled": 0,
-            "outlook_email": "",
-            "default_resume_template": "alamaticz",
-            "additional_emails": "[]",
-            "theme_usage_counts": "{}"
+            "reply_body_missing": professional["body_missing"],
+            "reply_body_complete": professional["body_complete"],
+            "gdrive_client_id": "", "gdrive_client_secret": "", "gdrive_refresh_token": "",
+            "gdrive_folder_id": "", "gdrive_email": "",
+            "ms_client_id": "", "ms_client_secret": "", "ms_tenant_id": "common",
+            "gmail_enabled": 0, "gmail_email": "", "gmail_pass": "",
+            "outlook_enabled": 0, "outlook_email": "",
+            "default_resume_template": "alamaticz", "additional_emails": "[]", "theme_usage_counts": "{}",
+            "auto_reply_enabled": 0, "mail_import_from": "", "mail_import_to": "", "skip_automated_senders": 1,
         }
 
-    masked_pass = ""
-    if row[6]:
-        masked_pass = "****"
-
-    reply_theme = row[9] or "professional"
-    reply_subject = row[10]
-    reply_body_missing = row[11]
-    reply_body_complete = row[12]
-
-    # Load default templates if preset is not custom
-    if reply_theme in THEME_TEMPLATES:
-        if reply_theme != 'custom':
-            reply_subject = THEME_TEMPLATES[reply_theme]['subject']
-            reply_body_missing = THEME_TEMPLATES[reply_theme]['body_missing']
-            reply_body_complete = THEME_TEMPLATES[reply_theme]['body_complete']
-        else:
-            if not reply_subject: reply_subject = THEME_TEMPLATES['professional']['subject']
-            if not reply_body_missing: reply_body_missing = THEME_TEMPLATES['professional']['body_missing']
-            if not reply_body_complete: reply_body_complete = THEME_TEMPLATES['professional']['body_complete']
-    else:
-        if not reply_subject: reply_subject = THEME_TEMPLATES['professional']['subject']
-        if not reply_body_missing: reply_body_missing = THEME_TEMPLATES['professional']['body_missing']
-        if not reply_body_complete: reply_body_complete = THEME_TEMPLATES['professional']['body_complete']
-
-    masked_gdrive_secret = ""
-    if row[14]:
-        masked_gdrive_secret = "****"
-
-    masked_gdrive_refresh = ""
-    if row[15]:
-        masked_gdrive_refresh = "****"
-
-    masked_ms_secret = ""
-    if row[19]:
-        masked_ms_secret = "****"
-
-    ms_tenant_id = row[20] or "common"
-
-    additional_emails_raw = row[21] if len(row) > 21 else "[]"
-    masked_additional_emails = "[]"
-    if additional_emails_raw:
-        try:
-            add_emails = json.loads(additional_emails_raw)
-            for item in add_emails:
-                if item.get("email_pass"):
-                    item["email_pass"] = "****"
-            masked_additional_emails = json.dumps(add_emails)
-        except Exception:
-            pass
-
-    theme_usage_counts = row[22] if len(row) > 22 else "{}"
-
-    gmail_enabled = row[23] if len(row) > 23 else 0
-    gmail_email = row[24] if len(row) > 24 else ""
-    gmail_pass_masked = "****" if len(row) > 25 and row[25] else ""
-    outlook_enabled = row[26] if len(row) > 26 else 0
-    outlook_email = row[27] if len(row) > 27 else ""
+    subject, body_missing, body_complete = _resolve_templates(
+        row.reply_theme, row.reply_subject, row.reply_body_missing, row.reply_body_complete
+    )
+    additional = _loads(row.additional_emails, [])
+    for item in additional:
+        if isinstance(item, dict) and item.get("email_pass"):
+            item["email_pass"] = MASK
 
     return {
-        "email_enabled": row[0],
-        "imap_host": row[1] or "imap.gmail.com",
-        "imap_port": row[2] or 993,
-        "smtp_host": row[3] or "smtp.gmail.com",
-        "smtp_port": row[4] or 587,
-        "email_user": row[5] or "",
-        "email_pass": masked_pass,
-        "keywords": row[7] or "resume,alamaticz,solution,job",
-        "drive_enabled": row[8],
-        "reply_theme": reply_theme,
-        "reply_subject": reply_subject,
-        "reply_body_missing": reply_body_missing,
-        "reply_body_complete": reply_body_complete,
-        "gdrive_client_id": row[13] or "",
-        "gdrive_client_secret": masked_gdrive_secret,
-        "gdrive_refresh_token": masked_gdrive_refresh,
-        "gdrive_folder_id": row[16] or "",
-        "gdrive_email": row[17] or "",
-        "ms_client_id": row[18] or "",
-        "ms_client_secret": masked_ms_secret,
-        "ms_tenant_id": ms_tenant_id,
-        "gmail_enabled": gmail_enabled,
-        "gmail_email": gmail_email,
-        "gmail_pass": gmail_pass_masked,
-        "outlook_enabled": outlook_enabled,
-        "outlook_email": outlook_email,
-        "additional_emails": masked_additional_emails,
-        "theme_usage_counts": theme_usage_counts,
-        "default_resume_template": row[28] if len(row) > 28 and row[28] else "alamaticz"
+        "email_enabled": row.email_enabled,
+        "imap_host": row.imap_host or "imap.gmail.com",
+        "imap_port": row.imap_port or 993,
+        "smtp_host": row.smtp_host or "smtp.gmail.com",
+        "smtp_port": row.smtp_port or 587,
+        "email_user": row.email_user or "",
+        "email_pass": _masked(row.email_pass),
+        "keywords": row.keywords or "resume,alamaticz,solution,job",
+        "drive_enabled": row.drive_enabled,
+        "reply_theme": row.reply_theme or DEFAULT_THEME,
+        "reply_subject": subject,
+        "reply_body_missing": body_missing,
+        "reply_body_complete": body_complete,
+        "gdrive_client_id": row.gdrive_client_id or "",
+        "gdrive_client_secret": _masked(row.gdrive_client_secret),
+        "gdrive_refresh_token": _masked(row.gdrive_refresh_token),
+        "gdrive_folder_id": row.gdrive_folder_id or "",
+        "gdrive_email": row.gdrive_email or "",
+        "ms_client_id": row.ms_client_id or "",
+        "ms_client_secret": _masked(row.ms_client_secret),
+        "ms_tenant_id": row.ms_tenant_id or "common",
+        "gmail_enabled": row.gmail_enabled or 0,
+        "gmail_email": row.gmail_email or "",
+        "gmail_pass": _masked(row.gmail_pass),
+        "outlook_enabled": row.outlook_enabled or 0,
+        "outlook_email": row.outlook_email or "",
+        "additional_emails": json.dumps(additional),
+        "theme_usage_counts": row.theme_usage_counts or "{}",
+        "default_resume_template": row.default_resume_template or "alamaticz",
+        "auto_reply_enabled": row.auto_reply_enabled or 0,
+        "mail_import_from": row.mail_import_from or "",
+        "mail_import_to": row.mail_import_to or "",
+        "skip_automated_senders": 0 if row.skip_automated_senders == 0 else 1,
     }
 
 
 @router.post("/api/integrations")
-def save_integrations_settings(settings: IntegrationSettingsRequest, request: Request):
-    username = request.headers.get("x-user-username")
-    role = get_user_role(username)
-    if role != "admin":
-        raise HTTPException(status_code=403, detail="Forbidden")
+def save_integrations_settings(
+    settings: IntegrationSettingsRequest, request: Request, session: Session = Depends(get_session)
+):
+    username = _require_admin(request)
 
-    with get_db_connection() as conn:
-        cur = conn.cursor()
+    start, end = parse_day(settings.mail_import_from), parse_day(settings.mail_import_to)
+    if settings.mail_import_from and start is None:
+        raise HTTPException(status_code=400, detail="Import 'from' date must be YYYY-MM-DD")
+    if settings.mail_import_to and end is None:
+        raise HTTPException(status_code=400, detail="Import 'to' date must be YYYY-MM-DD")
+    if start and end and end < start:
+        raise HTTPException(status_code=400, detail="Import 'to' date cannot be before the 'from' date")
 
-        cur.execute("SELECT id, email_pass, gdrive_client_secret, gdrive_refresh_token, ms_client_secret, ms_tenant_id, additional_emails, theme_usage_counts, gmail_pass FROM integrations_settings LIMIT 1")
-        row = cur.fetchone()
+    repo = IntegrationSettingsRepository(session)
+    row = repo.get_or_create()
+    previous_auto_reply = row.auto_reply_enabled or 0
+    data = settings.model_dump()
+    data["mail_import_from"] = settings.mail_import_from or None
+    data["mail_import_to"] = settings.mail_import_to or None
 
-        final_pass = settings.email_pass
-        if final_pass == "****" and row:
-            final_pass = row[1]
+    # The UI echoes secrets back as "****": keep the stored value then.
+    for name in _SECRET_FIELDS:
+        if data.get(name) == MASK:
+            data[name] = getattr(row, name)
 
-        final_gmail_pass = settings.gmail_pass
-        if final_gmail_pass == "****" and row and len(row) > 8:
-            final_gmail_pass = row[8]
+    previous = {
+        str(item.get("email_user", "")).lower(): item.get("email_pass", "")
+        for item in _loads(row.additional_emails, []) if isinstance(item, dict)
+    }
+    additional = _loads(data.get("additional_emails"), [])
+    for item in additional:
+        if isinstance(item, dict) and item.get("email_pass") == MASK and item.get("email_user"):
+            item["email_pass"] = previous.get(item["email_user"].lower(), "")
+    data["additional_emails"] = json.dumps(additional)
 
-        final_gdrive_secret = settings.gdrive_client_secret
-        if final_gdrive_secret == "****" and row:
-            final_gdrive_secret = row[2]
+    counts = _loads(row.theme_usage_counts, {})
+    theme = settings.reply_theme or DEFAULT_THEME
+    counts[theme] = counts.get(theme, 0) + 1
+    data["theme_usage_counts"] = json.dumps(counts)
 
-        final_gdrive_refresh = settings.gdrive_refresh_token
-        if final_gdrive_refresh == "****" and row:
-            final_gdrive_refresh = row[3]
+    for name, value in data.items():
+        setattr(row, name, value)
 
-        final_ms_secret = settings.ms_client_secret
-        if final_ms_secret == "****" and row:
-            final_ms_secret = row[4]
+    extra_enabled = any(
+        isinstance(item, dict) and item.get("email_enabled") for item in _loads(data["additional_emails"], [])
+    )
+    every_mailbox_off = not (
+        settings.email_enabled or settings.gmail_enabled or settings.outlook_enabled or extra_enabled
+    )
+    if every_mailbox_off:  # only then are e-mail-imported candidates removed
+        removed = CandidateRepository(session).delete_by_source(MAIL_SOURCE)
+        for _, filename in removed:
+            if filename:
+                path = os.path.join(UPLOAD_DIR, filename)
+                try:
+                    if os.path.exists(path):
+                        os.remove(path)
+                except OSError as exc:
+                    logger.error("Error deleting file %s: %s", path, exc)
+        logger.info("Deleted %d email-imported candidates because email sync was disabled.", len(removed))
 
-        final_ms_tenant = settings.ms_tenant_id
-
-        # Handle additional_emails passwords restoration
-        try:
-            new_list = json.loads(settings.additional_emails or "[]")
-        except Exception:
-            new_list = []
-
-        old_passwords = {}
-        if row and len(row) > 6 and row[6]:
-            try:
-                old_list = json.loads(row[6])
-                for item in old_list:
-                    if "email_user" in item and "email_pass" in item:
-                        old_passwords[item["email_user"].lower()] = item["email_pass"]
-            except Exception:
-                pass
-
-        for item in new_list:
-            if item.get("email_pass") == "****" and item.get("email_user"):
-                item["email_pass"] = old_passwords.get(item["email_user"].lower(), "")
-
-        final_additional_emails = json.dumps(new_list)
-
-        # Load and increment theme usage count
-        current_counts = {}
-        if row and len(row) > 7 and row[7]:
-            try:
-                current_counts = json.loads(row[7])
-            except Exception:
-                current_counts = {}
-        selected_theme = settings.reply_theme or "professional"
-        current_counts[selected_theme] = current_counts.get(selected_theme, 0) + 1
-        final_theme_usage = json.dumps(current_counts)
-
-        if row:
-            cur.execute("""
-            UPDATE integrations_settings SET
-                email_enabled = ?, imap_host = ?, imap_port = ?,
-                smtp_host = ?, smtp_port = ?, email_user = ?,
-                email_pass = ?, keywords = ?, drive_enabled = ?,
-                reply_theme = ?, reply_subject = ?,
-                reply_body_missing = ?, reply_body_complete = ?,
-                gdrive_client_id = ?, gdrive_client_secret = ?,
-                gdrive_refresh_token = ?, gdrive_folder_id = ?,
-                gdrive_email = ?, ms_client_id = ?, ms_client_secret = ?,
-                ms_tenant_id = ?, additional_emails = ?,
-                theme_usage_counts = ?,
-                gmail_enabled = ?, gmail_email = ?, gmail_pass = ?,
-                outlook_enabled = ?, outlook_email = ?,
-                default_resume_template = ?
-            WHERE id = ?
-            """, (settings.email_enabled, settings.imap_host, settings.imap_port,
-                  settings.smtp_host, settings.smtp_port, settings.email_user,
-                  final_pass, settings.keywords, settings.drive_enabled,
-                  settings.reply_theme, settings.reply_subject,
-                  settings.reply_body_missing, settings.reply_body_complete,
-                  settings.gdrive_client_id, final_gdrive_secret,
-                  final_gdrive_refresh, settings.gdrive_folder_id,
-                  settings.gdrive_email, settings.ms_client_id, final_ms_secret,
-                  final_ms_tenant, final_additional_emails, final_theme_usage,
-                  settings.gmail_enabled, settings.gmail_email, final_gmail_pass,
-                  settings.outlook_enabled, settings.outlook_email, settings.default_resume_template, row[0]))
-        else:
-            cur.execute("""
-            INSERT INTO integrations_settings (
-                email_enabled, imap_host, imap_port, smtp_host, smtp_port, email_user, email_pass, keywords, drive_enabled,
-                reply_theme, reply_subject, reply_body_missing, reply_body_complete,
-                gdrive_client_id, gdrive_client_secret, gdrive_refresh_token, gdrive_folder_id, gdrive_email,
-                ms_client_id, ms_client_secret, ms_tenant_id, additional_emails,
-                theme_usage_counts, gmail_enabled, gmail_email, gmail_pass, outlook_enabled, outlook_email, default_resume_template
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (settings.email_enabled, settings.imap_host, settings.imap_port,
-                  settings.smtp_host, settings.smtp_port, settings.email_user,
-                  final_pass, settings.keywords, settings.drive_enabled,
-                  settings.reply_theme, settings.reply_subject,
-                  settings.reply_body_missing, settings.reply_body_complete,
-                  settings.gdrive_client_id, final_gdrive_secret,
-                  settings.gdrive_refresh_token, settings.gdrive_folder_id,
-                  settings.gdrive_email, settings.ms_client_id, final_ms_secret,
-                  final_ms_tenant, final_additional_emails, final_theme_usage,
-                  settings.gmail_enabled, settings.gmail_email, final_gmail_pass,
-                  settings.outlook_enabled, settings.outlook_email, settings.default_resume_template))
-
-        if settings.email_enabled == 0:
-            try:
-                cur.execute("SELECT id, filename FROM candidate_metadata WHERE source = 'uploaded from mail'")
-                email_candidates = cur.fetchall()
-                for cand_id, filename in email_candidates:
-                    if filename:
-                        import os
-                        from app.core.config import UPLOAD_DIR
-                        file_path = os.path.join(UPLOAD_DIR, filename)
-                        if os.path.exists(file_path):
-                            try:
-                                os.remove(file_path)
-                                logger.info(f"Deleted email candidate file: {file_path}")
-                            except Exception as file_err:
-                                logger.error(f"Error deleting file {file_path}: {file_err}")
-
-                    cur.execute("DELETE FROM job_candidates WHERE candidate_id = ?", (cand_id,))
-                    cur.execute("DELETE FROM candidate_metadata WHERE id = ?", (cand_id,))
-                logger.info(f"Deleted {len(email_candidates)} email-imported candidates because email sync was disabled.")
-            except Exception as delete_err:
-                logger.error(f"Error purging email candidates: {delete_err}")
-
-        conn.commit()
-
-    _log_activity_db(username, "updated integrations settings")
+    activity = ActivityRepository(session)
+    activity.add(username, "updated integrations settings")
+    if (settings.auto_reply_enabled or 0) != previous_auto_reply:
+        state = "ON" if settings.auto_reply_enabled else "OFF"
+        activity.add(username, f"turned candidate auto-reply {state}")
     return {"status": "saved"}
 
 
+@router.get("/api/integrations/replies")
+def get_reply_log(request: Request, session: Session = Depends(get_session)):
+    """Acknowledgement log: counts per status plus the most recent entries."""
+    _require_admin(request)
+    replies = MailReplyRepository(session)
+    counts = replies.counts()
+    recent = [
+        {
+            "id": r.id, "recipient": r.recipient, "candidate_id": r.candidate_id, "status": r.status,
+            "mailbox": r.mailbox_email, "subject": r.original_subject, "attempts": r.attempts,
+            "error": r.last_error, "created_at": r.created_at, "sent_at": r.sent_at,
+        }
+        for r in replies.recent(25)
+    ]
+    return {
+        "counts": {k: counts.get(k, 0) for k in ("pending", "sent", "skipped", "failed")},
+        "recent": recent,
+        "failed": [_reply_row(r) for r in replies.failed(100)],
+    }
+
+
+def _reply_row(r) -> dict:
+    return {
+        "id": r.id, "recipient": r.recipient, "candidate_id": r.candidate_id, "mailbox": r.mailbox_email,
+        "subject": r.original_subject, "attempts": r.attempts, "error": r.last_error,
+        "created_at": r.created_at, "sent_at": r.sent_at,
+    }
+
+
+@router.get("/api/integrations/replies/failed.xlsx")
+def export_failed_replies(request: Request, session: Session = Depends(get_session)):
+    """Excel list of candidates whose acknowledgement could not be sent."""
+    from openpyxl import Workbook
+
+    _require_admin(request)
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Failed replies"
+    sheet.append(["Candidate email", "Candidate ID", "Mailbox", "Original subject", "Attempts", "Reason", "Queued at"])
+    for r in MailReplyRepository(session).failed(5000):
+        sheet.append([r.recipient, r.candidate_id, r.mailbox_email, r.original_subject, r.attempts,
+                      r.last_error, str(r.created_at or "")])
+    for column, width in zip("ABCDEFG", (34, 13, 28, 40, 10, 60, 22)):
+        sheet.column_dimensions[column].width = width
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    buffer.seek(0)
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="failed_replies.xlsx"'},
+    )
+
+
+# ── Google Drive OAuth ─────────────────────────────────────────────────────
 @router.post("/api/integrations/gdrive/exchange")
 def exchange_gdrive_code(payload: GDriveExchangeRequest, request: Request):
-    username = request.headers.get("x-user-username")
-    role = get_user_role(username)
-    if role != "admin":
-        raise HTTPException(status_code=403, detail="Forbidden")
+    _require_admin(request)
 
-    import requests
-
-    client_id = payload.client_id.strip('"\' ')
-    client_secret = payload.client_secret.strip('"\' ')
     code = payload.code.strip()
-
-    # Extract code if full URL was pasted
-    if "code=" in code:
+    if "code=" in code:  # the whole redirect URL was pasted
         try:
-            parsed = urllib.parse.urlparse(code)
-            code = urllib.parse.parse_qs(parsed.query)["code"][0]
+            code = urllib.parse.parse_qs(urllib.parse.urlparse(code).query)["code"][0]
         except Exception:
             pass
 
-    token_url = "https://oauth2.googleapis.com/token"
-    token_data = {
-        "code": code,
-        "client_id": client_id,
-        "client_secret": client_secret,
-        "redirect_uri": "http://localhost",
-        "grant_type": "authorization_code"
-    }
-
     try:
-        resp = requests.post(token_url, data=token_data, timeout=15)
-        if resp.status_code != 200:
-            raise HTTPException(status_code=400, detail=f"Token exchange failed: {resp.text}")
+        response = requests.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "code": code,
+                "client_id": payload.client_id.strip("\"' "),
+                "client_secret": payload.client_secret.strip("\"' "),
+                "redirect_uri": "http://localhost",
+                "grant_type": "authorization_code",
+            },
+            timeout=15,
+        )
+        if response.status_code != 200:
+            raise HTTPException(status_code=400, detail=f"Token exchange failed: {response.text}")
 
-        resp_data = resp.json()
-        refresh_token = resp_data.get("refresh_token")
-        access_token = resp_data.get("access_token")
-
+        body = response.json()
+        refresh_token = body.get("refresh_token")
         if not refresh_token:
             raise HTTPException(
                 status_code=400,
-                detail="Google did not return a refresh token. Google only sends the refresh token on the FIRST authorization. Please go to Google Account Settings -> Security -> Third-party apps with account access, remove 'Hire AI' access, and authorize again."
+                detail=(
+                    "Google did not return a refresh token. Google only sends the refresh token on the FIRST "
+                    "authorization. Please go to Google Account Settings -> Security -> Third-party apps with "
+                    "account access, remove 'Hire AI' access, and authorize again."
+                ),
             )
 
-        # Try to retrieve Google account email using drive/v3/about
         email = "Unknown Google Account"
-        if access_token:
-            headers = {
-                "Authorization": f"Bearer {access_token}"
-            }
-            about_resp = requests.get("https://www.googleapis.com/drive/v3/about?fields=user", headers=headers, timeout=10)
-            if about_resp.status_code == 200:
-                user_info = about_resp.json().get("user", {})
-                email = user_info.get("emailAddress", "Unknown Google Account")
-
-        return {
-            "refresh_token": refresh_token,
-            "email": email
-        }
+        if access_token := body.get("access_token"):
+            about = requests.get(
+                "https://www.googleapis.com/drive/v3/about?fields=user",
+                headers={"Authorization": f"Bearer {access_token}"}, timeout=10,
+            )
+            if about.status_code == 200:
+                email = about.json().get("user", {}).get("emailAddress", email)
+        return {"refresh_token": refresh_token, "email": email}
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to communicate with Google API: {str(e)}")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to communicate with Google API: {exc}")
 
 
+# ── connection tests ───────────────────────────────────────────────────────
 @router.post("/api/integrations/test")
-def test_mailbox_connection(settings: TestMailboxRequest, request: Request):
-    username = request.headers.get("x-user-username")
-    role = get_user_role(username)
-    if role != "admin":
-        raise HTTPException(status_code=403, detail="Forbidden")
+def test_mailbox_connection(
+    settings: TestMailboxRequest, request: Request, session: Session = Depends(get_session)
+):
+    _require_admin(request)
+    row = IntegrationSettingsRepository(session).get()
 
-    email_user = settings.email_user
-    email_pass = settings.email_pass
-    imap_host = settings.imap_host
-    imap_port = settings.imap_port
+    password = settings.email_pass
+    if password == MASK and row is not None:
+        if row.email_user and row.email_user.lower() == settings.email_user.lower():
+            password = row.email_pass
+        else:
+            for item in _loads(row.additional_emails, []):
+                if isinstance(item, dict) and str(item.get("email_user", "")).lower() == settings.email_user.lower():
+                    password = item.get("email_pass", "")
+                    break
 
-    # If password is masked, restore it from the DB
-    if email_pass == "****":
-        with get_db_connection() as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT email_user, email_pass, additional_emails FROM integrations_settings LIMIT 1")
-            row = cur.fetchone()
-
-        if row:
-            # Check primary
-            if row[0] and row[0].lower() == email_user.lower():
-                email_pass = row[1]
-            else:
-                # Check additional
-                try:
-                    add_emails = json.loads(row[2] or "[]")
-                    for item in add_emails:
-                        if item.get("email_user") and item["email_user"].lower() == email_user.lower():
-                            email_pass = item.get("email_pass", "")
-                            break
-                except Exception:
-                    pass
-
-    use_graph = False
-    ms_client_id = ms_client_secret = ms_tenant_id = None
-    if 'office365' in imap_host.lower() or 'outlook' in imap_host.lower():
-        # Check Microsoft Graph API credentials
-        with get_db_connection() as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT ms_client_id, ms_client_secret, ms_tenant_id FROM integrations_settings LIMIT 1")
-            ms_row = cur.fetchone()
-
-        if ms_row and ms_row[0] and ms_row[1] and ms_row[2]:
-            use_graph = True
-            ms_client_id, ms_client_secret, ms_tenant_id = ms_row
-
-    if use_graph:
-        return test_graph_connection(ms_tenant_id, ms_client_id, ms_client_secret, email_user)
-    else:
-        return test_imap_connection(imap_host, imap_port, email_user, email_pass)
+    if _is_outlook(settings.imap_host) and row and row.ms_client_id and row.ms_client_secret and row.ms_tenant_id:
+        return test_graph_connection(row.ms_tenant_id, row.ms_client_id, row.ms_client_secret, settings.email_user)
+    return test_imap_connection(settings.imap_host, settings.imap_port, settings.email_user, password)
 
 
 @router.get("/api/integrations/status")
-def test_integrations_connection(request: Request):
-    username = request.headers.get("x-user-username")
-    role = get_user_role(username)
-    if role != "admin":
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-    with get_db_connection() as conn:
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM integrations_settings LIMIT 1")
-        row = cur.fetchone()
-
-    if not row:
+def test_integrations_connection(request: Request, session: Session = Depends(get_session)):
+    _require_admin(request)
+    row = IntegrationSettingsRepository(session).get()
+    if row is None or not row.email_enabled:
         return {"status": "disabled", "message": "Email integration is disabled."}
 
-    settings = dict(row)
-    if not settings.get("email_enabled"):
-        return {"status": "disabled", "message": "Email integration is disabled."}
+    graph_ready = bool(row.ms_client_id and row.ms_client_secret and (row.ms_tenant_id or "common"))
+    tenant = row.ms_tenant_id or "common"
 
-    outlook_enabled = settings.get("outlook_enabled", 0)
-    outlook_email = settings.get("outlook_email", "")
-    gmail_enabled = settings.get("gmail_enabled", 0)
-    gmail_email = settings.get("gmail_email", "")
-    gmail_pass = settings.get("gmail_pass", "")
-    ms_client_id = settings.get("ms_client_id", "")
-    ms_client_secret = settings.get("ms_client_secret", "")
-    ms_tenant_id = settings.get("ms_tenant_id", "common")
-    imap_host = settings.get("imap_host", "")
-    imap_port = settings.get("imap_port", 993)
-    email_user = settings.get("email_user", "")
-    email_pass = settings.get("email_pass", "")
-
-    if outlook_enabled and outlook_email:
-        if not ms_client_id or not ms_client_secret or not ms_tenant_id:
+    if row.outlook_enabled and row.outlook_email:
+        if not graph_ready:
             return {"status": "error", "message": "Microsoft Graph credentials are not fully configured."}
-        return test_graph_connection(ms_tenant_id, ms_client_id, ms_client_secret, outlook_email)
+        return test_graph_connection(tenant, row.ms_client_id, row.ms_client_secret, row.outlook_email)
 
-    elif gmail_enabled and gmail_email:
-        return test_imap_connection("imap.gmail.com", 993, gmail_email, gmail_pass)
+    if row.gmail_enabled and row.gmail_email:
+        return test_imap_connection("imap.gmail.com", 993, row.gmail_email, row.gmail_pass)
 
-    else:
-        if not imap_host or not email_user:
-            return {"status": "unconfigured", "message": "Credentials are not fully configured. Enable an integration."}
-
-        if 'office365' in imap_host.lower() or 'outlook' in imap_host.lower():
-            if not ms_client_id or not ms_client_secret or not ms_tenant_id:
-                return {"status": "error", "message": "Microsoft Graph credentials are not configured in Primary Mailbox."}
-            return test_graph_connection(ms_tenant_id, ms_client_id, ms_client_secret, email_user)
-        else:
-            return test_imap_connection(imap_host, imap_port, email_user, email_pass)
+    if not row.imap_host or not row.email_user:
+        return {"status": "unconfigured", "message": "Credentials are not fully configured. Enable an integration."}
+    if _is_outlook(row.imap_host):
+        if not graph_ready:
+            return {"status": "error", "message": "Microsoft Graph credentials are not configured in Primary Mailbox."}
+        return test_graph_connection(tenant, row.ms_client_id, row.ms_client_secret, row.email_user)
+    return test_imap_connection(row.imap_host, row.imap_port or 993, row.email_user, row.email_pass)
 
 
 @router.post("/api/settings/test-email-template")
-def test_email_template_endpoint(request_data: TestEmailTemplateRequest, request: Request):
-    username = request.headers.get("x-user-username")
-    role = get_user_role(username)
-    if role != "admin":
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-    with get_db_connection() as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT imap_host, smtp_host, smtp_port, email_user, email_pass, ms_client_id, ms_client_secret, ms_tenant_id FROM integrations_settings LIMIT 1")
-        row = cur.fetchone()
-
-    if not row:
+def test_email_template_endpoint(
+    request_data: TestEmailTemplateRequest, request: Request, session: Session = Depends(get_session)
+):
+    _require_admin(request)
+    row: Optional[IntegrationSettings] = IntegrationSettingsRepository(session).get()
+    if row is None:
         return {"status": "error", "message": "Email integration is not configured."}
-
-    imap_host = row[0]
-    smtp_host = row[1]
-    smtp_port = row[2] or 587
-    email_user = row[3]
-    email_pass = row[4]
-    ms_client_id = row[5]
-    ms_client_secret = row[6]
-    ms_tenant_id = row[7]
-
-    if not email_user:
+    if not row.email_user:
         return {"status": "error", "message": "Email user is not configured."}
 
-    full_name = "Jane Doe"
-    missing_fields_str = "Phone, Current Location, Expected CTC" if request_data.preview_type == "missing" else ""
-
-    subject = request_data.subject_template.replace('{{full_name}}', full_name)
-    body = request_data.body_template.replace('{{full_name}}', full_name).replace('{{missing_fields}}', missing_fields_str)
+    name = "Jane Doe"
+    missing = "Phone, Current Location, Expected CTC" if request_data.preview_type == "missing" else ""
+    subject = request_data.subject_template.replace("{{full_name}}", name)
+    body = request_data.body_template.replace("{{full_name}}", name).replace("{{missing_fields}}", missing)
 
     try:
-        if imap_host and ('office365' in imap_host.lower() or 'outlook' in imap_host.lower()):
-            if not ms_client_id or not ms_client_secret or not ms_tenant_id:
+        if row.imap_host and _is_outlook(row.imap_host):
+            if not (row.ms_client_id and row.ms_client_secret and row.ms_tenant_id):
                 return {"status": "error", "message": "Microsoft Graph credentials are not fully configured."}
-
-            success = send_email_via_graph(ms_client_id, ms_client_secret, ms_tenant_id, email_user, request_data.recipient_email, subject, body)
-            if success:
-                return {"status": "success", "message": f"Test email sent to {request_data.recipient_email}"}
-            else:
+            sent = send_email_via_graph(
+                row.ms_client_id, row.ms_client_secret, row.ms_tenant_id,
+                row.email_user, request_data.recipient_email, subject, body,
+            )
+            if not sent:
                 return {"status": "error", "message": "Failed to send email via Microsoft Graph API."}
         else:
-            import smtplib
-            from email.mime.text import MIMEText
-            from email.mime.multipart import MIMEMultipart
-
-            if not email_pass:
+            if not row.email_pass:
                 return {"status": "error", "message": "SMTP password is not configured."}
-
-            msg = MIMEMultipart()
-            msg['From'] = email_user
-            msg['To'] = request_data.recipient_email
-            msg['Subject'] = subject
-            msg.attach(MIMEText(body, 'plain'))
-
-            server = smtplib.SMTP(smtp_host, smtp_port, timeout=10.0)
-            server.starttls()
-            server.login(email_user, email_pass)
-            server.sendmail(email_user, request_data.recipient_email, msg.as_string())
-            server.quit()
-
-            return {"status": "success", "message": f"Test email sent to {request_data.recipient_email}"}
-    except Exception as e:
-        return {"status": "error", "message": f"Failed to send email: {str(e)}"}
+            message = MIMEMultipart()
+            message["From"], message["To"], message["Subject"] = row.email_user, request_data.recipient_email, subject
+            message.attach(MIMEText(body, "plain"))
+            server = smtplib.SMTP(row.smtp_host, row.smtp_port or 587, timeout=10.0)
+            try:
+                server.starttls()
+                server.login(row.email_user, row.email_pass)
+                server.sendmail(row.email_user, request_data.recipient_email, message.as_string())
+            finally:
+                server.quit()
+        return {"status": "success", "message": f"Test email sent to {request_data.recipient_email}"}
+    except Exception as exc:
+        return {"status": "error", "message": f"Failed to send email: {exc}"}

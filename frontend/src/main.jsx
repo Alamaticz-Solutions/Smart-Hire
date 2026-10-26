@@ -3,8 +3,10 @@ import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './index.css'
 import axios from 'axios'
+import { installEnvelope } from './api/envelope'
 
 axios.defaults.baseURL = import.meta.env.VITE_API_URL || '';
+installEnvelope(axios);
 
 // Pre-paint the theme + accent attributes from localStorage so the first
 // frame already matches the user's choice (App.jsx's effects would otherwise

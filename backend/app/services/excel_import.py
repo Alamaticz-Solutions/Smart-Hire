@@ -40,7 +40,8 @@ from typing import Optional
 import openpyxl
 
 from app.core.logging import get_logger
-from app.db.session import get_db_connection
+from app.db.engine import session_scope
+from app.repositories import CandidateRepository, CustomColumnRepository
 from app.services.ai_clients import _processing_lock
 from app.services.matching import match_candidate_to_all_jobs
 
@@ -90,15 +91,16 @@ def _find_existing_match(existing_candidates: list, norm_email: str, norm_phone:
 
 
 def process_excel_file_logic(safe_name: str, path: str, username: str):
-    with get_db_connection() as conn:
-        cur = conn.cursor()
+    with session_scope() as session:
+        candidates = CandidateRepository(session)
         processed_candidate_ids = []
         try:
             wb = openpyxl.load_workbook(path, data_only=True)
 
             # Fetch custom columns.
-            cur.execute("SELECT col_key, col_label FROM custom_columns")
-            custom_cols = {row[1].strip().lower(): row[0] for row in cur.fetchall()}
+            custom_cols = {
+                (c.col_label or "").strip().lower(): c.col_key for c in CustomColumnRepository(session).list_all()
+            }
 
             # Mappings for common columns.
             column_mappings = {
@@ -176,15 +178,14 @@ def process_excel_file_logic(safe_name: str, path: str, username: str):
             }
 
             # Load existing candidates from DB.
-            cur.execute("SELECT id, full_name, email, phone FROM candidate_metadata WHERE LOWER(created_by) = LOWER(?)", (username,))
             existing_candidates = [
                 {
-                    "id": r[0],
-                    "full_name": r[1] or "",
-                    "email": r[2] or "",
-                    "phone": r[3] or "",
+                    "id": r["id"],
+                    "full_name": r["full_name"] or "",
+                    "email": r["email"] or "",
+                    "phone": r["phone"] or "",
                 }
-                for r in cur.fetchall()
+                for r in candidates.identity_rows(username)
             ]
 
             # Iterate over all sheets.
@@ -312,16 +313,14 @@ def process_excel_file_logic(safe_name: str, path: str, username: str):
                         except Exception:
                             row_data["availability_in_days"] = ""
 
-                    cur.execute("PRAGMA table_info(candidate_metadata)")
-                    allowed_cols = {c[1] for c in cur.fetchall()}
+                    allowed_cols = candidates.column_names
                     db_data = {k: v for k, v in row_data.items() if k in allowed_cols and k != "id"}
                     if "source" not in db_data or not db_data["source"]:
                         db_data["source"] = "Excel Import"
 
                     if match_id:
                         # Update existing record.
-                        set_clause = ", ".join(f"{k}=?" for k in db_data)
-                        cur.execute(f"UPDATE candidate_metadata SET {set_clause} WHERE id=?", list(db_data.values()) + [match_id])
+                        candidates.update(match_id, db_data)
                         candidate_id = match_id
                     else:
                         # Insert new record.
@@ -329,13 +328,7 @@ def process_excel_file_logic(safe_name: str, path: str, username: str):
                         db_data["candidate_status"] = "New"
                         db_data["filename"] = ""
                         db_data["created_by"] = username
-                        cols_list = list(db_data.keys())
-                        vals_list = list(db_data.values())
-                        cur.execute(
-                            f"INSERT INTO candidate_metadata ({','.join(cols_list)}) VALUES ({','.join(['?'] * len(cols_list))})",
-                            vals_list,
-                        )
-                        candidate_id = cur.lastrowid
+                        candidate_id = candidates.insert(db_data)
                         existing_candidates.append(
                             {
                                 "id": candidate_id,
@@ -358,8 +351,7 @@ def process_excel_file_logic(safe_name: str, path: str, username: str):
                     logger.error(f"Error cleaning up failed Excel file {path}: {file_err}")
         finally:
             try:
-                cur.execute("DELETE FROM candidate_metadata WHERE filename = ? AND full_name LIKE '⏳ Parsing Excel:%'", (safe_name,))
-                conn.commit()
+                candidates.delete_excel_placeholders(safe_name)
             except Exception as db_err:
                 logger.error(f"Error clearing Excel placeholder or committing in finally: {db_err}")
 

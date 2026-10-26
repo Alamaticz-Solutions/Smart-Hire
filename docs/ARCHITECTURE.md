@@ -14,11 +14,11 @@ The backend used to be a single 6,479-line `main.py`. It is now split by respons
 
 ```
 app/
-  main.py              Thin FastAPI app: env loading, the sqlite3->Postgres monkeypatch
-                        (must run before anything touches the DB), CORS, static file
-                        serving, router registration, the SPA fallback, and a `lifespan`
-                        handler that runs init_db() and starts the two background threads
-                        (model warm-up, email polling) at startup.
+  main.py              Thin FastAPI app: env loading, CORS, request-id + session-token
+                        middleware, static file serving, router registration, the SPA
+                        fallback, exception handlers (all errors use the response
+                        envelope) and a `lifespan` handler that runs init_db() and starts
+                        the two background threads (model warm-up, email polling).
 
   core/
     config.py           Single source of truth for every env var the app reads (see
@@ -27,28 +27,31 @@ app/
     logging.py           get_logger(name) - a standard `logging` setup that replaced the
                           codebase's previous ad hoc print()-based diagnostics.
 
+  models/                SQLAlchemy 2.0 ORM models, one module per area (user, candidate,
+                          job + links + shares, system tables). `Base.metadata` is the
+                          single description of the schema.
+
+  repositories/          The ONLY code that issues queries. One repository per aggregate
+                          (users, candidates, jobs/links/shares, activity, team members,
+                          masked keywords, custom columns, change requests, processed
+                          e-mails, integration settings). Repositories take a Session and
+                          never commit; the caller owns the transaction. Candidates also
+                          expose dict-shaped access through a *reflected* table, because
+                          administrators can add custom columns at runtime.
+
   db/
-    postgres_adapter.py   Monkey-patches `sqlite3.connect` to transparently route to a real
-                           PostgreSQL connection when Postgres env vars are configured. This
-                           is why the rest of the codebase still says "sqlite3"/"STATS_DB"
-                           throughout - historically the app used local SQLite, and the
-                           monkeypatch was added later to move to Postgres without rewriting
-                           every call site. `patch_if_configured()` from this module MUST run
-                           before any `sqlite3.connect(...)` call anywhere in the app.
-    session.py             get_db_connection() - a context manager wrapping
-                            sqlite3.connect(STATS_DB, timeout=30.0) that guarantees the
-                            connection is closed even on exception. Not a connection pool
-                            (see "Known issues / deliberately out of scope" below) - just a
-                            single choke point that replaced ~98 duplicated open/close blocks
-                            and fixed several connection leaks on error paths.
-    init_db.py              Schema creation, ALTER TABLE migrations, and seed data. Must be
-                             called explicitly (from main.py's lifespan handler) - it is not
-                             a module-level side effect anymore.
-    row_helpers.py           row_to_dict() / dict_row_factory() - converts a DB row to a
-                              plain dict regardless of whether it's a sqlite3.Row or a
-                              psycopg2 row.
+    engine.py              Lazy SQLAlchemy engine (PostgreSQL when configured, SQLite file
+                            otherwise) with connection pooling, the `get_session` request
+                            dependency (commit on success / rollback on error) and
+                            `session_scope()` for background workers.
+    init_db.py              create_all + idempotent column migrations + indexes + seed data
+                             (default users, team, masked keywords, integration settings).
+                             Called explicitly from the lifespan handler.
 
   services/
+    vector_store.py        PGVector index behind one interface (index / search / delete); a
+                            logged no-op on SQLite.
+    columns.py              Add / drop administrator-defined custom candidate columns.
     ai_clients.py          get_models() / peek_models() - the process-wide lazy-loaded Groq
                             LLM + optional HuggingFace embeddings client cache, plus
                             _processing_lock (serializes resume/Excel processing to avoid
@@ -133,10 +136,13 @@ file under `UPLOAD_DIR` at all. Both are preserved, in this order, on purpose.
 |---|---|
 | `GROQ_API_KEY` | Groq LLM API key (resume parsing, matching, chat) |
 | `HF_TOKEN` | Optional - HuggingFace Inference API token for embeddings. If unset, embeddings/vector search are disabled (to avoid OOM on small hosts). |
-| `STATS_DB_PATH` | Local SQLite file path, used only when Postgres isn't configured, or as the historical name of the "main" DB even when Postgres is active (see `postgres_adapter.py`). |
+| `STATS_DB_PATH` | Local SQLite file path, used only when PostgreSQL isn't configured (development / tests). |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SENDER`, `SMTP_PASSWORD` | Outbound mail (auto-replies, password reset) |
 | `IMAP_HOST`, `IMAP_PORT` | Inbound mailbox polling (Gmail/generic IMAP) |
-| `POSTGRES_DATABASE_URL` (or `POSTGRES_HOST`/`PORT`/`USER`/`PASSWORD`/`DB`) | Enables the sqlite3->Postgres monkeypatch; also the vector store for pgvector-based matching/chat |
+| `POSTGRES_DATABASE_URL` (or `POSTGRES_HOST`/`PORT`/`USER`/`PASSWORD`/`DB`) | Selects PostgreSQL (SQLAlchemy engine) and enables the pgvector store for semantic search / chat. Passwords with special characters are safe in the discrete variables; URL-encode them in the URL form. |
+| `EMBEDDINGS_PROVIDER` (`auto` / `api` / `local` / `off`) | Embedding backend. `auto`: hosted HuggingFace router when `HF_TOKEN` works, else a local sentence-transformers model. |
+| `SESSION_SECRET` | Signs session tokens; set it in production or every restart logs everyone out. |
+| `ADMIN_INITIAL_PASSWORD` | Password for the seeded `admin` on a new database (production otherwise generates a random one and logs it once). |
 | `STORAGE_PROVIDER` | `local` \| `s3` \| `onedrive` \| `google` - where uploaded resumes are stored |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `AWS_BUCKET_NAME` | S3 storage |
 | `ONEDRIVE_CLIENT_ID`, `ONEDRIVE_CLIENT_SECRET`, `ONEDRIVE_REFRESH_TOKEN`, `ONEDRIVE_FOLDER_NAME` | OneDrive storage |
@@ -415,6 +421,26 @@ Not addressed by this change (separate, larger scope): Firebase login still has 
 token verification (see Known Issues below) - this rework protects every request *after* login,
 not the Firebase login step itself.
 
+## Data layer and response contract (ORM refactor)
+
+* **No raw SQL outside `app/repositories/` and `app/db/init_db.py`.** The old
+  `sqlite3.connect` monkeypatch (`postgres_adapter.py`) and `get_db_connection()` were removed;
+  pooling is provided by the SQLAlchemy engine.
+* **Unit of work.** Routers receive a `Session` via `Depends(get_session)`; services/repositories
+  never commit. Background tasks use `session_scope()` and must be scheduled *after* the request
+  commits (`session.commit()` before `background_tasks.add_task(...)`).
+* **Uniform responses.** Every JSON endpoint returns
+  `{success, message, data, meta, error, request_id}` (`app/core/responses.py`). Handlers keep
+  returning plain dicts/lists; `EnvelopeRoute` wraps them and converts `{"detail": ...}` error
+  bodies. Errors also carry `detail` (alias of `message`) for older clients. Binary endpoints
+  (DOCX export, file download) are not enveloped.
+* **Frontend.** `frontend/src/api/envelope.js` unwraps `data` (merging `message` into object
+  payloads) so pages keep consuming the bare payload.
+* **Custom columns.** Reflected-table access is cached and invalidated *after commit* of the DDL
+  session (see `invalidate_candidate_table_cache`).
+* **Tests.** `backend/tests` (pytest) run against a throw-away SQLite file and refuse to start if
+  PostgreSQL is configured. Run: `cd backend && pip install -r requirements-dev.txt && pytest`.
+
 ## Known issues / deliberately out of scope
 
 Flagged here rather than fixed, either because they're a different kind of task (performance,
@@ -438,3 +464,12 @@ positioned to make:
   phase (frontend) - not via functional/unit tests, because none exist to run. A manual
   click-through smoke test (login, upload, jobs, matching, admin) against a real backend with
   real credentials is recommended before trusting this in production.
+
+## Mailbox import guards and replies
+
+The poller (`app/services/email_worker.py`) is configured from the Connect page (table `integration_settings`):
+
+- **Date window** (`mail_import_from` / `mail_import_to`, inclusive, by the mail's received date). Mail outside the window is left unprocessed, so widening the range later imports it. Graph applies it as a server-side `$filter`; IMAP checks the `Date` header.
+- **Skip automated senders** (`skip_automated_senders`, default on): `noreply`, `invoice`, `billing`, newsletters and similar (`app/services/mail_filters.py`).
+- **Auto-reply** (`auto_reply_enabled`, default **off**). Importing a message only queues a row in `mail_replies`; nothing is sent while the switch is off. When it is turned on, queued rows are sent once each. A recipient already answered for the same candidate is marked `skipped`, failures retry up to 3 times, and every outcome is committed immediately so a crash cannot cause a duplicate. `GET /api/integrations/replies` returns the counts and latest entries.
+- Outlook sending needs the `Mail.Send` application permission and a real tenant ID (not `common`).

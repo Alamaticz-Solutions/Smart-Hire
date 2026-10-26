@@ -27,12 +27,14 @@ import os
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from app.core.responses import EnvelopeRoute
 from langchain_community.document_loaders import Docx2txtLoader
 from langchain_core.messages import HumanMessage
 
 from app.core.config import UPLOAD_DIR
 from app.core.logging import get_logger
-from app.db.session import get_db_connection
+from app.db.engine import session_scope
+from app.repositories import ActivityRepository
 from app.dependencies import require_approved_user
 from app.services.json_parsing import parse_llm_json
 from app.services.retry import retry_with_backoff
@@ -43,7 +45,7 @@ from app.services.excel_import import process_excel_file
 
 logger = get_logger(__name__)
 
-router = APIRouter()
+router = APIRouter(route_class=EnvelopeRoute)
 
 # Applies to both /api/upload and /api/jobs/parse-document - neither route
 # previously bounded the request body, so a single very large or malformed
@@ -59,19 +61,14 @@ def _reject_if_too_large(content: bytes) -> None:
 
 
 def _log_activity_db(username: str, action: str) -> None:
-    """Insert one row into activity_logs. Mirrors main.py's log_activity_db."""
-    if not username:
-        username = "unknown"
+    """Record an audit entry; never lets a logging failure break the request."""
     try:
-        with get_db_connection() as conn:
-            cur = conn.cursor()
-            cur.execute("INSERT INTO activity_logs (username, action) VALUES (?, ?)", (username, action))
-            conn.commit()
-    except Exception as e:
-        logger.error(f"Error logging activity: {e}")
+        with session_scope() as session:
+            ActivityRepository(session).add(username or "unknown", action)
+    except Exception as exc:
+        logger.error("Error logging activity: %s", exc)
 
 
-# ── Upload & Extract ────────────────────────────────────────────────────────────
 @router.post("/api/upload")
 async def upload_resume(
     background_tasks: BackgroundTasks,

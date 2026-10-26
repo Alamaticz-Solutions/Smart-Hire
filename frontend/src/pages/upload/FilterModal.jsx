@@ -45,6 +45,24 @@ export default function FilterModal({
                         />
                     </div>
                     <div>
+                        <label style={{ display: 'block', marginBottom: 5, fontSize: '0.8rem', color: 'var(--text-dim)' }}>Mail received (date range)</label>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <input
+                                type="date" aria-label="Mail received from"
+                                value={filters.mailFrom} max={filters.mailTo || undefined}
+                                onChange={e => setFilters(p => ({ ...p, mailFrom: e.target.value }))}
+                                style={{ flex: 1, padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                            />
+                            <span style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>to</span>
+                            <input
+                                type="date" aria-label="Mail received until"
+                                value={filters.mailTo} min={filters.mailFrom || undefined}
+                                onChange={e => setFilters(p => ({ ...p, mailTo: e.target.value }))}
+                                style={{ flex: 1, padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                            />
+                        </div>
+                    </div>
+                    <div>
                         <label style={{ display: 'block', marginBottom: 8, fontSize: '0.8rem', color: 'var(--text-dim)' }}>Pega Certifications</label>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                             {PEGA_CERTS.map(cert => (
@@ -107,7 +125,7 @@ export default function FilterModal({
                     </div>
 
                     <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
-                        <button className="btn btn-secondary" onClick={() => { setFilters({ minTotalExp: '', minPegaExp: '', certs: [] }); setCustomFilters([]); setColumnFilters({}); }} style={{ flex: 1, borderColor: 'var(--border)' }}>
+                        <button className="btn btn-secondary" onClick={() => { setFilters({ minTotalExp: '', minPegaExp: '', certs: [], mailFrom: '', mailTo: '' }); setCustomFilters([]); setColumnFilters({}); }} style={{ flex: 1, borderColor: 'var(--border)' }}>
                             Clear All
                         </button>
                         <button className="btn" onClick={onClose} style={{ flex: 1, background: 'var(--gold)', color: 'var(--action-fg)', fontWeight: '900', border: 'none' }}>

@@ -34,7 +34,7 @@ Dependencies:
     persist the result).
   - `get_models` is imported from `app.services.ai_clients`, the single
     process-wide LLM/embeddings client cache.
-  - `row_to_dict` is imported from `app.db.row_helpers`.
+  - database access goes through `app.repositories` (SQLAlchemy sessions).
 """
 from __future__ import annotations
 
@@ -44,7 +44,9 @@ import json
 import os
 import re
 import smtplib
-import sqlite3
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Optional
 import time
 from email import message_from_bytes
 from email.header import decode_header
@@ -54,13 +56,26 @@ from email.utils import parseaddr
 
 from langchain_community.document_loaders import Docx2txtLoader
 from langchain_core.messages import HumanMessage
-from langchain_community.vectorstores import PGVector
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.core.config import UPLOAD_DIR
 from app.core.logging import get_logger
-from app.db.row_helpers import row_to_dict
-from app.db.session import get_db_connection
+from app.db.engine import session_scope
+from app.repositories import (
+    CandidateRepository,
+    CustomColumnRepository,
+    IntegrationSettingsRepository,
+    MailReplyRepository,
+    ProcessedEmailRepository,
+)
+from app.services import vector_store
+from app.services.mail_filters import (
+    day_bounds,
+    graph_timestamp,
+    in_window,
+    is_automated_sender,
+    received_from_header,
+    to_naive_utc,
+)
 from app.services.ai_clients import get_models
 from app.services.json_parsing import parse_llm_json
 from app.services.retry import retry_with_backoff
@@ -260,6 +275,24 @@ def _get_missing_fields(candidate: dict) -> list[str]:
     return missing_fields
 
 
+def _is_processed(msg_uid: str) -> bool:
+    with session_scope() as session:
+        return ProcessedEmailRepository(session).exists(msg_uid)
+
+
+def _claim_message(msg_uid: str) -> bool:
+    """Record a message as being handled; ``False`` when another worker already did."""
+    try:
+        with session_scope() as session:
+            repo = ProcessedEmailRepository(session)
+            if repo.exists(msg_uid):
+                return False
+            repo.mark(msg_uid)
+        return True
+    except Exception:
+        return False
+
+
 def send_email_via_graph(ms_client_id, ms_client_secret, ms_tenant_id, email_user, recipient_email, subject, body):
     """Send one plain-text email through the Microsoft Graph API sendMail endpoint.
 
@@ -319,6 +352,142 @@ def send_email_via_graph(ms_client_id, ms_client_secret, ms_tenant_id, email_use
         return False
 
 
+@dataclass
+class ImportGuards:
+    """Which mail the poller may import (refreshed from the Connect page each cycle)."""
+
+    date_from: Optional[str] = None
+    date_to: Optional[str] = None
+    skip_automated: bool = True
+
+
+_guards = ImportGuards()
+
+
+def _queue_reply(msg_uid: str, candidate_id, recipient: str, original_subject: str, mailbox: str) -> None:
+    """Record that ``recipient`` should be acknowledged (idempotent; sends nothing)."""
+    if not recipient or recipient.lower() == (mailbox or "").lower():
+        return  # never reply to ourselves
+    if is_automated_sender(recipient):
+        return  # never reply to machines
+    try:
+        with session_scope() as session:
+            MailReplyRepository(session).queue(msg_uid, candidate_id, recipient, original_subject, mailbox)
+    except Exception as exc:
+        logger.error(f"Could not queue acknowledgement for {recipient}: {exc}")
+
+
+def _mailbox_transport(settings: dict, mailbox: str) -> Optional[dict]:
+    """How to send as ``mailbox`` (Graph or SMTP), from the saved settings."""
+    target = (mailbox or "").lower()
+    ms = (settings.get("ms_client_id"), settings.get("ms_client_secret"), settings.get("ms_tenant_id"))
+    graph_ok = all(ms) and settings.get("ms_tenant_id") != "common"
+
+    if (settings.get("outlook_email") or "").lower() == target:
+        return {"kind": "graph", "ms": ms} if graph_ok else None
+    if (settings.get("email_user") or "").lower() == target:
+        host = (settings.get("imap_host") or "").lower()
+        if "office365" in host or "outlook" in host:
+            return {"kind": "graph", "ms": ms} if graph_ok else None
+        return {
+            "kind": "smtp", "host": settings.get("smtp_host") or "smtp.gmail.com",
+            "port": settings.get("smtp_port") or 587, "user": mailbox, "password": settings.get("email_pass"),
+        }
+    if (settings.get("gmail_email") or "").lower() == target:
+        return {"kind": "smtp", "host": "smtp.gmail.com", "port": 587, "user": mailbox,
+                "password": settings.get("gmail_pass")}
+    try:
+        for item in json.loads(settings.get("additional_emails") or "[]"):
+            if str(item.get("email_user", "")).lower() == target and item.get("email_pass"):
+                return {"kind": "smtp", "host": item.get("smtp_host", "smtp.gmail.com"),
+                        "port": item.get("smtp_port", 587), "user": mailbox, "password": item["email_pass"]}
+    except ValueError:
+        pass
+    return None
+
+
+def send_pending_replies(settings: dict, batch: int = 25) -> int:
+    """Send queued acknowledgements - only while the Connect-page switch is on.
+
+    Every imported message has exactly one row in ``mail_replies``. A row is
+    sent at most once, a recipient already answered for the same candidate is
+    skipped, and replies queued while the switch was off go out once it is on.
+    """
+    if not settings.get("auto_reply_enabled"):
+        return 0
+    sent = 0
+    with session_scope() as session:
+        replies = MailReplyRepository(session)
+        candidates = CandidateRepository(session)
+        for reply in replies.pending(batch):
+            if replies.already_replied(reply.recipient, reply.candidate_id):
+                reply.status, reply.last_error = "skipped", "recipient already acknowledged"
+                session.commit()
+                continue
+
+            candidate = candidates.get_row(reply.candidate_id) if reply.candidate_id else None
+            if candidate and (
+                candidate.get("candidate_status") == "Error" or "Processing" in (candidate.get("full_name") or "")
+            ):
+                reply.status, reply.last_error = "skipped", "candidate processing failed"
+                session.commit()
+                continue
+
+            transport = _mailbox_transport(settings, reply.mailbox_email)
+            reply.attempts = (reply.attempts or 0) + 1
+            if transport is None:
+                reply.last_error = "No sending credentials / permission for this mailbox"
+                if reply.attempts >= MailReplyRepository.MAX_ATTEMPTS:
+                    reply.status = "failed"
+                session.commit()
+                continue
+
+            name = (candidate or {}).get("full_name") or "Candidate"
+            missing = _get_missing_fields(candidate) if candidate else [
+                "Total years of experience", "Relevant experience for this role", "Current CTC", "Expected CTC",
+                "Notice period / Earliest joining date", "Current location", "Preferred work location(s)",
+                "LinkedIn profile URL",
+            ]
+            subj_tpl, missing_tpl, complete_tpl = _resolve_theme_templates(
+                settings.get("reply_theme") or "professional", settings.get("reply_subject"),
+                settings.get("reply_body_missing"), settings.get("reply_body_complete"),
+            )
+            if missing:
+                bullets = "\n".join(f"* {field}" for field in missing)
+                body = missing_tpl.replace("{candidate_name}", name).replace("{missing_fields}", bullets)
+            else:
+                body = complete_tpl.replace("{candidate_name}", name)
+            ref = f"CAND-{reply.candidate_id}" if reply.candidate_id else "NEW"
+            subject = subj_tpl.replace("{subject}", reply.original_subject or "Application").replace("{ref}", ref)
+
+            try:
+                if transport["kind"] == "graph":
+                    ok = send_email_via_graph(*transport["ms"], reply.mailbox_email, reply.recipient, subject, body)
+                    if not ok:
+                        raise RuntimeError("Microsoft Graph sendMail failed (the app needs the Mail.Send permission)")
+                else:
+                    message = MIMEMultipart()
+                    message["From"], message["To"], message["Subject"] = reply.mailbox_email, reply.recipient, subject
+                    message.attach(MIMEText(body, "plain"))
+                    server = smtplib.SMTP(transport["host"], transport["port"], timeout=10.0)
+                    try:
+                        server.starttls()
+                        server.login(transport["user"], transport["password"])
+                        server.sendmail(reply.mailbox_email, reply.recipient, message.as_string())
+                    finally:
+                        server.quit()
+                reply.status, reply.sent_at, reply.last_error = "sent", datetime.utcnow(), None
+                sent += 1
+                logger.info(f"Sent acknowledgement to {reply.recipient}")
+            except Exception as exc:
+                reply.last_error = str(exc)[:300]
+                if reply.attempts >= MailReplyRepository.MAX_ATTEMPTS:
+                    reply.status = "failed"
+                logger.error(f"Acknowledgement to {reply.recipient} failed: {exc}")
+            session.commit()  # persist every outcome immediately: never risk a duplicate send
+    return sent
+
+
 def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_host, smtp_port, keywords_str, reply_theme, reply_subject, reply_body_missing, reply_body_complete, ms_client_id=None, ms_client_secret=None, ms_tenant_id=None):
     logger.info(f'Starting to process mailbox for {email_user}')
 
@@ -334,10 +503,12 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
     headers = None
     mail = None
     if 'office365' in imap_host.lower() or 'outlook' in imap_host.lower():
-        with get_db_connection() as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT ms_client_id, ms_client_secret, ms_tenant_id FROM integrations_settings LIMIT 1")
-            ms_row = cur.fetchone()
+        with session_scope() as session:
+            _settings_row = IntegrationSettingsRepository(session).get()
+            ms_row = (
+                (_settings_row.ms_client_id, _settings_row.ms_client_secret, _settings_row.ms_tenant_id)
+                if _settings_row else None
+            )
 
         effective_ms_client_id = ms_client_id or (ms_row[0] if ms_row else None)
         effective_ms_client_secret = ms_client_secret or (ms_row[1] if ms_row else None)
@@ -358,7 +529,18 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                 access_token = token_res.json().get("access_token")
                 if access_token:
                     headers = {"Authorization": f"Bearer {access_token}"}
-                    msg_url = f"https://graph.microsoft.com/v1.0/users/{email_user}/mailFolders/Inbox/messages?$top=100&$select=id,internetMessageId"
+                    _lower, _upper = day_bounds(_guards.date_from, _guards.date_to)
+                    _filters = []
+                    if _lower:
+                        _filters.append(f"receivedDateTime ge {graph_timestamp(_lower)}")
+                    if _upper:
+                        _filters.append(f"receivedDateTime le {graph_timestamp(_upper)}")
+                    msg_url = (
+                        f"https://graph.microsoft.com/v1.0/users/{email_user}/mailFolders/Inbox/messages"
+                        f"?$top=100&$select=id,internetMessageId,receivedDateTime"
+                    )
+                    if _filters:
+                        msg_url += "&$filter=" + " and ".join(_filters).replace(" ", "%20")
                     messages = []
                     while msg_url:
                         msg_res = requests.get(msg_url, headers=headers)
@@ -369,29 +551,26 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                         else:
                             break
                     if messages:
-                        messages.reverse()  # chronological
+                        messages.sort(key=lambda m: m.get('receivedDateTime') or '')  # oldest first
 
-                        with get_db_connection() as conn:
-                            cur = conn.cursor()
 
-                            for m in messages:
-                                m_id = m['id']
-                                internet_msg_id = m.get('internetMessageId', "")
-                                if internet_msg_id:
-                                    match = re.search(r'<([^>]+)>', internet_msg_id)
-                                    if match:
-                                        internet_msg_id = match.group(1)
+                        for m in messages:
+                            m_id = m['id']
+                            internet_msg_id = m.get('internetMessageId', "")
+                            if internet_msg_id:
+                                match = re.search(r'<([^>]+)>', internet_msg_id)
+                                if match:
+                                    internet_msg_id = match.group(1)
 
-                                effective_msg_id = internet_msg_id if internet_msg_id else m_id
-                                cur.execute("SELECT 1 FROM processed_emails WHERE msg_uid = ?", (effective_msg_id,))
-                                exists = cur.fetchone()
-                                if exists:
-                                    continue
+                            effective_msg_id = internet_msg_id if internet_msg_id else m_id
+                            exists = _is_processed(effective_msg_id)
+                            if exists:
+                                continue
 
-                                mime_url = f"https://graph.microsoft.com/v1.0/users/{email_user}/messages/{m_id}/$value"
-                                mime_res = requests.get(mime_url, headers=headers)
-                                if mime_res.status_code == 200:
-                                    raw_emails_to_process.append((mime_res.content, effective_msg_id, m_id))
+                            mime_url = f"https://graph.microsoft.com/v1.0/users/{email_user}/messages/{m_id}/$value"
+                            mime_res = requests.get(mime_url, headers=headers)
+                            if mime_res.status_code == 200:
+                                raw_emails_to_process.append((mime_res.content, effective_msg_id, m_id))
             except Exception as e:
                 logger.error(f"Graph API Error: {e}")
 
@@ -417,35 +596,38 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
             msg_nums_set = set(unseen_nums + recent_nums)
             msg_nums = sorted(list(msg_nums_set), key=lambda x: int(x))
 
-            with get_db_connection() as conn:
-                cur = conn.cursor()
 
-                for num in msg_nums:
-                    try:
-                        status, msg_data = mail.fetch(num, '(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID DATE FROM SUBJECT)])')
-                        if status == "OK" and msg_data[0]:
-                            header_data = msg_data[0][1].decode('utf-8', errors='ignore')
-                            msg_id = ""
-                            for line in header_data.split('\n'):
-                                if line.lower().startswith('message-id:'):
-                                    msg_id = line.split(':', 1)[1].strip()
-                                    match = re.search(r'<([^>]+)>', msg_id)
-                                    if match:
-                                        msg_id = match.group(1)
-                                    break
+            for num in msg_nums:
+                try:
+                    status, msg_data = mail.fetch(num, '(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID DATE FROM SUBJECT)])')
+                    if status == "OK" and msg_data[0]:
+                        header_data = msg_data[0][1].decode('utf-8', errors='ignore')
+                        _date_line = next(
+                            (l.split(':', 1)[1].strip() for l in header_data.split('\n') if l.lower().startswith('date:')),
+                            None,
+                        )
+                        if not in_window(received_from_header(_date_line), _guards.date_from, _guards.date_to):
+                            continue  # outside the configured import window: leave untouched
+                        msg_id = ""
+                        for line in header_data.split('\n'):
+                            if line.lower().startswith('message-id:'):
+                                msg_id = line.split(':', 1)[1].strip()
+                                match = re.search(r'<([^>]+)>', msg_id)
+                                if match:
+                                    msg_id = match.group(1)
+                                break
 
-                            if not msg_id:
-                                msg_id = "hash_" + hashlib.md5(header_data.encode('utf-8')).hexdigest()
+                        if not msg_id:
+                            msg_id = "hash_" + hashlib.md5(header_data.encode('utf-8')).hexdigest()
 
-                            cur.execute("SELECT 1 FROM processed_emails WHERE msg_uid = ?", (msg_id,))
-                            if cur.fetchone():
-                                continue
+                        if _is_processed(msg_id):
+                            continue
 
-                            status_full, msg_data_full = mail.fetch(num, '(BODY.PEEK[])')
-                            if status_full == "OK" and msg_data_full[0]:
-                                raw_emails_to_process.append((msg_data_full[0][1], msg_id))
-                    except Exception as e:
-                        logger.error(f"Error fetching IMAP email: {e}")
+                        status_full, msg_data_full = mail.fetch(num, '(BODY.PEEK[])')
+                        if status_full == "OK" and msg_data_full[0]:
+                            raw_emails_to_process.append((msg_data_full[0][1], msg_id))
+                except Exception as e:
+                    logger.error(f"Error fetching IMAP email: {e}")
         except Exception as e:
             logger.error(f"IMAP Error: {e}")
         finally:
@@ -490,24 +672,15 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                     msg_id = hashlib.md5(header_text2.encode('utf-8', errors='ignore')).hexdigest()
 
             # Check if already processed or being processed by another worker
-            with get_db_connection() as conn:
-                cur = conn.cursor()
-                cur.execute("SELECT 1 FROM processed_emails WHERE msg_uid = ?", (msg_id,))
-                exists = cur.fetchone()
+            exists = _is_processed(msg_id)
 
             if exists:
                 continue
 
             # Mark email as processing immediately to prevent multiple workers from picking it up
             # and to prevent infinite retry loops if an exception occurs later
-            try:
-                with get_db_connection() as conn:
-                    cur = conn.cursor()
-                    cur.execute("INSERT INTO processed_emails (msg_uid) VALUES (?)", (msg_id,))
-                    conn.commit()
-            except Exception:
-                # Already inserted by another concurrent worker
-                continue
+            if not _claim_message(msg_id):
+                continue  # another worker already took this message
 
             # Extract Subject, From, Body
             subject_header = msg.get("Subject", "")
@@ -535,6 +708,10 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                 is_bounce = True
             if "postmaster@" in from_lower or "mailer-daemon@" in from_lower or "noreply@" in from_lower or "no-reply@" in from_lower:
                 is_bounce = True
+
+            if _guards.skip_automated and is_automated_sender(parseaddr(decoded_from)[1]):
+                logger.info(f"Skipping automated sender {decoded_from!r} (subject {decoded_subject!r}).")
+                continue
 
             if is_bounce:
                 logger.info(f"Skipping bounce/automated message from {decoded_from} with subject '{decoded_subject}' to prevent infinite auto-reply loop.")
@@ -592,6 +769,7 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
 
             # Check if this email is from an existing candidate (via Ref tag in Subject, or matching sender email)
             sender_name, sender_email = parseaddr(decoded_from)
+            mail_received_at = to_naive_utc(received_from_header(msg.get('Date')))
             matched_candidate_row = None
 
             # 1. Search by reference ID in subject
@@ -599,19 +777,15 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
             if match_ref:
                 try:
                     ref_candidate_id = int(match_ref.group(1))
-                    with get_db_connection() as conn:
-                        cur = conn.cursor()
-                        cur.execute("SELECT * FROM candidate_metadata WHERE id = ?", (ref_candidate_id,))
-                        matched_candidate_row = cur.fetchone()
+                    with session_scope() as session:
+                        matched_candidate_row = CandidateRepository(session).get_row(ref_candidate_id)
                 except Exception as e_ref:
                     logger.error(f"ERROR matching by Ref ID in subject: {e_ref}")
             # 2. Fall back to search by sender email address
             if not matched_candidate_row and sender_email:
                 try:
-                    with get_db_connection() as conn:
-                        cur = conn.cursor()
-                        cur.execute("SELECT * FROM candidate_metadata WHERE LOWER(sender_email) = ? OR LOWER(email) = ? ORDER BY id DESC LIMIT 1", (sender_email.lower(), sender_email.lower()))
-                        matched_candidate_row = cur.fetchone()
+                    with session_scope() as session:
+                        matched_candidate_row = CandidateRepository(session).find_by_sender_or_email(sender_email)
                 except Exception as e_email:
                     logger.error(f"ERROR matching by sender email: {e_email}")
 
@@ -642,7 +816,7 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                                 new_filename = safe_name
                                 new_file_bytes = content
 
-                                # Index in PGVector and extract text
+                                # Extract the text and index it for semantic search
                                 try:
                                     if safe_name.lower().endswith(".pdf"):
                                         loader = SafePyMuPDFLoader(fpath)
@@ -650,19 +824,9 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                                         loader = Docx2txtLoader(fpath)
                                     docs = loader.load()
                                     resume_text = "\n".join([d.page_content for d in docs])
-                                    embeddings, _ = get_models()
-                                    for d in docs:
-                                        d.metadata['source'] = safe_name
-                                    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-                                    chunks = splitter.split_documents(docs)
-                                    PGVector.from_documents(
-                                        documents=chunks,
-                                        embedding=embeddings,
-                                        connection_string=os.getenv("POSTGRES_DATABASE_URL"),
-                                        collection_name="resume_embeddings"
-                                    )
+                                    vector_store.index_documents(docs, safe_name)
                                 except Exception as pg_err:
-                                    logger.error(f"Error adding updated resume to PGVector: {pg_err}")
+                                    logger.error(f"Error indexing updated resume: {pg_err}")
                                 finally:
                                     try:
                                         if os.path.exists(fpath):
@@ -676,10 +840,11 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                 if body_text:
                     combined_text += f"\n\n=== EMAIL MESSAGE BODY ===\n{body_text}\n=========================="
 
-                with get_db_connection() as conn:
-                    cur = conn.cursor()
-                    cur.execute("SELECT col_key, col_label, description FROM custom_columns")
-                    custom_cols = cur.fetchall()
+                with session_scope() as session:
+                    custom_cols = [
+                        (c.col_key, c.col_label, c.description)
+                        for c in CustomColumnRepository(session).list_all()
+                    ]
 
                 custom_fields_str = ""
                 if custom_cols:
@@ -745,10 +910,8 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
 
                 # Update existing row with all dynamic columns
                 updates = {}
-                with get_db_connection() as conn:
-                    cur = conn.cursor()
-                    cur.execute("PRAGMA table_info(candidate_metadata)")
-                    allowed_cols = {c[1] for c in cur.fetchall()}
+                with session_scope() as session:
+                    allowed_cols = CandidateRepository(session).column_names
 
                 for k, v in parsed_data.items():
                     if k in allowed_cols and k not in ('id', 'filename', 'full_name'):
@@ -773,60 +936,21 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
 
                 if updates:
                     try:
-                        with get_db_connection() as conn:
-                            cur = conn.cursor()
-                            set_clause = ", ".join(f"{col}=?" for col in updates)
-                            cur.execute(f"UPDATE candidate_metadata SET {set_clause} WHERE id=?", list(updates.values()) + [existing_candidate['id']])
-                            conn.commit()
+                        with session_scope() as session:
+                            CandidateRepository(session).update(existing_candidate['id'], updates)
                         logger.info(f"Successfully updated candidate ID {existing_candidate['id']} with follow-up details.")
                     except Exception as db_update_err:
                         logger.error(f"ERROR updating candidate from follow-up email: {db_update_err}")
 
                 # Recheck missing fields on updated profile
                 try:
-                    with get_db_connection() as conn:
-                        cur = conn.cursor()
-                        cur.execute("SELECT * FROM candidate_metadata WHERE id=?", (existing_candidate['id'],))
-                        updated_candidate = row_to_dict(cur.fetchone())
-
-                    candidate_name = updated_candidate.get('full_name') or sender_name or 'Candidate'
-
-                    missing_fields = _get_missing_fields(updated_candidate)
-
-                    subj_tpl, body_missing_tpl, body_complete_tpl = _resolve_theme_templates(
-                        reply_theme or 'professional', reply_subject, reply_body_missing, reply_body_complete
-                    )
-
-                    if missing_fields:
-                        missing_list_str = "\n".join(f"* {field}" for field in missing_fields)
-                        body_reply = body_missing_tpl.replace("{candidate_name}", candidate_name).replace("{missing_fields}", missing_list_str)
-                    else:
-                        body_reply = body_complete_tpl.replace("{candidate_name}", candidate_name)
+                    with session_scope() as session:
+                        updated_candidate = CandidateRepository(session).get_row(existing_candidate['id']) or {}
 
                     candidate_email = updated_candidate.get('email')
                     recipient_email = candidate_email if candidate_email and str(candidate_email).strip() not in ("", "null", "None") else sender_email
-
-                    ack_msg = MIMEMultipart()
-                    ack_msg['From'] = email_user
-                    ack_msg['To'] = recipient_email
-                    ack_msg['Subject'] = subj_tpl.replace("{subject}", decoded_subject).replace("{ref}", f"CAND-{updated_candidate['id']}")
-                    ack_msg.attach(MIMEText(body_reply, 'plain'))
-
-                    if recipient_email.lower() == email_user.lower():
-                        logger.info(f"Skipping auto-reply to self ({recipient_email}) to prevent infinite loop.")
-                    else:
-                        is_outlook = 'office365' in imap_host.lower() or 'outlook' in imap_host.lower()
-                        if is_outlook and ms_client_id and ms_client_secret and ms_tenant_id:
-                            logger.info(f"Sending follow-up acknowledgment via Graph API to {recipient_email}")
-                            subject = subj_tpl.replace("{subject}", decoded_subject).replace("{ref}", f"CAND-{updated_candidate['id']}")
-                            send_email_via_graph(ms_client_id, ms_client_secret, ms_tenant_id, email_user, recipient_email, subject, body_reply)
-                        else:
-                            s_server = smtplib.SMTP(smtp_host, smtp_port or 587, timeout=10.0)
-                            s_server.starttls()
-                            s_server.login(email_user, email_pass)
-                            s_server.sendmail(email_user, recipient_email, ack_msg.as_string())
-                            s_server.quit()
-                            logger.info(f"Sent follow-up acknowledgment to {recipient_email}")
+                    # Queue only: the poller sends it later if (and only if) auto-reply is switched on.
+                    _queue_reply(msg_id, updated_candidate.get('id'), recipient_email, decoded_subject, email_user)
                 except Exception as reply_err:
                     logger.error(f"ERROR sending follow-up email reply: {reply_err}")
 
@@ -882,6 +1006,9 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                                     "source": "Email"
                                 })
                                 process_resume(safe_name, fpath, is_approved=1, username="email_worker", email_message=body_text, sender_email=sender_email, file_url=None, placeholder_id=placeholder_id)
+                                if mail_received_at:
+                                    with session_scope() as session:
+                                        CandidateRepository(session).update(placeholder_id, {'mail_received_at': mail_received_at})
                                 processed_attachment = True
                             except Exception as e_proc:
                                 logger.error(f"ERROR: Failed processing resume {safe_name} from email: {e_proc}")
@@ -905,12 +1032,8 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                             # Fetch parsed candidate metadata to find missing fields
                             candidate = None
                             try:
-                                with get_db_connection() as conn:
-                                    cur = conn.cursor()
-                                    cur.execute("SELECT * FROM candidate_metadata WHERE filename = ? ORDER BY id DESC LIMIT 1", (safe_name,))
-                                    candidate_row = cur.fetchone()
-                                    if candidate_row:
-                                        candidate = dict(candidate_row)
+                                with session_scope() as session:
+                                    candidate = CandidateRepository(session).find_latest_by_filename(safe_name)
                             except Exception as db_err:
                                 logger.error(f"ERROR: Failed to fetch candidate metadata for auto-acknowledgement: {db_err}")
 
@@ -918,62 +1041,13 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                                 logger.warning(f"Candidate {safe_name} processing failed or incomplete. Skipping auto-reply.")
                                 continue
 
-                            candidate_name = 'Candidate'
-                            missing_fields = []
-                            if candidate:
-                                candidate_name = candidate.get('full_name') or sender_name or 'Candidate'
-                                missing_fields = _get_missing_fields(candidate)
-                            else:
-                                candidate_name = sender_name or 'Candidate'
-                                missing_fields = [
-                                    "Total years of experience",
-                                    "Relevant experience for this role",
-                                    "Current CTC",
-                                    "Expected CTC",
-                                    "Notice period / Earliest joining date",
-                                    "Current location",
-                                    "Preferred work location(s)",
-                                    "LinkedIn profile URL"
-                                ]
-
-                            subj_tpl, body_missing_tpl, body_complete_tpl = _resolve_theme_templates(
-                                reply_theme or 'professional', reply_subject, reply_body_missing, reply_body_complete
-                            )
-
-                            if missing_fields:
-                                missing_list_str = "\n".join(f"* {field}" for field in missing_fields)
-                                body_reply = body_missing_tpl.replace("{candidate_name}", candidate_name).replace("{missing_fields}", missing_list_str)
-                            else:
-                                body_reply = body_complete_tpl.replace("{candidate_name}", candidate_name)
-
                             candidate_email = candidate.get('email') if candidate else None
                             recipient_email = candidate_email if candidate_email and str(candidate_email).strip() not in ("", "null", "None") else sender_email
-
-                            ack_msg = MIMEMultipart()
-                            ack_msg['From'] = email_user
-                            ack_msg['To'] = recipient_email
-                            cand_id = candidate.get('id') if candidate else 0
-                            ref_str = f"CAND-{cand_id}" if cand_id else "NEW"
-                            ack_msg['Subject'] = subj_tpl.replace("{subject}", decoded_subject).replace("{ref}", ref_str)
-                            ack_msg.attach(MIMEText(body_reply, 'plain'))
-
-                            if recipient_email.lower() == email_user.lower():
-                                logger.info(f"Skipping auto-reply to self ({recipient_email}) to prevent infinite loop.")
-                            else:
-                                is_outlook = 'office365' in imap_host.lower() or 'outlook' in imap_host.lower()
-                                if is_outlook and ms_client_id and ms_client_secret and ms_tenant_id:
-                                    logger.info(f"Sending auto-acknowledgement via Graph API to {recipient_email}")
-                                    cand_id = candidate.get('id') if candidate else 0
-                                    ref_str = f"CAND-{cand_id}" if cand_id else "NEW"
-                                    subject = subj_tpl.replace("{subject}", decoded_subject).replace("{ref}", ref_str)
-                                    send_email_via_graph(ms_client_id, ms_client_secret, ms_tenant_id, email_user, recipient_email, subject, body_reply)
-                                else:
-                                    s_server = smtplib.SMTP(smtp_host, smtp_port or 587, timeout=10.0)
-                                    s_server.starttls()
-                                    s_server.login(email_user, email_pass)
-                                    s_server.sendmail(email_user, recipient_email, ack_msg.as_string())
-                                    s_server.quit()
-                                    logger.info(f"Sent auto-acknowledgement to {recipient_email}")
+                            # Queue only: sent later, once, and only while auto-reply is on.
+                            _queue_reply(
+                                msg_id, candidate.get('id') if candidate else None,
+                                recipient_email, decoded_subject, email_user,
+                            )
                     except Exception as smtp_err:
                         logger.error(f"ERROR: Failed sending auto-acknowledgement: {smtp_err}")
 
@@ -988,17 +1062,18 @@ def poll_emails_and_process():
     while True:
         try:
             # Fetch settings from DB (robust: handle missing columns gracefully)
-            with get_db_connection() as conn:
-                conn.row_factory = sqlite3.Row
-                cur = conn.cursor()
-                cur.execute("SELECT * FROM integrations_settings LIMIT 1")
-                row = cur.fetchone()
+            with session_scope() as session:
+                _row = IntegrationSettingsRepository(session).get()
+                row = {c.name: getattr(_row, c.name) for c in _row.__table__.columns} if _row else None
 
             if not row:
                 time.sleep(30)
                 continue
 
-            settings = row_to_dict(row)
+            settings = row
+            _guards.date_from = settings.get("mail_import_from") or None
+            _guards.date_to = settings.get("mail_import_to") or None
+            _guards.skip_automated = settings.get("skip_automated_senders") not in (0, False)
             email_enabled = settings.get("email_enabled", 0)
             imap_host = settings.get("imap_host", "")
             imap_port = settings.get("imap_port", 993)
@@ -1097,6 +1172,12 @@ def poll_emails_and_process():
                                 logger.error(f"ERROR processing additional mailbox {item.get('email_user')}: {add_err}")
                 except Exception as json_err:
                     logger.error(f"ERROR parsing additional_emails from DB: {json_err}")
+
+            # 3. Send queued acknowledgements (no-op while the Connect-page switch is off)
+            try:
+                send_pending_replies(settings)
+            except Exception as reply_err:
+                logger.error(f"ERROR sending queued acknowledgements: {reply_err}")
 
         except Exception as conn_err:
             logger.error(f"ERROR: Email background loop connection error: {conn_err}")

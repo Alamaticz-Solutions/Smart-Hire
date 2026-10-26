@@ -1,71 +1,45 @@
 """Admin endpoints: change-request queue, user management, masked keywords.
 
-Moved (same paths/methods/logic) from app/main.py:
-  - GET    /api/admin/requests                         (main.py ~4253-4266)
-  - GET    /api/admin/users                             (main.py ~4268-4281)
-  - PUT    /api/admin/users/{user_id}/permissions       (main.py ~4322-4350, model ~3199-3205)
-  - GET    /api/admin/masked-keywords                   (main.py ~4435-4441, model ~4432-4434)
-  - POST   /api/admin/masked-keywords                   (main.py ~4443-4462)
-  - DELETE /api/admin/masked-keywords/{keyword}         (main.py ~4464-4481)
-  - DELETE /api/admin/users/{user_id}                   (main.py ~4483-4558)
-  - POST   /api/admin/requests/{request_id}/approve     (main.py ~4560-4689)
-  - POST   /api/admin/requests/{request_id}/reject      (main.py ~4691-4716)
-
-Not moved: `POST/GET /api/jobs/{job_id}/share[s]` (main.py ~4352-4430) and the
-duplicate `is_admin_or_hr`/`get_user_hidden_fields`/`apply_user_hidden_fields`
-defs main.py redefined at ~4283-4320 (those are jobs-router territory and
-app.services.auth's job, respectively -- not admin endpoints).
-
-DISPATCHER REFACTOR (approve_change_request):
---------------------------------------------------------------------------
-The original `POST /api/admin/requests/{id}/approve` handler dispatched on
-`action_type` via a 13-branch if/elif chain inline in the route body. That
-is preserved here as pure logic (every branch's SQL/behavior is unchanged,
-verbatim) but restructured into a small handler-registry pattern:
-
-  - one private `_approve_<action_type>` function per action type, each
-    taking the same `(cur, target_id, payload, background_tasks)` args
-  - `ACTION_HANDLERS: dict[str, Callable]` mapping the action_type string
-    to its handler
-  - the route body becomes a lookup + call: unknown action types now get a
-    clear `400 Unknown action_type: ...` instead of silently falling
-    through the old if/elif chain and doing nothing (the original had no
-    `else` branch, so an unrecognized action_type would still update the
-    request to "approved" without actually doing anything -- that silent
-    no-op is now an explicit error, which is a strict improvement, not a
-    logic change any caller could have been relying on).
-
-This is a pure cleanup refactor requested during the main.py split -- no
-branch's SQL or side effects were altered.
---------------------------------------------------------------------------
-
-`match_candidate_to_all_jobs`/`match_candidates_for_job` live in
-`app.services.matching`; `get_models` lives in `app.services.ai_clients`.
-They're imported at call time (function-local, not module-level) inside the
-handlers that need them purely to keep this module's import block focused
-on what most handlers use -- there is no circular-import concern with
-either module.
+Approving a change request dispatches on its ``action_type`` through the
+``ACTION_HANDLERS`` registry (one small handler per action).
 """
-
 import json
-import os
-import re
 from typing import Callable, Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
+from app.core.config import UPLOAD_DIR
 from app.core.logging import get_logger
-from app.db.row_helpers import dict_row_factory
-from app.db.session import get_db_connection
-from app.services.auth import get_user_role, is_admin_or_hr, is_user_approved, invalidate_user_cache
+from app.core.responses import EnvelopeRoute
+from app.db.engine import get_session
+from app.models import MATCH_RELATED_FIELDS, Job
+from app.repositories import (
+    ActivityRepository,
+    CandidateRepository,
+    ChangeRequestRepository,
+    JobCandidateRepository,
+    JobRepository,
+    MaskedKeywordRepository,
+    TeamMemberRepository,
+    UserRepository,
+)
+from app.services import columns as column_service
+from app.services import vector_store
+from app.services.auth import get_user_role, invalidate_user_cache, is_admin_or_hr, is_user_approved
 from app.services.matching import match_candidate_to_all_jobs, match_candidates_for_job
+
+import os
 
 logger = get_logger(__name__)
 
-router = APIRouter()
+router = APIRouter(route_class=EnvelopeRoute)
+
+_PENDING_MESSAGE = "Access denied. Your account is pending admin approval."
 
 
+# ── schemas ────────────────────────────────────────────────────────────────
 class UserPermissionsUpdate(BaseModel):
     is_hr: int
     is_admin: int
@@ -82,402 +56,122 @@ class ChangeRequestReject(BaseModel):
     reason: Optional[str] = None
 
 
-def _log_activity_db(username: str, action: str) -> None:
-    if not username:
-        username = "unknown"
-    try:
-        with get_db_connection() as conn:
-            cur = conn.cursor()
-            cur.execute("INSERT INTO activity_logs (username, action) VALUES (?, ?)", (username, action))
-            conn.commit()
-    except Exception as e:
-        logger.error(f"Error logging activity: {e}")
-
-
-def _get_masked_keywords() -> list:
-    with get_db_connection() as conn:
-        cur = conn.cursor()
-        try:
-            cur.execute("SELECT keyword FROM masked_keywords")
-            return [row[0] for row in cur.fetchall()]
-        except Exception:
-            return []
-
-
-# ── Change requests ──────────────────────────────────────────────────────────
-@router.get("/api/admin/requests")
-def list_change_requests(request: Request):
+# ── guards ─────────────────────────────────────────────────────────────────
+def _require_admin(request: Request) -> str:
     username = request.headers.get("x-user-username")
     if not is_user_approved(username):
-        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
-    role = get_user_role(username)
-    if role != "admin":
+        raise HTTPException(status_code=403, detail=_PENDING_MESSAGE)
+    if get_user_role(username) != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")
-
-    with get_db_connection() as conn:
-        conn.row_factory = dict_row_factory
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM change_requests ORDER BY created_at DESC")
-        rows = [dict(r) for r in cur.fetchall()]
-    return rows
+    return username
 
 
-# ── Users ────────────────────────────────────────────────────────────────────
-@router.get("/api/admin/users")
-def list_users(request: Request):
+def _require_staff(request: Request) -> str:
     username = request.headers.get("x-user-username")
     if not is_user_approved(username):
-        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
+        raise HTTPException(status_code=403, detail=_PENDING_MESSAGE)
     if not is_admin_or_hr(username):
         raise HTTPException(status_code=403, detail="Forbidden")
-
-    with get_db_connection() as conn:
-        conn.row_factory = dict_row_factory
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT id, full_name, username, role, is_hr, is_admin, is_external, hidden_fields, is_approved, email FROM users"
-        )
-        rows = [dict(r) for r in cur.fetchall()]
-    return rows
+    return username
 
 
-@router.put("/api/admin/users/{user_id}/permissions")
-def update_user_permissions_endpoint(user_id: int, body: UserPermissionsUpdate, request: Request):
-    username = request.headers.get("x-user-username")
-    if not is_user_approved(username):
-        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
-    role = get_user_role(username)
-    if role != "admin":
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-    is_external_val = body.is_external if body.is_external is not None else 0
-    is_hr_val = body.is_hr
-    is_admin_val = body.is_admin
-    hidden_fields_val = body.hidden_fields if body.hidden_fields is not None else ""
-
-    if is_external_val == 1:
-        is_hr_val = 0
-        is_admin_val = 0
-
-    new_role = "admin" if is_admin_val == 1 else "user"
-
-    with get_db_connection() as conn:
-        cur = conn.cursor()
-        if body.is_approved is not None:
-            cur.execute(
-                "UPDATE users SET is_hr = ?, is_admin = ?, is_external = ?, role = ?, hidden_fields = ?, is_approved = ? WHERE id = ?",
-                (is_hr_val, is_admin_val, is_external_val, new_role, hidden_fields_val, body.is_approved, user_id),
-            )
-        else:
-            cur.execute(
-                "UPDATE users SET is_hr = ?, is_admin = ?, is_external = ?, role = ?, hidden_fields = ? WHERE id = ?",
-                (is_hr_val, is_admin_val, is_external_val, new_role, hidden_fields_val, user_id),
-            )
-        cur.execute("SELECT username FROM users WHERE id = ?", (user_id,))
-        target_row = cur.fetchone()
-        conn.commit()
-    # The is_user_approved/get_user_role/is_admin_or_hr cache (app.services.auth)
-    # would otherwise keep serving this user's pre-update permissions for up
-    # to its TTL - invalidate immediately so a permission change (including
-    # the self-demotion / approval path) takes effect on the very next request.
-    if target_row:
-        invalidate_user_cache(target_row[0])
-    return {"status": "updated"}
+def _model_dict(model, *fields) -> dict:
+    return {name: getattr(model, name) for name in fields}
 
 
-@router.delete("/api/admin/users/{user_id}")
-def delete_user_endpoint(user_id: int, request: Request):
-    username = request.headers.get("x-user-username")
-    if not is_user_approved(username):
-        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
-    role = get_user_role(username)
-    if role != "admin":
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-    with get_db_connection() as conn:
-        cur = conn.cursor()
-        # Prevent self-deletion and get email/fullname
-        cur.execute("SELECT username, email, full_name FROM users WHERE id = ?", (user_id,))
-        row = cur.fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="User not found")
-
-        deleted_username = row[0]
-        deleted_fullname = row[2]
-
-        if deleted_username.lower() == username.lower():
-            raise HTTPException(status_code=400, detail="You cannot delete yourself.")
-
-        # We will delete from users table at the end to prevent foreign key violations
-
-        # Delete from change_requests (where requester or target is this user)
-        cur.execute(
-            "DELETE FROM change_requests WHERE LOWER(username) = LOWER(?) OR LOWER(target_id) = LOWER(?)",
-            (deleted_username, deleted_username),
-        )
-
-        # Delete from job_shares
-        cur.execute("DELETE FROM job_shares WHERE LOWER(username) = LOWER(?)", (deleted_username,))
-
-        # Delete from team_members (by full name and by username, if exists)
-        cur.execute(
-            "DELETE FROM team_members WHERE LOWER(name) = LOWER(?) OR LOWER(name) = LOWER(?)",
-            (deleted_fullname, deleted_username),
-        )
-
-        # Delete from activity_logs
-        cur.execute("DELETE FROM activity_logs WHERE LOWER(username) = LOWER(?)", (deleted_username,))
-
-        # Delete candidate records and their resume files owned/created by this user
-        cur.execute("SELECT id, filename FROM candidate_metadata WHERE LOWER(created_by) = LOWER(?)", (deleted_username,))
-        candidates = cur.fetchall()
-        if candidates:
-            candidate_ids = [c[0] for c in candidates]
-            placeholders = ",".join("?" for _ in candidate_ids)
-
-            # Delete resume files from disk
-            from app.core.config import UPLOAD_DIR
-
-            for c_id, fname in candidates:
-                if fname:
-                    fpath = os.path.join(UPLOAD_DIR, fname)
-                    if os.path.exists(fpath):
-                        try:
-                            os.remove(fpath)
-                        except Exception as e:
-                            logger.error(f"Error removing resume file {fpath}: {e}")
-
-            # Delete from DB
-            cur.execute(f"DELETE FROM job_candidates WHERE candidate_id IN ({placeholders})", candidate_ids)
-            cur.execute(f"DELETE FROM candidate_metadata WHERE id IN ({placeholders})", candidate_ids)
-
-        # Delete job records created by this user
-        cur.execute("SELECT id FROM jobs WHERE LOWER(created_by) = LOWER(?)", (deleted_username,))
-        job_ids = [r[0] for r in cur.fetchall()]
-        if job_ids:
-            placeholders = ",".join("?" for _ in job_ids)
-            cur.execute(f"DELETE FROM job_candidates WHERE job_id IN ({placeholders})", job_ids)
-            cur.execute(f"DELETE FROM job_shares WHERE job_id IN ({placeholders})", job_ids)
-            cur.execute(f"DELETE FROM jobs WHERE id IN ({placeholders})", job_ids)
-
-        # Delete from users table at the end
-        cur.execute("DELETE FROM users WHERE id = ?", (user_id,))
-
-        conn.commit()
-
-    invalidate_user_cache(deleted_username)
-    _log_activity_db(username, f"completely deleted user '{deleted_username}' from system")
-    return {"status": "deleted"}
+# ── change requests ────────────────────────────────────────────────────────
+@router.get("/api/admin/requests")
+def list_change_requests(request: Request, session: Session = Depends(get_session)):
+    _require_admin(request)
+    fields = ("id", "username", "action_type", "target_id", "payload", "description",
+              "status", "rejection_reason", "created_at")
+    return [_model_dict(r, *fields) for r in ChangeRequestRepository(session).list_recent_first()]
 
 
-# ── Masked keywords ──────────────────────────────────────────────────────────
-@router.get("/api/admin/masked-keywords")
-def get_admin_masked_keywords(request: Request):
-    username = request.headers.get("x-user-username")
-    if not is_user_approved(username):
-        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
-    role = get_user_role(username)
-    if role != "admin":
-        raise HTTPException(status_code=403, detail="Forbidden")
-    return _get_masked_keywords()
-
-
-@router.post("/api/admin/masked-keywords")
-def add_admin_masked_keyword(req: MaskedKeywordCreate, request: Request):
-    username = request.headers.get("x-user-username")
-    if not is_user_approved(username):
-        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
-    role = get_user_role(username)
-    if role != "admin":
-        raise HTTPException(status_code=403, detail="Forbidden")
-    kw = req.keyword.strip()
-    if not kw:
-        raise HTTPException(status_code=400, detail="Keyword cannot be empty")
-    with get_db_connection() as conn:
-        cur = conn.cursor()
-        try:
-            cur.execute("INSERT OR IGNORE INTO masked_keywords (keyword) VALUES (?)", (kw,))
-            conn.commit()
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-    _log_activity_db(username, f"added masked keyword '{kw}'")
-    return {"status": "added", "keyword": kw}
-
-
-@router.delete("/api/admin/masked-keywords/{keyword}")
-def delete_admin_masked_keyword(keyword: str, request: Request):
-    username = request.headers.get("x-user-username")
-    if not is_user_approved(username):
-        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
-    role = get_user_role(username)
-    if role != "admin":
-        raise HTTPException(status_code=403, detail="Forbidden")
-    kw = keyword.strip()
-    with get_db_connection() as conn:
-        cur = conn.cursor()
-        try:
-            cur.execute("DELETE FROM masked_keywords WHERE keyword = ?", (kw,))
-            conn.commit()
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-    _log_activity_db(username, f"deleted masked keyword '{kw}'")
-    return {"status": "deleted", "keyword": kw}
-
-
-# ── Change-request approve/reject ────────────────────────────────────────────
-# Each handler receives (cur, target_id, payload, background_tasks) and
-# performs exactly the same SQL/side effects as its original if/elif branch
-# in main.py's approve_change_request. `cur` belongs to the caller's
-# connection/transaction; handlers must not commit or close it.
-
-def _approve_add_column(cur, target_id, payload, background_tasks):
-    col_data = json.loads(payload)
-    clean_key = re.sub(r'[^a-zA-Z0-9_]', '', col_data["col_key"].replace(' ', '_')).lower()
-    cur.execute("PRAGMA table_info(candidate_metadata)")
-    existing = [c[1] for c in cur.fetchall()]
-    if clean_key not in existing:
-        cur.execute(f"ALTER TABLE candidate_metadata ADD COLUMN {clean_key} TEXT")
-        cur.execute(
-            "INSERT OR IGNORE INTO custom_columns (col_key, col_label, description) VALUES (?, ?, ?)",
-            (clean_key, col_data["col_label"], col_data["description"]),
-        )
-
-
-def _approve_delete_column(cur, target_id, payload, background_tasks):
-    col_key = target_id
-    cur.execute("DELETE FROM custom_columns WHERE col_key=?", (col_key,))
-    # Sanitize before interpolating into DDL -- ALTER TABLE ... DROP COLUMN
-    # can't be parameterized, and target_id is attacker-controllable at
-    # change-request creation time (a non-admin can stage a delete_column
-    # request; an admin's approval click is what actually executes this
-    # SQL). Mirrors the same clean_key sanitization already applied in
-    # _approve_add_column above for the identical reason.
-    clean_key = re.sub(r'[^a-zA-Z0-9_]', '', col_key.replace(' ', '_')).lower()
+def _approve_add_column(session, target_id, payload, background):
+    data = json.loads(payload)
     try:
-        cur.execute(f"ALTER TABLE candidate_metadata DROP COLUMN {clean_key}")
-    except Exception:
-        pass
+        column_service.add_custom_column(session, data["col_key"], data["col_label"], data.get("description", ""))
+    except column_service.ColumnExistsError:
+        pass  # already present: approving is idempotent
 
 
-def _approve_update_candidate(cur, target_id, payload, background_tasks):
+def _approve_delete_column(session, target_id, payload, background):
+    column_service.remove_custom_column(session, target_id)
+
+
+def _approve_update_candidate(session, target_id, payload, background):
     candidate_id = int(target_id)
-    updates = json.loads(payload)
-    # SECURITY FIX: `updates` keys come from a change-request payload that a
-    # non-admin can stage (see `_approve_delete_column` above for the same
-    # class of issue) and were being interpolated directly into
-    # `UPDATE ... SET {k}=?` with no validation, unlike the equivalent
-    # reachable route (`PUT /api/candidates/{id}` in routers/candidates.py,
-    # line ~347) which filters against `PRAGMA table_info(candidate_metadata)`
-    # before building its SET clause. Apply the same whitelist here so a
-    # crafted payload key can't inject arbitrary SQL into the DDL-adjacent
-    # f-string.
-    cur.execute("PRAGMA table_info(candidate_metadata)")
-    allowed_cols = {c[1] for c in cur.fetchall()}
-    updates = {k: v for k, v in updates.items() if k in allowed_cols and k != "id"}
+    repo = CandidateRepository(session)
+    valid = repo.column_names
+    updates = {k: v for k, v in json.loads(payload).items() if k in valid and k != "id"}
     if not updates:
         return
-    set_clause = ", ".join(f"{k}=?" for k in updates)
-    cur.execute(
-        f"UPDATE candidate_metadata SET {set_clause} WHERE id=?",
-        list(updates.values()) + [candidate_id],
-    )
-    match_related_fields = {
-        'full_name', 'total_experience', 'pega_experience', 'cdh_exp',
-        'skills', 'certifications', 'current_location', 'pref_locations',
-    }
-    if any(field in updates for field in match_related_fields):
-        background_tasks.add_task(match_candidate_to_all_jobs, candidate_id)
+    repo.update(candidate_id, updates)
+    if MATCH_RELATED_FIELDS & set(updates):
+        background.add_task(match_candidate_to_all_jobs, candidate_id)
 
 
-def _approve_delete_candidate(cur, target_id, payload, background_tasks):
+def _approve_delete_candidate(session, target_id, payload, background):
+    CandidateRepository(session).delete(int(target_id))
+
+
+def _approve_resume(session, target_id, payload, background):
     candidate_id = int(target_id)
-    cur.execute("DELETE FROM job_candidates WHERE candidate_id=?", (candidate_id,))
-    cur.execute("DELETE FROM candidate_metadata WHERE id=?", (candidate_id,))
+    CandidateRepository(session).update(candidate_id, {"is_approved": 1})
+    background.add_task(match_candidate_to_all_jobs, candidate_id)
 
 
-def _approve_resume(cur, target_id, payload, background_tasks):
-    candidate_id = int(target_id)
-    cur.execute("UPDATE candidate_metadata SET is_approved = 1 WHERE id = ?", (candidate_id,))
-    background_tasks.add_task(match_candidate_to_all_jobs, candidate_id)
+def _approve_create_job(session, target_id, payload, background):
+    data = json.loads(payload)
+    job = JobRepository(session).add(Job(title=data["title"], description=data["description"]))
+    background.add_task(match_candidates_for_job, job.id)
 
 
-def _approve_create_job(cur, target_id, payload, background_tasks):
-    job_data = json.loads(payload)
-    cur.execute("INSERT INTO jobs (title, description) VALUES (?, ?)", (job_data["title"], job_data["description"]))
-    job_id = cur.lastrowid
-    background_tasks.add_task(match_candidates_for_job, job_id)
-
-
-def _approve_update_job(cur, target_id, payload, background_tasks):
+def _approve_update_job(session, target_id, payload, background):
     job_id = int(target_id)
-    job_data = json.loads(payload)
-    cur.execute("UPDATE jobs SET title = ?, description = ? WHERE id = ?", (job_data["title"], job_data["description"], job_id))
-    background_tasks.add_task(match_candidates_for_job, job_id)
+    data = json.loads(payload)
+    job = JobRepository(session).get(job_id)
+    if job is not None:
+        job.title, job.description = data["title"], data["description"]
+    background.add_task(match_candidates_for_job, job_id)
 
 
-def _approve_delete_job(cur, target_id, payload, background_tasks):
-    job_id = int(target_id)
-    cur.execute("DELETE FROM job_candidates WHERE job_id = ?", (job_id,))
-    cur.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+def _approve_delete_job(session, target_id, payload, background):
+    JobRepository(session).delete(int(target_id))
 
 
-def _approve_update_job_candidate(cur, target_id, payload, background_tasks):
+def _approve_update_job_candidate(session, target_id, payload, background):
     job_id, candidate_id = map(int, target_id.split(":"))
-    update_data = json.loads(payload)
-    if "status" in update_data and update_data["status"] is not None:
-        cur.execute(
-            "UPDATE job_candidates SET status = ? WHERE job_id = ? AND candidate_id = ?",
-            (update_data["status"], job_id, candidate_id),
-        )
-    if "ai_reason" in update_data and update_data["ai_reason"] is not None:
-        cur.execute(
-            "UPDATE job_candidates SET ai_reason = ? WHERE job_id = ? AND candidate_id = ?",
-            (update_data["ai_reason"], job_id, candidate_id),
-        )
+    data = json.loads(payload)
+    links = JobCandidateRepository(session)
+    if data.get("status") is not None:
+        links.set_status(job_id, candidate_id, data["status"])
+    if data.get("ai_reason") is not None:
+        links.set_reason(job_id, candidate_id, data["ai_reason"])
 
 
-def _approve_delete_job_candidate(cur, target_id, payload, background_tasks):
+def _approve_delete_job_candidate(session, target_id, payload, background):
     job_id, candidate_id = map(int, target_id.split(":"))
-    cur.execute("DELETE FROM job_candidates WHERE job_id = ? AND candidate_id = ?", (job_id, candidate_id))
+    JobCandidateRepository(session).remove(job_id, candidate_id)
 
 
-def _approve_match_job(cur, target_id, payload, background_tasks):
-    job_id = int(target_id)
-    background_tasks.add_task(match_candidates_for_job, job_id)
+def _approve_match_job(session, target_id, payload, background):
+    background.add_task(match_candidates_for_job, int(target_id))
 
 
-def _approve_reset_all(cur, target_id, payload, background_tasks):
-    from langchain_community.vectorstores import PGVector
-
-    from app.services.ai_clients import get_models
-
-    cur.execute("DELETE FROM candidate_metadata")
-    try:
-        embeddings, _ = get_models()
-        db = PGVector(
-            connection_string=os.getenv("POSTGRES_DATABASE_URL"),
-            embedding_function=embeddings,
-            collection_name="resume_embeddings",
-        )
-        db.delete_collection()
-    except Exception as e:
-        # Best-effort: candidate_metadata is already wiped above regardless
-        # of whether this succeeds, so we don't re-raise (that would roll
-        # back the whole reset over a secondary cleanup step). But silently
-        # swallowing this meant a Postgres outage during reset left stale
-        # embeddings in place with no visible signal anywhere - logged now
-        # so it's at least diagnosable instead of silently corrupting future
-        # chat/matching relevance.
-        logger.error(f"Reset: failed to clear vector embeddings collection: {e}")
+def _approve_reset_all(session, target_id, payload, background):
+    CandidateRepository(session).delete_all()
+    vector_store.delete_collection()
 
 
-def _approve_approve_user(cur, target_id, payload, background_tasks):
-    target_username = target_id
-    cur.execute("UPDATE users SET is_approved = 1 WHERE LOWER(username) = LOWER(?)", (target_username,))
-    invalidate_user_cache(target_username)
+def _approve_approve_user(session, target_id, payload, background):
+    user = UserRepository(session).get_by_username(target_id)
+    if user is not None:
+        user.is_approved = 1
+    invalidate_user_cache(target_id)
 
 
-# action_type -> handler registry. See module docstring for rationale.
 ACTION_HANDLERS: dict[str, Callable] = {
     "add_column": _approve_add_column,
     "delete_column": _approve_delete_column,
@@ -496,78 +190,149 @@ ACTION_HANDLERS: dict[str, Callable] = {
 
 
 @router.post("/api/admin/requests/{request_id}/approve")
-def approve_change_request(request_id: int, request: Request, background_tasks: BackgroundTasks):
-    username = request.headers.get("x-user-username")
-    if not is_user_approved(username):
-        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
-    role = get_user_role(username)
-    if role != "admin":
-        raise HTTPException(status_code=403, detail="Forbidden")
+def approve_change_request(
+    request_id: int,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session),
+):
+    _require_admin(request)
+    requests = ChangeRequestRepository(session)
+    change = requests.get(request_id)
+    if change is None:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if change.status != "pending":
+        raise HTTPException(status_code=400, detail="Request is already resolved")
 
-    with get_db_connection() as conn:
-        conn.row_factory = dict_row_factory
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM change_requests WHERE id = ?", (request_id,))
-        req_row = cur.fetchone()
-        if not req_row:
-            raise HTTPException(status_code=404, detail="Request not found")
+    handler = ACTION_HANDLERS.get(change.action_type)
+    if handler is None:
+        raise HTTPException(status_code=400, detail=f"Unknown action_type: {change.action_type}")
 
-        req_data = dict(req_row)
-        if req_data["status"] != "pending":
-            raise HTTPException(status_code=400, detail="Request is already resolved")
-
-        action_type = req_data["action_type"]
-        target_id = req_data["target_id"]
-        payload = req_data["payload"]
-
-        handler = ACTION_HANDLERS.get(action_type)
-        if not handler:
-            raise HTTPException(status_code=400, detail=f"Unknown action_type: {action_type}")
-
-        try:
-            handler(cur, target_id, payload, background_tasks)
-            cur.execute("UPDATE change_requests SET status = 'approved' WHERE id = ?", (request_id,))
-            conn.commit()
-        except HTTPException:
-            conn.rollback()
-            raise
-        except Exception as e:
-            conn.rollback()
-            raise HTTPException(status_code=500, detail=f"Failed to execute request: {str(e)}")
-
+    try:
+        handler(session, change.target_id, change.payload, background_tasks)
+        change.status = "approved"
+        session.flush()
+        session.commit()  # background tasks started by the handler must see the result
+    except HTTPException:
+        session.rollback()
+        raise
+    except Exception as exc:
+        session.rollback()
+        logger.exception("Executing change request %s failed", request_id)
+        raise HTTPException(status_code=500, detail=f"Failed to execute request: {exc}")
     return {"status": "approved"}
 
 
 @router.post("/api/admin/requests/{request_id}/reject")
-def reject_change_request(request_id: int, request: Request, body: Optional[ChangeRequestReject] = None):
-    username = request.headers.get("x-user-username")
-    if not is_user_approved(username):
-        raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
-    role = get_user_role(username)
-    if role != "admin":
-        raise HTTPException(status_code=403, detail="Forbidden")
+def reject_change_request(
+    request_id: int,
+    request: Request,
+    body: Optional[ChangeRequestReject] = None,
+    session: Session = Depends(get_session),
+):
+    _require_admin(request)
+    change = ChangeRequestRepository(session).get(request_id)
+    if change is None:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if change.status != "pending":
+        raise HTTPException(status_code=400, detail="Request is already resolved")
 
-    reason = (body.reason if body else None) or None
-
-    with get_db_connection() as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT status, action_type, target_id FROM change_requests WHERE id = ?", (request_id,))
-        row = cur.fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Request not found")
-        status, action_type, target_id = row
-        if status != "pending":
-            raise HTTPException(status_code=400, detail="Request is already resolved")
-
-        if action_type == "approve_user":
-            cur.execute("DELETE FROM users WHERE LOWER(username) = LOWER(?)", (target_id,))
-
-        # S7.3: capture why a request was rejected - there was previously no
-        # way to record a reason, so a rejection gave the requester (and any
-        # admin reviewing history later) no explanation at all. There's still
-        # no notification channel to actually deliver this to the requester
-        # (same gap as the OTP-delivery issue) - it's recorded, not sent.
-        cur.execute("UPDATE change_requests SET status = 'rejected', rejection_reason = ? WHERE id = ?", (reason, request_id))
-        conn.commit()
-
+    if change.action_type == "approve_user" and change.target_id:
+        UserRepository(session).delete_by_username(change.target_id)
+        invalidate_user_cache(change.target_id)
+    change.status = "rejected"
+    change.rejection_reason = (body.reason if body else None) or None
     return {"status": "rejected"}
+
+
+# ── users ──────────────────────────────────────────────────────────────────
+@router.get("/api/admin/users")
+def list_users(request: Request, session: Session = Depends(get_session)):
+    _require_staff(request)
+    fields = ("id", "full_name", "username", "role", "is_hr", "is_admin", "is_external",
+              "hidden_fields", "is_approved", "email")
+    return [_model_dict(u, *fields) for u in UserRepository(session).list_all()]
+
+
+@router.put("/api/admin/users/{user_id}/permissions")
+def update_user_permissions(
+    user_id: int, body: UserPermissionsUpdate, request: Request, session: Session = Depends(get_session)
+):
+    _require_admin(request)
+    user = UserRepository(session).get_by_id(user_id)
+    if user is not None:
+        is_external = body.is_external if body.is_external is not None else 0
+        is_hr, is_admin = body.is_hr, body.is_admin
+        if is_external == 1:
+            is_hr = is_admin = 0
+        user.is_hr, user.is_admin, user.is_external = is_hr, is_admin, is_external
+        user.role = "admin" if is_admin == 1 else "user"
+        user.hidden_fields = body.hidden_fields if body.hidden_fields is not None else ""
+        if body.is_approved is not None:
+            user.is_approved = body.is_approved
+        invalidate_user_cache(user.username)
+    return {"status": "updated"}
+
+
+@router.delete("/api/admin/users/{user_id}")
+def delete_user(user_id: int, request: Request, session: Session = Depends(get_session)):
+    acting = _require_admin(request)
+    users = UserRepository(session)
+    user = users.get_by_id(user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    username, full_name = user.username, user.full_name
+    if username.lower() == acting.lower():
+        raise HTTPException(status_code=400, detail="You cannot delete yourself.")
+
+    jobs = JobRepository(session)
+    candidates = CandidateRepository(session)
+
+    ChangeRequestRepository(session).delete_involving_user(username)
+    jobs.delete_shares_for_user(username)
+    TeamMemberRepository(session).delete_by_names(full_name or "", username)
+    ActivityRepository(session).delete_for_user(username)
+
+    owned = candidates.identity_rows(username)
+    for row in candidates.all_rows(username):
+        if row.get("filename"):
+            path = os.path.join(UPLOAD_DIR, row["filename"])
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except OSError as exc:
+                logger.error("Error removing resume file %s: %s", path, exc)
+    candidates.delete_many(r["id"] for r in owned)
+    jobs.delete_many(jobs.ids_created_by(username))
+
+    users.delete(user)
+    invalidate_user_cache(username)
+    ActivityRepository(session).add(acting, f"completely deleted user '{username}' from system")
+    return {"status": "deleted"}
+
+
+# ── masked keywords ────────────────────────────────────────────────────────
+@router.get("/api/admin/masked-keywords")
+def list_masked_keywords(request: Request, session: Session = Depends(get_session)):
+    _require_admin(request)
+    return MaskedKeywordRepository(session).list_all()
+
+
+@router.post("/api/admin/masked-keywords")
+def add_masked_keyword(req: MaskedKeywordCreate, request: Request, session: Session = Depends(get_session)):
+    username = _require_admin(request)
+    keyword = req.keyword.strip()
+    if not keyword:
+        raise HTTPException(status_code=400, detail="Keyword cannot be empty")
+    MaskedKeywordRepository(session).add(keyword)
+    ActivityRepository(session).add(username, f"added masked keyword '{keyword}'")
+    return {"status": "added", "keyword": keyword}
+
+
+@router.delete("/api/admin/masked-keywords/{keyword}")
+def delete_masked_keyword(keyword: str, request: Request, session: Session = Depends(get_session)):
+    username = _require_admin(request)
+    keyword = keyword.strip()
+    MaskedKeywordRepository(session).remove(keyword)
+    ActivityRepository(session).add(username, f"deleted masked keyword '{keyword}'")
+    return {"status": "deleted", "keyword": keyword}
