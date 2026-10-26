@@ -1,7 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import axios from 'axios'
-import { Shield, CheckCircle, XCircle, UserCheck, Trash2, UserPlus, Check, Users, Search } from 'lucide-react'
+import { Shield, CheckCircle, XCircle, UserCheck, Trash2, UserPlus, Check, Users, Search, EyeOff, ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import apiClient from '../api/client'
+import { useToast } from '../hooks/useToast'
+import ToastHost from '../components/shared/ToastHost'
+import { useConfirm } from '../hooks/useConfirm'
+import ConfirmDialog from '../components/shared/ConfirmDialog'
+import { useModalA11y } from '../hooks/useModalA11y'
+import { SkeletonRows } from '../components/shared/Skeleton'
 
 const CANDIDATE_FIELDS = [
     { key: 'full_name', label: 'Name' },
@@ -24,6 +30,8 @@ const CANDIDATE_FIELDS = [
 
 export default function AdminPage() {
     const { user, onUpdateUser } = useOutletContext()
+    const { toast, showToast, dismissToast, pauseToast, resumeToast } = useToast()
+    const { confirm, confirmDialogProps } = useConfirm()
     const [activeTab, setActiveTab] = useState('requests') // requests | users | matrix
     const [requests, setRequests] = useState([])
     const [users, setUsers] = useState([])
@@ -32,12 +40,32 @@ export default function AdminPage() {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState(null)
     const [userSearchQuery, setUserSearchQuery] = useState('')
+    // S7.6: sort/filter/pagination for the user table - it had none, which
+    // the audit flagged as unusable past ~50 users.
+    const [userRoleFilter, setUserRoleFilter] = useState('all') // all | admin | hr | external | plain
+    const [userSort, setUserSort] = useState({ key: 'full_name', dir: 'asc' })
+    const [userPage, setUserPage] = useState(1)
+    const USER_PAGE_SIZE = 20
     const [keywords, setKeywords] = useState([])
     const [newKeyword, setNewKeyword] = useState('')
+    const [addingKeyword, setAddingKeyword] = useState(false)
+    const [addingMember, setAddingMember] = useState(false)
+    const [savingPermissionId, setSavingPermissionId] = useState(null)
     
     const [selectedUserForHiddenFields, setSelectedUserForHiddenFields] = useState(null)
     const [tempHiddenFields, setTempHiddenFields] = useState([])
     const [showHiddenFieldsModal, setShowHiddenFieldsModal] = useState(false)
+    const hiddenFieldsModalRef = useModalA11y(showHiddenFieldsModal, () => setShowHiddenFieldsModal(false))
+
+    // S7.3: capture an optional reason before rejecting a pending request.
+    const [rejectingRequestId, setRejectingRequestId] = useState(null)
+    const [rejectReason, setRejectReason] = useState('')
+    const rejectModalRef = useModalA11y(!!rejectingRequestId, () => setRejectingRequestId(null))
+    const submitReject = async () => {
+        await handleReject(rejectingRequestId, rejectReason.trim())
+        setRejectingRequestId(null)
+        setRejectReason('')
+    }
 
     useEffect(() => {
         if (activeTab === 'requests') {
@@ -55,7 +83,7 @@ export default function AdminPage() {
         setLoading(true)
         setError(null)
         try {
-            const res = await axios.get('/api/admin/requests')
+            const res = await apiClient.get('/api/admin/requests')
             setRequests(res.data || [])
         } catch (err) {
             setError(err.response?.data?.detail || 'Failed to load change requests.')
@@ -68,7 +96,7 @@ export default function AdminPage() {
         setLoading(true)
         setError(null)
         try {
-            const res = await axios.get('/api/admin/users')
+            const res = await apiClient.get('/api/admin/users')
             setUsers(res.data || [])
         } catch (err) {
             setError(err.response?.data?.detail || 'Failed to load users.')
@@ -77,21 +105,46 @@ export default function AdminPage() {
         }
     }
 
+    // Was fully unguarded: the button stayed enabled and unchanged until
+    // fetchRequests() resolved, so a slow connection invited a second click
+    // (a second approve/reject against the same already-actioned request).
+    // The rest of this file already guards permission toggles the same way
+    // via savingPermissionId - approve/reject were the one place that got
+    // missed.
+    const [pendingRequestId, setPendingRequestId] = useState(null)
+
     const handleApprove = async (id) => {
+        if (pendingRequestId === id) return
+        // Approving grants the requester real access to the app's candidate/
+        // job data - not reversible by just clicking again, so it gets the
+        // same confirm() treatment as any other access-granting action.
+        if (!await confirm({
+            title: 'Approve this request?',
+            message: 'This grants the requester access to the app and its candidate/job data.',
+            confirmLabel: 'Approve',
+            danger: false,
+        })) return
+        setPendingRequestId(id)
         try {
-            await axios.post(`/api/admin/requests/${id}/approve`)
-            fetchRequests()
+            await apiClient.post(`/api/admin/requests/${id}/approve`)
+            setRequests(prev => prev.filter(r => r.id !== id))
         } catch (err) {
-            alert(err.response?.data?.detail || 'Failed to approve request')
+            showToast(err.response?.data?.detail || 'Failed to approve request', 'error')
+        } finally {
+            setPendingRequestId(null)
         }
     }
 
-    const handleReject = async (id) => {
+    const handleReject = async (id, reason) => {
+        if (pendingRequestId === id) return
+        setPendingRequestId(id)
         try {
-            await axios.post(`/api/admin/requests/${id}/reject`)
-            fetchRequests()
+            await apiClient.post(`/api/admin/requests/${id}/reject`, reason ? { reason } : {})
+            setRequests(prev => prev.filter(r => r.id !== id))
         } catch (err) {
-            alert(err.response?.data?.detail || 'Failed to reject request')
+            showToast(err.response?.data?.detail || 'Failed to reject request', 'error')
+        } finally {
+            setPendingRequestId(null)
         }
     }
 
@@ -100,9 +153,12 @@ export default function AdminPage() {
         if (!targetUser) return
 
         if (targetUser.username === user.username && field === 'is_admin' && currentValue === 1) {
-            if (!window.confirm("WARNING: If you remove your Admin permission, you will lose access to the Admin Portal. Are you sure you want to proceed?")) {
-                return
-            }
+            const ok = await confirm({
+                title: 'Remove your own admin access?',
+                message: 'If you remove your Admin permission, you will lose access to the Admin Portal. Are you sure you want to proceed?',
+                confirmLabel: 'Remove admin access',
+            })
+            if (!ok) return
         }
 
         let isHrValue = targetUser.is_hr
@@ -133,26 +189,32 @@ export default function AdminPage() {
             }
         }
 
+        if (savingPermissionId === id) return // in-flight guard: a fast double-click on the
+        // same row previously fired two PUTs against the same stale currentValue, flip-flopping
+        // the result away from what was actually clicked.
+        setSavingPermissionId(id)
         try {
-            await axios.put(`/api/admin/users/${id}/permissions`, { 
-                is_hr: isHrValue, 
+            await apiClient.put(`/api/admin/users/${id}/permissions`, {
+                is_hr: isHrValue,
                 is_admin: isAdminValue,
                 is_external: isExternalValue,
                 is_approved: isApprovedValue
             })
             if (targetUser.username === user.username) {
-                onUpdateUser({ 
-                    ...user, 
-                    is_hr: isHrValue, 
+                onUpdateUser({
+                    ...user,
+                    is_hr: isHrValue,
                     is_admin: isAdminValue,
                     is_external: isExternalValue,
                     is_approved: isApprovedValue,
                     role: isAdminValue === 1 ? 'admin' : 'user'
                 })
             }
-            fetchUsers()
+            await fetchUsers()
         } catch (err) {
-            alert(err.response?.data?.detail || 'Failed to update user permissions')
+            showToast(err.response?.data?.detail || 'Failed to update user permissions', 'error')
+        } finally {
+            setSavingPermissionId(null)
         }
     }
 
@@ -161,7 +223,7 @@ export default function AdminPage() {
         if (!targetUser) return
         
         try {
-            await axios.put(`/api/admin/users/${id}/permissions`, { 
+            await apiClient.put(`/api/admin/users/${id}/permissions`, { 
                 is_hr: targetUser.is_hr, 
                 is_admin: targetUser.is_admin,
                 is_external: targetUser.is_external || 0,
@@ -169,17 +231,22 @@ export default function AdminPage() {
             })
             fetchUsers()
         } catch (err) {
-            alert(err.response?.data?.detail || 'Failed to update user hidden fields')
+            showToast(err.response?.data?.detail || 'Failed to update user hidden fields', 'error')
         }
     }
 
     const handleDeleteUser = async (id, username) => {
-        if (!window.confirm(`Are you sure you want to delete user "${username}"?`)) return
+        if (!await confirm({
+            title: 'Delete user?',
+            message: `This permanently removes "${username}"'s account, including their access history and any candidates or jobs attributed to them. This cannot be undone.`,
+            confirmLabel: 'Delete',
+            confirmText: username,
+        })) return
         try {
-            await axios.delete(`/api/admin/users/${id}`)
+            await apiClient.delete(`/api/admin/users/${id}`)
             fetchUsers()
         } catch (err) {
-            alert(err.response?.data?.detail || 'Failed to delete user')
+            showToast(err.response?.data?.detail || 'Failed to delete user', 'error')
         }
     }
 
@@ -187,7 +254,7 @@ export default function AdminPage() {
         setLoading(true)
         setError(null)
         try {
-            const res = await axios.get('/api/admin/masked-keywords')
+            const res = await apiClient.get('/api/admin/masked-keywords')
             setKeywords(res.data || [])
         } catch (err) {
             setError(err.response?.data?.detail || 'Failed to load masked keywords.')
@@ -199,22 +266,25 @@ export default function AdminPage() {
     const handleAddKeyword = async (e) => {
         e.preventDefault()
         const kw = newKeyword.trim()
-        if (!kw) return
+        if (!kw || addingKeyword) return
         setError(null)
+        setAddingKeyword(true)
         try {
-            await axios.post('/api/admin/masked-keywords', { keyword: kw })
+            await apiClient.post('/api/admin/masked-keywords', { keyword: kw })
             setNewKeyword('')
-            fetchKeywords()
+            await fetchKeywords()
         } catch (err) {
             setError(err.response?.data?.detail || 'Failed to add masked keyword.')
+        } finally {
+            setAddingKeyword(false)
         }
     }
 
     const handleDeleteKeyword = async (kw) => {
-        if (!window.confirm(`Are you sure you want to remove "${kw}" from masked keywords?`)) return
+        if (!await confirm({ title: 'Remove masked keyword?', message: `Are you sure you want to remove "${kw}" from masked keywords?`, confirmLabel: 'Remove' })) return
         setError(null)
         try {
-            await axios.delete(`/api/admin/masked-keywords/${encodeURIComponent(kw)}`, { headers: { 'x-user-username': user?.username } })
+            await apiClient.delete(`/api/admin/masked-keywords/${encodeURIComponent(kw)}`, { headers: { 'x-user-username': user?.username } })
             fetchKeywords()
         } catch (err) {
             setError(err.response?.data?.detail || 'Failed to delete masked keyword.')
@@ -225,7 +295,7 @@ export default function AdminPage() {
         setLoading(true)
         setError(null)
         try {
-            const res = await axios.get('/api/team-members')
+            const res = await apiClient.get('/api/team-members')
             setTeamMembers(res.data || [])
         } catch (err) {
             setError(err.response?.data?.detail || 'Failed to load team members.')
@@ -242,7 +312,7 @@ export default function AdminPage() {
             const actionText = newPersona 
                 ? `is now the active recruiter persona` 
                 : `reverted to system admin`;
-            await axios.post('/api/activity', { 
+            await apiClient.post('/api/activity', { 
                 username: memberName, 
                 action: actionText 
             });
@@ -256,22 +326,25 @@ export default function AdminPage() {
     const handleAddTeamMember = async (e) => {
         e.preventDefault()
         const name = newMemberName.trim()
-        if (!name) return
+        if (!name || addingMember) return
         setError(null)
+        setAddingMember(true)
         try {
-            await axios.post('/api/team-members', { name })
+            await apiClient.post('/api/team-members', { name })
             setNewMemberName('')
-            fetchTeamMembers()
+            await fetchTeamMembers()
         } catch (err) {
             setError(err.response?.data?.detail || 'Failed to add team member.')
+        } finally {
+            setAddingMember(false)
         }
     }
 
     const handleDeleteTeamMember = async (id, name) => {
-        if (!window.confirm(`Are you sure you want to remove "${name}" from the recruiter persona matrix?`)) return
+        if (!await confirm({ title: 'Remove team member?', message: `Are you sure you want to remove "${name}" from the recruiter persona matrix?`, confirmLabel: 'Remove' })) return
         setError(null)
         try {
-            await axios.delete(`/api/team-members/${id}`, { headers: { 'x-user-username': user?.username } })
+            await apiClient.delete(`/api/team-members/${id}`, { headers: { 'x-user-username': user?.username } })
             if (user?.active_persona === name) {
                 onUpdateUser({ ...user, active_persona: null })
             }
@@ -281,15 +354,45 @@ export default function AdminPage() {
         }
     }
 
+    const roleOf = (u) => u.is_admin === 1 ? 'admin' : u.is_hr === 1 ? 'hr' : u.is_external === 1 ? 'external' : 'plain'
+
+    const handleUserSort = (key) => {
+        setUserSort(prev => prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' })
+        setUserPage(1)
+    }
+
+    const filteredSortedUsers = users
+        .filter(u =>
+            u.username.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+            u.full_name.toLowerCase().includes(userSearchQuery.toLowerCase()))
+        .filter(u => userRoleFilter === 'all' || roleOf(u) === userRoleFilter)
+        .slice()
+        .sort((a, b) => {
+            let av, bv
+            if (userSort.key === 'role') { av = roleOf(a); bv = roleOf(b) }
+            else { av = (a[userSort.key] || '').toString().toLowerCase(); bv = (b[userSort.key] || '').toString().toLowerCase() }
+            const cmp = av < bv ? -1 : av > bv ? 1 : 0
+            return userSort.dir === 'asc' ? cmp : -cmp
+        })
+    const userTotalPages = Math.max(1, Math.ceil(filteredSortedUsers.length / USER_PAGE_SIZE))
+    const userPageClamped = Math.min(userPage, userTotalPages)
+    const pagedUsers = filteredSortedUsers.slice((userPageClamped - 1) * USER_PAGE_SIZE, userPageClamped * USER_PAGE_SIZE)
+
+    const SortableTh = ({ sortKey, children, ...rest }) => (
+        <th {...rest}>
+            <button
+                type="button"
+                onClick={() => handleUserSort(sortKey)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', font: 'inherit', padding: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            >
+                {children}
+                {userSort.key === sortKey && (userSort.dir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
+            </button>
+        </th>
+    )
+
     return (
         <div className="page-container">
-            <div className="page-header">
-                <div>
-                    <h1 className="page-title"><Shield size={28} style={{ marginRight: '10px', verticalAlign: 'middle', color: 'var(--gold)' }} />Admin Portal</h1>
-                    <p className="page-subtitle">Manage system changes, user roles, and access control.</p>
-                </div>
-            </div>
-
             {/* Tabs */}
             <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', borderBottom: '1px solid var(--border)' }}>
                 <button 
@@ -314,10 +417,34 @@ export default function AdminPage() {
                 >
                     User Management
                 </button>
+                <button
+                    onClick={() => setActiveTab('matrix')}
+                    style={{
+                        padding: '0.8rem 1.5rem', background: 'none', border: 'none', cursor: 'pointer',
+                        color: activeTab === 'matrix' ? 'var(--gold)' : 'var(--text-dim)',
+                        borderBottom: activeTab === 'matrix' ? '2px solid var(--gold)' : '2px solid transparent',
+                        fontWeight: activeTab === 'matrix' ? 'bold' : 'normal', fontSize: '1rem'
+                    }}
+                >
+                    Team Members
+                </button>
+                <button
+                    onClick={() => setActiveTab('keywords')}
+                    style={{
+                        padding: '0.8rem 1.5rem', background: 'none', border: 'none', cursor: 'pointer',
+                        color: activeTab === 'keywords' ? 'var(--gold)' : 'var(--text-dim)',
+                        borderBottom: activeTab === 'keywords' ? '2px solid var(--gold)' : '2px solid transparent',
+                        fontWeight: activeTab === 'keywords' ? 'bold' : 'normal', fontSize: '1rem'
+                    }}
+                >
+                    Masked Keywords
+                </button>
 
             </div>
 
-            {loading && <div style={{ textAlign: 'center', padding: '2rem' }}>Loading data...</div>}
+            {/* G-21: was plain "Loading data..." text - the one other loading
+                idiom besides Dashboard's spinner and Upload's button labels. */}
+            {loading && <div style={{ padding: '1.5rem 0' }} aria-busy="true" aria-label="Loading users"><SkeletonRows count={5} height={44} /></div>}
             {error && <div className="form-error" style={{ marginBottom: '1rem' }}>{error}</div>}
 
             {/* Requests Tab */}
@@ -355,10 +482,20 @@ export default function AdminPage() {
                                     </div>
                                 )}
                                 <div style={{ display: 'flex', gap: '1rem', marginTop: 'auto', paddingTop: '1rem' }}>
-                                    <button className="btn btn-primary" style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '0.5rem' }} onClick={() => handleApprove(req.id)}>
-                                        <CheckCircle size={16} /> Approve
+                                    <button
+                                        className="btn btn-primary"
+                                        style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '0.5rem' }}
+                                        disabled={pendingRequestId === req.id}
+                                        onClick={() => handleApprove(req.id)}
+                                    >
+                                        <CheckCircle size={16} /> {pendingRequestId === req.id ? 'Approving…' : 'Approve'}
                                     </button>
-                                    <button className="btn btn-danger" style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '0.5rem', background: '#e74c3c' }} onClick={() => handleReject(req.id)}>
+                                    <button
+                                        className="btn btn-danger"
+                                        style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '0.5rem' }}
+                                        disabled={pendingRequestId === req.id}
+                                        onClick={() => { setRejectingRequestId(req.id); setRejectReason('') }}
+                                    >
                                         <XCircle size={16} /> Reject
                                     </button>
                                 </div>
@@ -383,7 +520,7 @@ export default function AdminPage() {
                             </div>
                         </div>
                         <div className="user-stat-card">
-                            <div className="user-stat-icon-container" style={{ color: '#219EBC', background: 'rgba(33, 158, 188, 0.1)', borderColor: 'rgba(33, 158, 188, 0.3)' }}>
+                            <div className="user-stat-icon-container" style={{ color: 'var(--info-fg)', background: 'var(--info-bg)', borderColor: 'rgba(var(--sky-rgb), 0.3)' }}>
                                 <UserCheck size={20} />
                             </div>
                             <div className="user-stat-info">
@@ -392,7 +529,7 @@ export default function AdminPage() {
                             </div>
                         </div>
                         <div className="user-stat-card">
-                            <div className="user-stat-icon-container" style={{ color: '#FB8500', background: 'rgba(251, 133, 0, 0.1)', borderColor: 'rgba(251, 133, 0, 0.3)' }}>
+                            <div className="user-stat-icon-container" style={{ color: 'var(--warning-fg)', background: 'var(--warning-bg)', borderColor: 'rgba(var(--gold-rgb), 0.3)' }}>
                                 <Shield size={20} />
                             </div>
                             <div className="user-stat-info">
@@ -403,7 +540,7 @@ export default function AdminPage() {
                     </div>
 
                     {/* Filter and Table Control Card */}
-                    <div className="user-table-card">
+                    <div className="card card--table">
                         <div style={{ 
                             padding: '1.2rem 1.5rem', 
                             borderBottom: '1px solid var(--border)', 
@@ -418,16 +555,31 @@ export default function AdminPage() {
                                 <h3 style={{ margin: 0, fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 700 }}>Registered Users</h3>
                                 <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-dim)' }}>Update permissions and manage access credentials.</p>
                             </div>
-                            <div style={{ position: 'relative', width: '260px' }}>
-                                <input
-                                    type="text"
+                            <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                                <select
                                     className="form-input"
-                                    placeholder="Search users..."
-                                    style={{ margin: 0, paddingLeft: '34px', fontSize: '0.85rem' }}
-                                    value={userSearchQuery}
-                                    onChange={e => setUserSearchQuery(e.target.value)}
-                                />
-                                <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)', opacity: 0.7 }} />
+                                    style={{ margin: 0, fontSize: '0.85rem', width: 150 }}
+                                    value={userRoleFilter}
+                                    onChange={e => { setUserRoleFilter(e.target.value); setUserPage(1) }}
+                                    aria-label="Filter users by role"
+                                >
+                                    <option value="all">All roles</option>
+                                    <option value="admin">Admin</option>
+                                    <option value="hr">HR</option>
+                                    <option value="external">External</option>
+                                    <option value="plain">No role</option>
+                                </select>
+                                <div style={{ position: 'relative', width: '260px' }}>
+                                    <input
+                                        type="text"
+                                        className="form-input"
+                                        placeholder="Search users..."
+                                        style={{ margin: 0, paddingLeft: '34px', fontSize: '0.85rem' }}
+                                        value={userSearchQuery}
+                                        onChange={e => { setUserSearchQuery(e.target.value); setUserPage(1) }}
+                                    />
+                                    <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)', opacity: 0.7 }} />
+                                </div>
                             </div>
                         </div>
 
@@ -435,7 +587,7 @@ export default function AdminPage() {
                             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                                 <thead style={{ background: 'rgba(var(--navy-rgb), 0.25)', borderBottom: '1px solid var(--border)' }}>
                                     <tr>
-                                        <th style={{ padding: '1rem 1.5rem', fontSize: '0.78rem' }}>User Profile</th>
+                                        <SortableTh sortKey="full_name" style={{ padding: '1rem 1.5rem', fontSize: '0.78rem' }}>User Profile</SortableTh>
                                         <th style={{ padding: '1rem', textAlign: 'center', fontSize: '0.78rem' }}>HR</th>
                                         <th style={{ padding: '1rem', textAlign: 'center', fontSize: '0.78rem' }}>Admin</th>
                                         <th style={{ padding: '1rem', textAlign: 'center', fontSize: '0.78rem' }}>External</th>
@@ -444,30 +596,34 @@ export default function AdminPage() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {users.filter(u => 
-                                        u.username.toLowerCase().includes(userSearchQuery.toLowerCase()) || 
-                                        u.full_name.toLowerCase().includes(userSearchQuery.toLowerCase())
-                                    ).map(u => {
+                                    {pagedUsers.map(u => {
                                         const isSelf = u.username.toLowerCase() === user.username.toLowerCase();
                                         
                                         // Generate beautiful initials and avatar colors
                                         const initials = (u.full_name || u.username).split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-                                        let avatarBg = 'linear-gradient(135deg, #64748b, #475569)'; // slate
+                                        // Was a single background color with hardcoded color:#fff text
+                                        // (.user-avatar-circle) - --border-strong (external) and
+                                        // --text-subtle (default) are both light mid-greys in light
+                                        // theme, so white initials on them are close to unreadable in
+                                        // a 20-row table where they're the only at-a-glance identifier.
+                                        // Reusing the same tinted-bg/saturated-fg pairs the status
+                                        // chips already use guarantees a readable pair in both themes.
+                                        let avatarBg = 'var(--surface-2)', avatarFg = 'var(--text)'; // default
                                         if (u.is_admin === 1 && u.is_hr === 1) {
-                                            avatarBg = 'linear-gradient(135deg, #a855f7, #ec4899)'; // purple-pink (super-user)
+                                            avatarBg = 'var(--warning-bg)'; avatarFg = 'var(--warning-fg)'; // super-user
                                         } else if (u.is_admin === 1) {
-                                            avatarBg = 'linear-gradient(135deg, #f97316, #ef4444)'; // orange-red (admin)
+                                            avatarBg = 'var(--danger-bg)'; avatarFg = 'var(--danger-fg)'; // admin
                                         } else if (u.is_hr === 1) {
-                                            avatarBg = 'linear-gradient(135deg, #0ea5e9, #059669)'; // sky-emerald (HR manager)
+                                            avatarBg = 'var(--success-bg)'; avatarFg = 'var(--success-fg)'; // HR manager
                                         } else if (u.is_external === 1) {
-                                            avatarBg = 'linear-gradient(135deg, #94a3b8, #64748b)'; // slate grey (external)
+                                            avatarBg = 'var(--info-bg)'; avatarFg = 'var(--info-fg)'; // external
                                         }
 
                                         return (
                                             <tr key={u.username} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.2s' }} className="table-user-row">
                                                 <td style={{ padding: '1rem 1.5rem' }}>
                                                     <div className="user-cell-profile">
-                                                        <div className="user-avatar-circle" style={{ background: avatarBg }}>
+                                                        <div className="user-avatar-circle" style={{ background: avatarBg, color: avatarFg }}>
                                                             {initials}
                                                         </div>
                                                         <div className="user-info-text">
@@ -479,11 +635,12 @@ export default function AdminPage() {
                                                 <td style={{ padding: '1rem', textAlign: 'center' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                                                         <label className="switch-container">
-                                                            <input 
-                                                                type="checkbox" 
+                                                            <input
+                                                                type="checkbox"
                                                                 className="switch-input"
                                                                 checked={u.is_hr === 1}
-                                                                disabled={isSelf}
+                                                                disabled={isSelf || savingPermissionId === u.id}
+                                                                aria-label={`HR access for ${u.full_name || u.username}`}
                                                                 onChange={() => togglePermission(u.id, 'is_hr', u.is_hr)}
                                                             />
                                                             <span className="switch-slider"></span>
@@ -496,11 +653,12 @@ export default function AdminPage() {
                                                 <td style={{ padding: '1rem', textAlign: 'center' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                                                         <label className="switch-container">
-                                                            <input 
-                                                                type="checkbox" 
+                                                            <input
+                                                                type="checkbox"
                                                                 className="switch-input"
                                                                 checked={u.is_admin === 1}
-                                                                disabled={isSelf}
+                                                                disabled={isSelf || savingPermissionId === u.id}
+                                                                aria-label={`Admin access for ${u.full_name || u.username}`}
                                                                 onChange={() => togglePermission(u.id, 'is_admin', u.is_admin)}
                                                             />
                                                             <span className="switch-slider"></span>
@@ -513,11 +671,12 @@ export default function AdminPage() {
                                                 <td style={{ padding: '1rem', textAlign: 'center' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                                                         <label className="switch-container">
-                                                            <input 
-                                                                type="checkbox" 
+                                                            <input
+                                                                type="checkbox"
                                                                 className="switch-input"
                                                                 checked={u.is_external === 1}
-                                                                disabled={isSelf}
+                                                                disabled={isSelf || savingPermissionId === u.id}
+                                                                aria-label={`External access for ${u.full_name || u.username}`}
                                                                 onChange={() => togglePermission(u.id, 'is_external', u.is_external)}
                                                             />
                                                             <span className="switch-slider"></span>
@@ -531,15 +690,15 @@ export default function AdminPage() {
                                                 <td style={{ padding: '1rem', textAlign: 'center' }}>
                                                     <button 
                                                         className="btn btn-secondary" 
-                                                        style={{ padding: '4px 10px', fontSize: '0.75rem', borderColor: 'var(--border)', color: 'var(--text)' }}
+                                                        style={{ padding: '4px 10px', fontSize: '0.75rem', borderColor: 'var(--border)', color: 'var(--text)', display: 'inline-flex', alignItems: 'center', gap: 5 }}
                                                         onClick={() => {
                                                             setSelectedUserForHiddenFields(u);
-                                                            setTempHiddenFields(u.hidden_fields ? u.hidden_fields.split(',').map(s => s.trim().lower()).filter(Boolean) : []);
+                                                            setTempHiddenFields(u.hidden_fields ? u.hidden_fields.split(',').map(s => s.trim().toLowerCase()).filter(Boolean) : []);
                                                             setShowHiddenFieldsModal(true);
                                                         }}
                                                     >
-                                                        {u.hidden_fields && u.hidden_fields.split(',').filter(Boolean).length > 0 
-                                                            ? `🚫 ${u.hidden_fields.split(',').filter(Boolean).length} Hidden` 
+                                                        {u.hidden_fields && u.hidden_fields.split(',').filter(Boolean).length > 0
+                                                            ? <><EyeOff size={12} /> {u.hidden_fields.split(',').filter(Boolean).length} Hidden</>
                                                             : 'Configure'}
                                                     </button>
                                                 </td>
@@ -555,7 +714,7 @@ export default function AdminPage() {
                                                                 style={{ padding: '0.45rem 0.9rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', borderRadius: '8px' }}
                                                                 onClick={() => handleDeleteUser(u.id, u.username)}
                                                             >
-                                                                <Trash2 size={13} /> Delete
+                                                                <Trash2 size={14} /> Delete
                                                             </button>
                                                         )}
                                                     </div>
@@ -563,10 +722,7 @@ export default function AdminPage() {
                                             </tr>
                                         );
                                     })}
-                                                                    {users.filter(u => 
-                                        u.username.toLowerCase().includes(userSearchQuery.toLowerCase()) || 
-                                        u.full_name.toLowerCase().includes(userSearchQuery.toLowerCase())
-                                    ).length === 0 && (
+                                    {filteredSortedUsers.length === 0 && (
                                         <tr>
                                             <td colSpan="6" style={{ padding: '3rem 2rem', textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.9rem' }}>
                                                 No users found matching your search.
@@ -576,16 +732,127 @@ export default function AdminPage() {
                                 </tbody>
                             </table>
                         </div>
+
+                        {filteredSortedUsers.length > 0 && (
+                            <div style={{
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                padding: '0.9rem 1.5rem', borderTop: '1px solid var(--border)', fontSize: '0.8rem', color: 'var(--text-dim)'
+                            }}>
+                                <span>
+                                    Showing {(userPageClamped - 1) * USER_PAGE_SIZE + 1}
+                                    –{Math.min(userPageClamped * USER_PAGE_SIZE, filteredSortedUsers.length)} of {filteredSortedUsers.length}
+                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                    <button
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        style={{ padding: '4px 8px' }}
+                                        disabled={userPageClamped <= 1}
+                                        onClick={() => setUserPage(p => Math.max(1, p - 1))}
+                                        aria-label="Previous page"
+                                    >
+                                        <ChevronLeft size={14} />
+                                    </button>
+                                    <span>Page {userPageClamped} of {userTotalPages}</span>
+                                    <button
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        style={{ padding: '4px 8px' }}
+                                        disabled={userPageClamped >= userTotalPages}
+                                        onClick={() => setUserPage(p => Math.min(userTotalPages, p + 1))}
+                                        aria-label="Next page"
+                                    >
+                                        <ChevronRight size={14} />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
 
+            {/* Team Members Tab */}
+            {!loading && activeTab === 'matrix' && (
+                <div className="card card--table">
+                    <div style={{ padding: '1.2rem 1.5rem', borderBottom: '1px solid var(--border)' }}>
+                        <h3 style={{ margin: 0, fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 700 }}>Team Members</h3>
+                        <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
+                            Team members an admin can act as (see the persona switcher in the top bar).
+                        </p>
+                    </div>
+                    <form onSubmit={handleAddTeamMember} style={{ display: 'flex', gap: '0.6rem', padding: '1.2rem 1.5rem', borderBottom: '1px solid var(--border)' }}>
+                        <input
+                            type="text"
+                            className="form-input"
+                            style={{ margin: 0, flex: 1 }}
+                            placeholder="Team member name"
+                            value={newMemberName}
+                            onChange={e => setNewMemberName(e.target.value)}
+                        />
+                        <button type="submit" className="btn btn-primary" disabled={addingMember || !newMemberName.trim()} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <UserPlus size={16} /> {addingMember ? 'Adding…' : 'Add'}
+                        </button>
+                    </form>
+                    <div style={{ padding: '1rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                        {teamMembers.length === 0 ? (
+                            <div style={{ padding: '1.5rem 0', textAlign: 'center', color: 'var(--text-dim)' }}>No team members yet.</div>
+                        ) : teamMembers.map(m => (
+                            <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.7rem 1rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                                <span>{m.name}{user?.active_persona === m.name ? ' (active)' : ''}</span>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <button className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: '0.8rem' }} onClick={() => handleSelectPersona(m.name)}>
+                                        {user?.active_persona === m.name ? 'Revert' : 'Act as'}
+                                    </button>
+                                    <button className="btn btn-danger" style={{ padding: '4px 10px', fontSize: '0.8rem' }} onClick={() => handleDeleteTeamMember(m.id, m.name)}>
+                                        <Trash2 size={14} />
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
-
+            {/* Masked Keywords Tab */}
+            {!loading && activeTab === 'keywords' && (
+                <div className="card card--table">
+                    <div style={{ padding: '1.2rem 1.5rem', borderBottom: '1px solid var(--border)' }}>
+                        <h3 style={{ margin: 0, fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 700 }}>Masked Keywords</h3>
+                        <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
+                            Terms redacted from candidate records shown to non-HR/admin users (client names, sensitive tags, etc).
+                        </p>
+                    </div>
+                    <form onSubmit={handleAddKeyword} style={{ display: 'flex', gap: '0.6rem', padding: '1.2rem 1.5rem', borderBottom: '1px solid var(--border)' }}>
+                        <input
+                            type="text"
+                            className="form-input"
+                            style={{ margin: 0, flex: 1 }}
+                            placeholder="Keyword to mask"
+                            value={newKeyword}
+                            onChange={e => setNewKeyword(e.target.value)}
+                        />
+                        <button type="submit" className="btn btn-primary" disabled={addingKeyword || !newKeyword.trim()}>
+                            {addingKeyword ? 'Adding…' : 'Add'}
+                        </button>
+                    </form>
+                    <div style={{ padding: '1rem 1.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.6rem' }}>
+                        {keywords.length === 0 ? (
+                            <div style={{ padding: '1.5rem 0', textAlign: 'center', color: 'var(--text-dim)', width: '100%' }}>No masked keywords configured.</div>
+                        ) : keywords.map(kw => (
+                            <span key={kw} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 999, background: 'var(--surface-2)', border: '1px solid var(--border)', fontSize: '0.82rem' }}>
+                                {kw}
+                                <button onClick={() => handleDeleteKeyword(kw)} aria-label={`Remove ${kw}`} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', display: 'flex' }}>
+                                    <XCircle size={14} />
+                                </button>
+                            </span>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {showHiddenFieldsModal && selectedUserForHiddenFields && (
                 <div className="modal-overlay" onClick={() => setShowHiddenFieldsModal(false)}>
-                    <div className="card" onClick={e => e.stopPropagation()} style={{
+                    <div ref={hiddenFieldsModalRef} className="card" role="dialog" aria-modal="true" aria-labelledby="hidden-fields-modal-title" onClick={e => e.stopPropagation()} style={{
                         width: '90%', maxWidth: '500px', maxHeight: '85vh',
                         display: 'flex', flexDirection: 'column', padding: 0
                     }}>
@@ -594,10 +861,10 @@ export default function AdminPage() {
                             padding: '20px 24px', background: 'rgba(var(--navy-dark-rgb), 0.4)',
                             borderBottom: '1px solid var(--border)'
                         }}>
-                            <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 800 }}>
-                                🚫 Hidden Candidate Fields for @{selectedUserForHiddenFields.username}
+                            <h3 id="hidden-fields-modal-title" style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 800 }}>
+                                Hidden Candidate Fields for @{selectedUserForHiddenFields.username}
                             </h3>
-                            <button onClick={() => setShowHiddenFieldsModal(false)} style={{
+                            <button onClick={() => setShowHiddenFieldsModal(false)} aria-label="Close" style={{
                                 background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
                                 color: 'var(--gold)', cursor: 'pointer', padding: 6, borderRadius: '8px',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center'
@@ -605,32 +872,38 @@ export default function AdminPage() {
                                 <XCircle size={18} />
                             </button>
                         </div>
+                        <p style={{ margin: '0 24px 12px', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                            Uncheck a field to hide it from this user's candidate view.
+                        </p>
                         <div style={{
-                            flex: 1, padding: '24px', overflowY: 'auto',
+                            flex: 1, padding: '0 24px 24px', overflowY: 'auto',
                             display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px'
                         }}>
                             {CANDIDATE_FIELDS.map(f => {
-                                const isChecked = tempHiddenFields.includes(f.key);
+                                // checked = "visible to this user" (S7.4: checkbox semantics
+                                // matched their visual weight - checked+red used to mean
+                                // "hidden", which read as the field being flagged/enabled).
+                                const isVisible = !tempHiddenFields.includes(f.key);
                                 return (
                                     <label key={f.key} style={{
                                         display: 'flex', alignItems: 'center', gap: '8px',
-                                        fontSize: '0.88rem', color: isChecked ? '#ef4444' : 'var(--text)',
+                                        fontSize: '0.88rem', color: isVisible ? 'var(--text)' : 'var(--warning-fg)',
                                         cursor: 'pointer', padding: '8px 12px', borderRadius: '6px',
-                                        background: isChecked ? 'rgba(239, 68, 68, 0.08)' : 'rgba(255,255,255,0.02)',
-                                        border: `1px solid ${isChecked ? 'rgba(239, 68, 68, 0.2)' : 'transparent'}`,
+                                        background: isVisible ? 'var(--surface-2)' : 'var(--warning-bg)',
+                                        border: `1px solid ${isVisible ? 'transparent' : 'rgba(var(--gold-rgb), 0.3)'}`,
                                         transition: 'all 0.15s'
                                     }}>
                                         <input
                                             type="checkbox"
-                                            checked={isChecked}
+                                            checked={isVisible}
                                             onChange={() => {
-                                                setTempHiddenFields(prev => 
-                                                    prev.includes(f.key) 
-                                                        ? prev.filter(k => k !== f.key) 
+                                                setTempHiddenFields(prev =>
+                                                    prev.includes(f.key)
+                                                        ? prev.filter(k => k !== f.key)
                                                         : [...prev, f.key]
                                                 );
                                             }}
-                                            style={{ cursor: 'pointer', accentColor: '#ef4444' }}
+                                            style={{ cursor: 'pointer' }}
                                         />
                                         {f.label}
                                     </label>
@@ -655,7 +928,7 @@ export default function AdminPage() {
                                     setShowHiddenFieldsModal(false);
                                 }}
                                 className="btn btn-primary"
-                                style={{ padding: '6px 18px', fontSize: '0.8rem', background: '#ef4444', borderColor: '#ef4444' }}
+                                style={{ padding: '6px 18px', fontSize: '0.8rem' }}
                             >
                                 Save Changes
                             </button>
@@ -663,6 +936,63 @@ export default function AdminPage() {
                     </div>
                 </div>
             )}
+
+            {rejectingRequestId && (
+                <div className="modal-overlay" onClick={() => setRejectingRequestId(null)}>
+                    <div ref={rejectModalRef} className="card" role="dialog" aria-modal="true" aria-labelledby="reject-reason-title" onClick={e => e.stopPropagation()} style={{
+                        width: '90%', maxWidth: '440px', padding: 0
+                    }}>
+                        <div style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            padding: '20px 24px', background: 'rgba(var(--navy-dark-rgb), 0.4)',
+                            borderBottom: '1px solid var(--border)'
+                        }}>
+                            <h3 id="reject-reason-title" style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 800 }}>
+                                Reject request
+                            </h3>
+                            <button onClick={() => setRejectingRequestId(null)} aria-label="Close" style={{
+                                background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
+                                color: 'var(--gold)', cursor: 'pointer', padding: 6, borderRadius: '8px',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            }}>
+                                <XCircle size={18} />
+                            </button>
+                        </div>
+                        <div style={{ padding: '20px 24px' }}>
+                            <label className="form-label" htmlFor="reject-reason-input" style={{ fontSize: '0.8rem', display: 'block', marginBottom: 8 }}>
+                                Reason (optional)
+                            </label>
+                            <textarea
+                                id="reject-reason-input"
+                                rows={3}
+                                autoFocus
+                                value={rejectReason}
+                                onChange={e => setRejectReason(e.target.value)}
+                                placeholder="Why is this request being rejected?"
+                                style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', fontSize: '0.85rem', resize: 'vertical' }}
+                            />
+                            <p style={{ margin: '8px 0 0', fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
+                                Recorded on the request for later reference. There's no email/notification channel yet, so the requester won't be told automatically.
+                            </p>
+                        </div>
+                        <div style={{
+                            padding: '16px 24px', borderTop: '1px solid var(--border)',
+                            display: 'flex', justifyContent: 'flex-end', gap: '12px',
+                            background: 'rgba(var(--navy-rgb), 0.3)'
+                        }}>
+                            <button onClick={() => setRejectingRequestId(null)} className="btn btn-secondary" style={{ padding: '6px 16px', fontSize: '0.8rem' }}>
+                                Cancel
+                            </button>
+                            <button onClick={submitReject} className="btn btn-danger" style={{ padding: '6px 18px', fontSize: '0.8rem' }}>
+                                Reject
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <ToastHost toast={toast} onDismiss={dismissToast} onPause={pauseToast} onResume={resumeToast} />
+            <ConfirmDialog {...confirmDialogProps} />
         </div>
     )
 }

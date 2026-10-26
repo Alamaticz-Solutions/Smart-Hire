@@ -1,0 +1,7 @@
+# Optional: run the embedding model inside the API process instead of using
+# the hosted HuggingFace API (EMBEDDINGS_PROVIDER=local, or `auto` fallback).
+# Needs ~500 MB RAM; not suitable for 512 MB hosting tiers.
+--extra-index-url https://download.pytorch.org/whl/cpu
+langchain-huggingface~=1.2
+sentence-transformers~=6.1
+torch

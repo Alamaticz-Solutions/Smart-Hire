@@ -1,13 +1,28 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import axios from 'axios'
-import { FileText, Eye, Sparkles, Check, Info, Copy, Save, AlertCircle, Send, Loader } from 'lucide-react'
+import { Eye, Sparkles, Check, Info, Copy, Save, AlertCircle, AlertTriangle, Send, Loader, Mail, Pencil } from 'lucide-react'
+import apiClient from '../api/client'
+import { useToast } from '../hooks/useToast'
+import ToastHost from '../components/shared/ToastHost'
+import { useConfirm } from '../hooks/useConfirm'
+import ConfirmDialog from '../components/shared/ConfirmDialog'
 
-const BACKEND_URL = import.meta.env.VITE_API_URL || '';
+// These three tones used to have three different sign-off identities ("HR
+// Team" / "The Talent Team" / "Your Friends at HR") for candidate-facing
+// email sent under the same Alamaticz name - reading as three different
+// departments replying, not one company with a tone choice. Sign-off is
+// now unified to "The Alamaticz Solutions Team" everywhere; only the tone
+// (word choice, closing salutation) varies. Display names also used to
+// each end in the word "Preset" inside a preset picker ("Professional
+// Preset (Default)") - dropped, the picker's own label already says preset.
+// Was a real-looking full name ("Somasekhar Kundurthi") hardcoded as the
+// sample recipient in this preview - a placeholder should read as
+// obviously fictional, not as if it could be an actual candidate's name.
+const PREVIEW_CANDIDATE_NAME = "Jordan Rivera";
 
 const THEME_PRESETS = {
   professional: {
-    name: "Professional Preset (Default)",
+    name: "Professional",
     subject: "Re: {subject} (Ref: {ref})",
     body_missing: `Dear {candidate_name},
 
@@ -23,8 +38,7 @@ We look forward to hearing from you.
 
 Best regards,
 
-HR Team
-Alamaticz Solutions`,
+The Alamaticz Solutions Team`,
     body_complete: `Dear {candidate_name},
 
 Thank you for your interest in Alamaticz Solutions and for submitting your application.
@@ -33,11 +47,10 @@ We appreciate the time you have taken to apply for this opportunity. Our recruit
 
 Best regards,
 
-HR Team
-Alamaticz Solutions`
+The Alamaticz Solutions Team`
   },
   creative: {
-    name: "Creative & Enthusiastic Preset",
+    name: "Enthusiastic",
     subject: "Excited to connect! Re: {subject} (Ref: {ref})",
     body_missing: `Hi {candidate_name}!
 
@@ -53,8 +66,7 @@ Can't wait to hear back from you!
 
 Cheers,
 
-The Talent Team
-Alamaticz Solutions`,
+The Alamaticz Solutions Team`,
     body_complete: `Hi {candidate_name}!
 
 Thanks for reaching out and sharing your application with us!
@@ -65,11 +77,10 @@ Have a fantastic day!
 
 Cheers,
 
-The Talent Team
-Alamaticz Solutions`
+The Alamaticz Solutions Team`
   },
   warm: {
-    name: "Warm & Friendly Preset",
+    name: "Warm",
     subject: "Thank you for applying! Re: {subject} (Ref: {ref})",
     body_missing: `Hello {candidate_name},
 
@@ -83,8 +94,7 @@ We really appreciate your support and look forward to reviewing your application
 
 Wishing you all the best,
 
-Your Friends at HR
-Alamaticz Solutions`,
+The Alamaticz Solutions Team`,
     body_complete: `Hello {candidate_name},
 
 We hope you are doing well! Thank you so much for sending over your application.
@@ -93,19 +103,20 @@ This is just a quick note to let you know we've received all your information. O
 
 Take care,
 
-Your Friends at HR
-Alamaticz Solutions`
+The Alamaticz Solutions Team`
   }
 };
 
 export default function TemplatesPage() {
     const { user } = useOutletContext()
-    const [toast, setToast] = useState(null)
+    const { toast, showToast, dismissToast, pauseToast, resumeToast } = useToast()
+    const { confirm, confirmDialogProps } = useConfirm()
     const [saving, setSaving] = useState(false)
     const [editorTab, setEditorTab] = useState('missing') // 'missing' | 'complete'
     const [previewType, setPreviewType] = useState('missing') // 'missing' | 'complete'
     const [testEmail, setTestEmail] = useState('')
     const [isTestingEmail, setIsTestingEmail] = useState(false)
+    const bodyTextareaRef = useRef(null)
     
     const [integrationsSettings, setIntegrationsSettings] = useState({
         email_enabled: 0, imap_host: 'imap.gmail.com', imap_port: 993,
@@ -125,30 +136,39 @@ export default function TemplatesPage() {
         default_resume_template: 'alamaticz'
     })
 
-    const showToast = (msg, type = 'success') => {
-        setToast({ msg, type })
-        setTimeout(() => setToast(null), 3500)
-    }
+    // S9.3: snapshot of the last-saved (or last-loaded) values, used to warn
+    // before an in-page navigation or tab close discards unsaved edits.
+    const savedSnapshotRef = useRef(null)
+    const snapshotOf = (s) => JSON.stringify({
+        reply_theme: s.reply_theme, reply_subject: s.reply_subject,
+        reply_body_missing: s.reply_body_missing, reply_body_complete: s.reply_body_complete,
+        default_resume_template: s.default_resume_template,
+    })
 
     const fetchIntegrationsSettings = useCallback(async () => {
         try {
-            const res = await axios.get(`${BACKEND_URL}/api/integrations`, {
+            const res = await apiClient.get('/api/integrations', {
                 headers: { 'x-user-username': user?.username }
             })
             setIntegrationsSettings(res.data)
-            
+            savedSnapshotRef.current = snapshotOf(res.data)
+
             // Sync default preview state with initial theme config
             if (res.data.reply_theme) {
                 // If it is professional/warm/creative and missing body configs are empty in DB, load preset values
                 const currentTheme = res.data.reply_theme;
                 if (currentTheme !== 'custom' && THEME_PRESETS[currentTheme]) {
                     const preset = THEME_PRESETS[currentTheme];
-                    setIntegrationsSettings(prev => ({
-                        ...prev,
-                        reply_subject: prev.reply_subject || preset.subject,
-                        reply_body_missing: prev.reply_body_missing || preset.body_missing,
-                        reply_body_complete: prev.reply_body_complete || preset.body_complete
-                    }));
+                    setIntegrationsSettings(prev => {
+                        const next = {
+                            ...prev,
+                            reply_subject: prev.reply_subject || preset.subject,
+                            reply_body_missing: prev.reply_body_missing || preset.body_missing,
+                            reply_body_complete: prev.reply_body_complete || preset.body_complete
+                        };
+                        savedSnapshotRef.current = snapshotOf(next);
+                        return next;
+                    });
                 }
             }
         } catch (err) {
@@ -163,16 +183,33 @@ export default function TemplatesPage() {
         }
     }, [fetchIntegrationsSettings, user])
 
+    // S9.3: warn on a tab close/refresh with unsaved edits. This app uses
+    // <BrowserRouter> (confirmed: React Router's non-data-router future-flag
+    // warnings appear in the console), so useBlocker - which needs a data
+    // router - isn't available for catching in-app navigation away from this
+    // page; beforeunload is the part of this that's actually implementable
+    // here.
+    useEffect(() => {
+        const handler = (e) => {
+            if (savedSnapshotRef.current !== null && snapshotOf(integrationsSettings) !== savedSnapshotRef.current) {
+                e.preventDefault()
+                e.returnValue = ''
+            }
+        }
+        window.addEventListener('beforeunload', handler)
+        return () => window.removeEventListener('beforeunload', handler)
+    }, [integrationsSettings])
+
     const saveIntegrationsSettings = async () => {
         setSaving(true)
         try {
-            await axios.post(`${BACKEND_URL}/api/integrations`, integrationsSettings, {
+            await apiClient.post('/api/integrations', integrationsSettings, {
                 headers: { 'x-user-username': user?.username }
             })
             showToast("Reply templates saved successfully!", "success")
             fetchIntegrationsSettings()
         } catch (err) {
-            alert(err.response?.data?.detail || "Failed to save template settings")
+            showToast(err.response?.data?.detail || "Failed to save template settings", "error")
         } finally {
             setSaving(false)
         }
@@ -186,7 +223,7 @@ export default function TemplatesPage() {
         
         setIsTestingEmail(true);
         try {
-            const res = await axios.post(`${BACKEND_URL}/api/settings/test-email-template`, {
+            const res = await apiClient.post('/api/settings/test-email-template', {
                 recipient_email: testEmail,
                 preview_type: previewType,
                 subject_template: integrationsSettings.reply_subject,
@@ -207,7 +244,28 @@ export default function TemplatesPage() {
         }
     }
 
-    const handleThemeChange = (newTheme) => {
+    const handleThemeChange = async (newTheme) => {
+        // S9.3: switching to a preset used to silently overwrite whatever
+        // subject/body text was already there. Warn first when there's
+        // content that would actually be lost.
+        if (newTheme !== 'custom' && newTheme !== integrationsSettings.reply_theme) {
+            const hasContent = Boolean(integrationsSettings.reply_subject || integrationsSettings.reply_body_missing || integrationsSettings.reply_body_complete);
+            if (hasContent) {
+                const ok = await confirm({
+                    title: 'Switch template preset?',
+                    message: "This replaces the current subject and body text with the preset's text. Any edits you haven't saved will be lost.",
+                    confirmLabel: 'Switch preset',
+                });
+                if (!ok) {
+                    // The <select> already shows newTheme in the DOM (native
+                    // behavior fires before we get a chance to intervene).
+                    // Since reply_theme in state hasn't changed, React won't
+                    // re-render on its own to snap it back - force one.
+                    setIntegrationsSettings(prev => ({ ...prev }));
+                    return;
+                }
+            }
+        }
         if (newTheme !== 'custom') {
             const preset = THEME_PRESETS[newTheme];
             setIntegrationsSettings(prev => ({
@@ -229,11 +287,13 @@ export default function TemplatesPage() {
                 };
             });
         }
-        showToast(`Theme preset updated to: ${newTheme === 'custom' ? 'Custom Editable' : newTheme}`, 'info');
+        // Was the raw internal key (e.g. "creative") rather than the
+        // friendly preset name shown in the picker itself.
+        showToast(`Theme preset updated to: ${newTheme === 'custom' ? 'Custom Editable' : (THEME_PRESETS[newTheme]?.name || newTheme)}`, 'info');
     }
 
     const getPreviewText = (subjectTpl, bodyTpl) => {
-        const candidateName = "Somasekhar Kundurthi";
+        const candidateName = PREVIEW_CANDIDATE_NAME;
         const subjectVal = "React Developer Application";
         const refVal = "CAND-407";
         const missingFields = `* Total years of experience\n* Current CTC\n* Expected CTC`;
@@ -251,9 +311,20 @@ export default function TemplatesPage() {
         return { subject, body };
     }
 
-    const activeBodyValue = editorTab === 'missing' 
-        ? integrationsSettings.reply_body_missing 
+    const activeBodyValue = editorTab === 'missing'
+        ? integrationsSettings.reply_body_missing
         : integrationsSettings.reply_body_complete;
+
+    // S9.2: flag any {variable} that isn't one of the four the backend
+    // actually substitutes - catches a typo like {jobTitle} vs {subject}
+    // before it fails silently at send time instead of after.
+    const KNOWN_VARIABLES = ['candidate_name', 'missing_fields', 'subject', 'ref'];
+    const unknownVariables = [...new Set(
+        [...`${integrationsSettings.reply_subject || ''}\n${integrationsSettings.reply_body_missing || ''}\n${integrationsSettings.reply_body_complete || ''}`
+            .matchAll(/\{([a-zA-Z_]+)\}/g)]
+            .map(m => m[1])
+            .filter(v => !KNOWN_VARIABLES.includes(v))
+    )];
 
     const handleBodyTextChange = (text) => {
         setIntegrationsSettings(prev => ({
@@ -262,9 +333,25 @@ export default function TemplatesPage() {
         }));
     };
 
-    const handleCopyVariable = (variable) => {
-        navigator.clipboard.writeText(variable);
-        showToast(`Copied ${variable} to clipboard!`, 'info');
+    // S9.2: insert the variable at the cursor when the body editor has
+    // focus, instead of only copying it to the clipboard for a manual paste.
+    const handleInsertVariable = (variable) => {
+        const ta = bodyTextareaRef.current;
+        if (ta && document.activeElement === ta && integrationsSettings.reply_theme === 'custom') {
+            const start = ta.selectionStart ?? ta.value.length;
+            const end = ta.selectionEnd ?? ta.value.length;
+            const current = activeBodyValue || '';
+            handleBodyTextChange(current.slice(0, start) + variable + current.slice(end));
+            requestAnimationFrame(() => {
+                ta.focus();
+                const pos = start + variable.length;
+                ta.setSelectionRange(pos, pos);
+            });
+            showToast(`Inserted ${variable}`, 'info');
+        } else {
+            navigator.clipboard.writeText(variable);
+            showToast(`Copied ${variable} to clipboard!`, 'info');
+        }
     };
 
     // Auto-align preview tab when editor tab changes for intuitive UX
@@ -293,23 +380,14 @@ export default function TemplatesPage() {
 
     return (
         <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
-            {toast && <div className={`toast ${toast.type}`}>{toast.msg}</div>}
+            <ToastHost toast={toast} onDismiss={dismissToast} onPause={pauseToast} onResume={resumeToast} />
 
             {/* Header section */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
-                <div>
-                    <h1 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                        📝 Reply Templates
-                    </h1>
-                    <p style={{ color: 'var(--text-dim)', fontSize: '0.88rem', margin: '4px 0 0 0' }}>
-                        Draft and customize automated email responses sent back to candidates upon receiving application logs.
-                    </p>
-                </div>
-                
-                <button 
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '24px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
+                <button
                     onClick={saveIntegrationsSettings} 
                     className="btn" 
-                    style={{ background: 'var(--gradient-gold)', color: '#000', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 8, border: 'none', cursor: 'pointer' }}
+                    style={{ background: 'var(--gold)', color: 'var(--action-fg)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 8, border: 'none', cursor: 'pointer' }}
                     disabled={saving}
                 >
                     <Save size={16} />
@@ -326,7 +404,7 @@ export default function TemplatesPage() {
 
                     {/* Resume Template Preset Card */}
                     <div className="card" style={{ padding: '20px', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px' }}>
-                        <label className="modern-label" style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gold)', marginBottom: '8px', display: 'block' }}>
+                        <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gold)', marginBottom: '8px', display: 'block' }}>
                             Default Resume Template
                         </label>
                         <select 
@@ -338,9 +416,9 @@ export default function TemplatesPage() {
                                 color: 'var(--text)', outline: 'none', fontWeight: 600, fontSize: '0.88rem' 
                             }}
                         >
-                            <option value="alamaticz">📄 Alamaticz Format (Standard Layout)</option>
-                            <option value="modern">🎨 Modern Format (Sleek & Colorful)</option>
-                            <option value="classic">🏛️ Classic Format (Traditional Black & White)</option>
+                            <option value="alamaticz">Alamaticz Format (Standard Layout)</option>
+                            <option value="modern">Modern Format (Sleek & Colorful)</option>
+                            <option value="classic">Classic Format (Traditional Black & White)</option>
                         </select>
                         <p style={{ margin: '8px 0 0 0', fontSize: '0.75rem', color: 'var(--text-dim)' }}>
                             This template will be selected by default when viewing or exporting candidate resumes.
@@ -349,7 +427,7 @@ export default function TemplatesPage() {
 
                     {/* Theme Preset Card */}
                     <div className="card" style={{ padding: '20px', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px' }}>
-                        <label className="modern-label" style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gold)', marginBottom: '8px', display: 'block' }}>
+                        <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gold)', marginBottom: '8px', display: 'block' }}>
                             Select Email Theme Preset
                         </label>
                         <select 
@@ -362,16 +440,16 @@ export default function TemplatesPage() {
                             }}
                         >
                             <option value="professional">
-                                💼 Professional Theme (Standard Recruiter Tone){mostlyUsedTheme === 'professional' ? ' (🔥 Mostly Chosen)' : ''}
+                                Professional Theme (Standard Recruiter Tone){mostlyUsedTheme === 'professional' ? ' (Mostly Chosen)' : ''}
                             </option>
                             <option value="creative">
-                                🚀 Creative & Enthusiastic Theme (Startup/Tech Tone){mostlyUsedTheme === 'creative' ? ' (🔥 Mostly Chosen)' : ''}
+                                Creative & Enthusiastic Theme (Startup/Tech Tone){mostlyUsedTheme === 'creative' ? ' (Mostly Chosen)' : ''}
                             </option>
                             <option value="warm">
-                                ❤️ Warm & Friendly Theme (Supportive Recruiter Tone){mostlyUsedTheme === 'warm' ? ' (🔥 Mostly Chosen)' : ''}
+                                Warm & Friendly Theme (Supportive Recruiter Tone){mostlyUsedTheme === 'warm' ? ' (Mostly Chosen)' : ''}
                             </option>
                             <option value="custom">
-                                ✏️ Custom Template (Fully Editable Editor){mostlyUsedTheme === 'custom' ? ' (🔥 Mostly Chosen)' : ''}
+                                Custom Template (Fully Editable Editor){mostlyUsedTheme === 'custom' ? ' (Mostly Chosen)' : ''}
                             </option>
                         </select>
                         {mostlyUsedTheme && (
@@ -388,7 +466,7 @@ export default function TemplatesPage() {
                                 color: 'var(--gold)',
                                 fontWeight: 500
                             }}>
-                                <span>🔥 <strong>Mostly Chosen Template:</strong> {mostlyUsedTheme === 'professional' ? 'Professional Theme' : mostlyUsedTheme === 'creative' ? 'Creative Theme' : mostlyUsedTheme === 'warm' ? 'Warm Theme' : 'Custom Template'}</span>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Sparkles size={14} /> <strong>Mostly Chosen Template:</strong> {mostlyUsedTheme === 'professional' ? 'Professional Theme' : mostlyUsedTheme === 'creative' ? 'Creative Theme' : mostlyUsedTheme === 'warm' ? 'Warm Theme' : 'Custom Template'}</span>
                             </div>
                         )}
                     </div>
@@ -402,8 +480,8 @@ export default function TemplatesPage() {
                         
                         {/* Title & Theme Banner */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                            <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--text)', fontWeight: 700, fontFamily: 'var(--fh)' }}>
-                                {integrationsSettings.reply_theme === 'custom' ? '✏️ Editing Custom Template' : '👁️ Viewing Preset Mode'}
+                            <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--text)', fontWeight: 700, fontFamily: 'var(--fh)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                {integrationsSettings.reply_theme === 'custom' ? <><Pencil size={14} /> Editing Custom Template</> : <><Eye size={14} /> Viewing Preset Mode</>}
                             </h3>
                             <span style={{ 
                                 fontSize: '0.72rem', background: 'rgba(var(--sky-rgb), 0.15)', 
@@ -429,8 +507,8 @@ export default function TemplatesPage() {
                                     className="btn" 
                                     onClick={() => handleThemeChange('custom')}
                                     style={{ 
-                                        padding: '6px 12px', fontSize: '0.72rem', background: 'var(--gradient-gold)', 
-                                        color: '#000', fontWeight: 'bold', cursor: 'pointer', border: 'none', 
+                                        padding: '6px 12px', fontSize: '0.72rem', background: 'var(--gold)',
+                                        color: 'var(--action-fg)', fontWeight: 'bold', cursor: 'pointer', border: 'none',
                                         borderRadius: 6, marginLeft: 'auto', flexShrink: 0
                                     }}
                                 >
@@ -442,7 +520,7 @@ export default function TemplatesPage() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, opacity: integrationsSettings.reply_theme === 'custom' ? 1 : 0.8 }}>
                             {/* Subject Field */}
                             <div>
-                                <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: '6px' }}>Subject Format</label>
+                                <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: '6px' }}>Subject Format</label>
                                 <input 
                                     value={integrationsSettings.reply_subject || ''}
                                     onChange={e => setIntegrationsSettings(prev => ({ ...prev, reply_subject: e.target.value }))}
@@ -458,7 +536,7 @@ export default function TemplatesPage() {
 
                             {/* Sub-Editor Tab selection */}
                             <div>
-                                <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: '6px' }}>Configure Email Bodies</label>
+                                <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: '6px' }}>Configure Email Bodies</label>
                                 <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: 'rgba(0,0,0,0.1)' }}>
                                     <button
                                         type="button"
@@ -471,7 +549,7 @@ export default function TemplatesPage() {
                                             borderBottom: editorTab === 'missing' ? '2px solid var(--gold)' : 'none'
                                         }}
                                     >
-                                        ⚠️ Missing Details Template
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><AlertTriangle size={14} /> Missing Details Template</span>
                                     </button>
                                     <button
                                         type="button"
@@ -484,7 +562,7 @@ export default function TemplatesPage() {
                                             borderBottom: editorTab === 'complete' ? '2px solid var(--gold)' : 'none'
                                         }}
                                     >
-                                        ✔️ Application Complete Template
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Check size={14} /> Application Complete Template</span>
                                     </button>
                                 </div>
                             </div>
@@ -492,14 +570,15 @@ export default function TemplatesPage() {
                             {/* Main Body Text Editor */}
                             <div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                                    <label className="modern-label" style={{ fontSize: '0.78rem', margin: 0 }}>
+                                    <label className="form-label" style={{ fontSize: '0.78rem', margin: 0 }}>
                                         {editorTab === 'missing' ? 'Missing Info Message Body' : 'Completed Application Message Body'}
                                     </label>
                                     <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>
                                         {editorTab === 'missing' ? 'Sent when profile fields are missing.' : 'Sent when application is complete.'}
                                     </span>
                                 </div>
-                                <textarea 
+                                <textarea
+                                    ref={bodyTextareaRef}
                                     value={activeBodyValue || ''}
                                     onChange={e => handleBodyTextChange(e.target.value)}
                                     disabled={integrationsSettings.reply_theme !== 'custom'}
@@ -514,6 +593,20 @@ export default function TemplatesPage() {
                                 />
                             </div>
 
+                            {unknownVariables.length > 0 && (
+                                <div style={{
+                                    display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 14px',
+                                    background: 'var(--warning-bg)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
+                                    borderRadius: 8, fontSize: '0.78rem', color: 'var(--warning-fg)'
+                                }}>
+                                    <AlertCircle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
+                                    <span>
+                                        Unrecognized variable{unknownVariables.length > 1 ? 's' : ''}: {unknownVariables.map(v => `{${v}}`).join(', ')}.
+                                        {' '}These won't be replaced and will show up literally in the sent email.
+                                    </span>
+                                </div>
+                            )}
+
                             {/* Variables Reference Micro-chips */}
                             <div style={{ background: 'rgba(var(--navy-dark-rgb), 0.2)', padding: 14, borderRadius: 8, border: '1px solid var(--border)' }}>
                                 <div style={{ fontSize: '0.78rem', fontWeight: 'bold', color: 'var(--gold)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -526,10 +619,10 @@ export default function TemplatesPage() {
                                         { key: '{subject}', desc: 'Original Email Subject' },
                                         { key: '{ref}', desc: 'Candidate ID Reference' }
                                     ].map(variable => (
-                                        <span 
-                                            key={variable.key} 
-                                            title={`Click to copy: ${variable.desc}`}
-                                            onClick={() => handleCopyVariable(variable.key)}
+                                        <span
+                                            key={variable.key}
+                                            title={`${variable.desc} — click to insert into the focused body editor, or copy`}
+                                            onClick={() => handleInsertVariable(variable.key)}
                                             style={{
                                                 fontSize: '0.72rem', fontFamily: 'monospace', background: 'rgba(var(--sky-rgb), 0.12)',
                                                 color: 'var(--sky-dim)', border: '1px solid rgba(var(--sky-rgb), 0.25)',
@@ -539,13 +632,13 @@ export default function TemplatesPage() {
                                             onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.2)'}
                                             onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.12)'}
                                         >
-                                            <Copy size={10} />
+                                            <Copy size={12} />
                                             {variable.key}
                                         </span>
                                     ))}
                                 </div>
-                                <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginTop: 8 }}>
-                                    💡 Click any chip above to copy. Paste it directly into your template subject or message body.
+                                <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginTop: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
+                                    <Info size={12} /> Click any chip above to copy. Paste it directly into your template subject or message body.
                                 </div>
                             </div>
 
@@ -568,7 +661,7 @@ export default function TemplatesPage() {
                                 style={{
                                     padding: '6px 12px', fontSize: '0.72rem', border: 'none', borderRadius: 6,
                                     background: previewType === 'missing' ? 'var(--gold)' : 'transparent',
-                                    color: previewType === 'missing' ? '#000' : 'var(--text-dim)',
+                                    color: previewType === 'missing' ? 'var(--action-fg)' : 'var(--text-dim)',
                                     fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s'
                                 }}
                             >
@@ -580,7 +673,7 @@ export default function TemplatesPage() {
                                 style={{
                                     padding: '6px 12px', fontSize: '0.72rem', border: 'none', borderRadius: 6,
                                     background: previewType === 'complete' ? 'var(--gold)' : 'transparent',
-                                    color: previewType === 'complete' ? '#000' : 'var(--text-dim)',
+                                    color: previewType === 'complete' ? 'var(--action-fg)' : 'var(--text-dim)',
                                     fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s'
                                 }}
                             >
@@ -589,33 +682,37 @@ export default function TemplatesPage() {
                         </div>
                     </div>
 
-                    {/* Email Client Simulator mockup container */}
+                    {/* Email Client Simulator mockup container — a real inbox renders on a
+                        white surface regardless of the app's own theme, so this mock stays
+                        light-on-white in both themes rather than following --surface/--text
+                        (S9.1: was fixed near-black, which misrepresented what recipients
+                        actually see and looked broken sitting inside the light theme). */}
                     <div style={{
-                        background: '#0a121e', borderRadius: 12, border: '1px solid var(--border)',
-                        display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+                        background: '#FFFFFF', borderRadius: 12, border: '1px solid var(--border)',
+                        display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
                         minHeight: 450
                     }}>
                         {/* Mock header window control bar */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#121d2d', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#F1F2F6', padding: '12px 16px', borderBottom: '1px solid #E2E4EC' }}>
                             <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ff5f56' }}></div>
                             <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ffbd2e' }}></div>
                             <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#27c93f' }}></div>
-                            <div style={{ marginLeft: 12, fontSize: '0.75rem', color: 'var(--text-dim)', fontFamily: 'monospace', letterSpacing: '0.02rem' }}>📧 mail-client-simulator.html</div>
+                            <div style={{ marginLeft: 12, fontSize: '0.75rem', color: '#6B6F94', fontFamily: 'monospace', letterSpacing: '0.02rem', display: 'flex', alignItems: 'center', gap: 5 }}><Mail size={12} /> mail-client-simulator.html</div>
                         </div>
 
                         {/* Email headers */}
-                        <div style={{ padding: 16, borderBottom: '1px solid rgba(var(--sky-rgb), 0.15)', display: 'flex', flexDirection: 'column', gap: 8, background: '#0e1725', fontSize: '0.82rem' }}>
+                        <div style={{ padding: 16, borderBottom: '1px solid #E2E4EC', display: 'flex', flexDirection: 'column', gap: 8, background: '#FAFAFC', fontSize: '0.82rem' }}>
                             <div>
-                                <span style={{ color: 'var(--text-dim)', fontWeight: 500 }}>From: </span>
-                                <strong style={{ color: 'var(--sky-dim)' }}>Alamaticz Solutions HR Team</strong> &lt;{integrationsSettings.email_user || 'hr@alamaticz.com'}&gt;
+                                <span style={{ color: '#6B6F94', fontWeight: 500 }}>From: </span>
+                                <strong style={{ color: '#1568A6' }}>Alamaticz Solutions HR Team</strong> &lt;{integrationsSettings.email_user || 'hr@alamaticz.com'}&gt;
                             </div>
                             <div>
-                                <span style={{ color: 'var(--text-dim)', fontWeight: 500 }}>To: </span>
-                                <strong style={{ color: 'var(--text)' }}>Somasekhar Kundurthi</strong> &lt;candidate@gmail.com&gt;
+                                <span style={{ color: '#6B6F94', fontWeight: 500 }}>To: </span>
+                                <strong style={{ color: '#12173F' }}>{PREVIEW_CANDIDATE_NAME}</strong> &lt;candidate@gmail.com&gt;
                             </div>
                             <div>
-                                <span style={{ color: 'var(--text-dim)', fontWeight: 500 }}>Subject: </span>
-                                <span style={{ color: 'var(--gold)', fontWeight: 700 }}>
+                                <span style={{ color: '#6B6F94', fontWeight: 500 }}>Subject: </span>
+                                <span style={{ color: '#B0650B', fontWeight: 700 }}>
                                     {getPreviewText(integrationsSettings.reply_subject, previewType === 'missing' ? integrationsSettings.reply_body_missing : integrationsSettings.reply_body_complete).subject}
                                 </span>
                             </div>
@@ -624,11 +721,11 @@ export default function TemplatesPage() {
                         {/* Email body render simulation */}
                         <div style={{
                             flex: 1, padding: 24, overflowY: 'auto', fontSize: '0.85rem',
-                            color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6, background: '#070c14',
+                            color: '#12173F', whiteSpace: 'pre-wrap', lineHeight: 1.6, background: '#FFFFFF',
                             fontFamily: 'system-ui, -apple-system, sans-serif'
                         }}>
                             {getPreviewText(integrationsSettings.reply_subject, previewType === 'missing' ? integrationsSettings.reply_body_missing : integrationsSettings.reply_body_complete).body || (
-                                <div style={{ color: 'var(--text-dim)', fontStyle: 'italic', textAlign: 'center', marginTop: '2rem' }}>
+                                <div style={{ color: '#8A8FAF', fontStyle: 'italic', textAlign: 'center', marginTop: '2rem' }}>
                                     No template content. Start editing to see preview.
                                 </div>
                             )}
@@ -657,7 +754,7 @@ export default function TemplatesPage() {
                                 className="btn"
                                 onClick={handleTestEmail}
                                 disabled={isTestingEmail}
-                                style={{ background: 'var(--sky)', color: '#fff', border: 'none', padding: '8px 16px', fontSize: '0.8rem', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, cursor: isTestingEmail ? 'not-allowed' : 'pointer', opacity: isTestingEmail ? 0.7 : 1 }}
+                                style={{ background: 'var(--sky)', color: 'var(--action-fg)', border: 'none', padding: '8px 16px', fontSize: '0.8rem', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, cursor: isTestingEmail ? 'not-allowed' : 'pointer', opacity: isTestingEmail ? 0.7 : 1 }}
                             >
                                 {isTestingEmail ? <Loader size={14} className="spin" /> : <Send size={14} />}
                                 {isTestingEmail ? 'Sending...' : 'Send Test'}
@@ -667,6 +764,7 @@ export default function TemplatesPage() {
                 </div>
 
             </div>
+            <ConfirmDialog {...confirmDialogProps} />
         </div>
     )
 }

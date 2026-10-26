@@ -1,62 +1,54 @@
-import os
+"""S3 / OneDrive / Google Drive upload helpers for candidate resume files.
+
+Config (STORAGE_PROVIDER, AWS_*, and STATS_DB) is now imported from
+app.core.config instead of being computed independently in this file. This
+fixes a real path-divergence bug: this module used to compute its own
+`.env` path and its own STATS_DB fallback path via
+`dirname(abspath(__file__))`, i.e. `backend/app/services/` -- one directory
+level too shallow versus main.py's `backend/`. That meant this file's
+`.env` load and its `stats.db` fallback silently pointed at the wrong
+directory whenever STATS_DB_PATH wasn't set explicitly in the environment
+(which is what masked the bug in practice). app.core.config is now the
+single source of truth for both, computed once, correctly. See
+app/core/config.py's own comment for the full path-depth explanation.
+"""
 import mimetypes
 import json
+import os
+import re
 from typing import Optional, Tuple
-from dotenv import load_dotenv
 
-# Load root .env first
-load_dotenv()
-# Explicitly load backend/.env to override/supplement configuration
-_backend_env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-if os.path.exists(_backend_env_path):
-    load_dotenv(_backend_env_path, override=True)
+from app.core.config import STORAGE_PROVIDER, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, AWS_BUCKET_NAME
+from app.core.logging import get_logger
+from app.db.engine import session_scope
+from app.repositories import IntegrationSettingsRepository
 
-STORAGE_PROVIDER = os.getenv("STORAGE_PROVIDER", "local").lower()
+logger = get_logger(__name__)
 
-def get_db_integrations_settings():
+
+def get_db_integrations_settings() -> dict:
+    """Drive settings saved in the Connect tab (they override env values)."""
     try:
-        import sqlite3
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        data_dir = "/data" if os.path.exists("/data") and os.access("/data", os.W_OK) else base_dir
-        stats_db = os.getenv("STATS_DB_PATH", os.path.join(data_dir, "stats.db"))
-        
-        conn = sqlite3.connect(stats_db, timeout=30.0)
-        cur = conn.cursor()
-        cur.execute("PRAGMA table_info(integrations_settings)")
-        cols = {c[1] for c in cur.fetchall()}
-        
-        if 'gdrive_client_id' in cols:
-            cur.execute("""
-                SELECT drive_enabled, gdrive_client_id, gdrive_client_secret, gdrive_refresh_token, gdrive_folder_id 
-                FROM integrations_settings LIMIT 1
-            """)
-            row = cur.fetchone()
-            conn.close()
-            if row:
+        with session_scope() as session:
+            row = IntegrationSettingsRepository(session).get()
+            if row is not None:
                 return {
-                    "drive_enabled": row[0],
-                    "gdrive_client_id": row[1],
-                    "gdrive_client_secret": row[2],
-                    "gdrive_refresh_token": row[3],
-                    "gdrive_folder_id": row[4]
+                    "drive_enabled": row.drive_enabled,
+                    "gdrive_client_id": row.gdrive_client_id,
+                    "gdrive_client_secret": row.gdrive_client_secret,
+                    "gdrive_refresh_token": row.gdrive_refresh_token,
+                    "gdrive_folder_id": row.gdrive_folder_id,
                 }
-        else:
-            conn.close()
-    except Exception as e:
-        print(f"ERROR: Failed to fetch integrations settings from database: {e}")
+    except Exception as exc:
+        logger.error(f"Failed to fetch integrations settings from database: {exc}")
     return {}
+
 
 def is_external_storage_enabled() -> bool:
     if STORAGE_PROVIDER != "local":
         return True
     db_settings = get_db_integrations_settings()
     return db_settings.get("drive_enabled", 0) == 1
-
-# Configure S3
-AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
-AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
-AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
-AWS_BUCKET_NAME = os.getenv("AWS_BUCKET_NAME")
 
 # Lazy import / initialization helpers to avoid crashes if SDKs are missing when not in use
 _s3_client = None
@@ -77,12 +69,36 @@ def get_s3_client():
                         region_name=AWS_REGION
                     )
                 else:
-                    print("WARNING: AWS credentials missing in environment.")
+                    logger.warning("AWS credentials missing in environment.")
             except ImportError:
-                print("WARNING: boto3 package is not installed. Run pip install boto3.")
+                logger.warning("boto3 package is not installed. Run pip install boto3.")
             except Exception as e:
-                print(f"ERROR: Failed to initialize S3 client: {e}")
+                logger.error(f"Failed to initialize S3 client: {e}")
     return _s3_client
+
+
+def get_s3_presigned_url(filename: str, expires_in: int = 300) -> Optional[str]:
+    """Short-lived signed URL for a private S3 object. Resumes are no longer
+    uploaded with a public-read ACL (see upload_to_external_storage below) -
+    every consumer of an S3-backed file_url needs to go through this instead
+    of hitting the permanent https://<bucket>.s3.<region>.amazonaws.com/<key>
+    URL directly, which now 403s for anyone without bucket credentials."""
+    client = get_s3_client()
+    if not client or not AWS_BUCKET_NAME:
+        return None
+    try:
+        return client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": AWS_BUCKET_NAME, "Key": filename},
+            ExpiresIn=expires_in,
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate S3 presigned URL for {filename}: {e}")
+        return None
+
+
+def is_s3_url(url: str) -> bool:
+    return bool(url) and bool(AWS_BUCKET_NAME) and f"{AWS_BUCKET_NAME}.s3." in url
 
 # ── OneDrive Helper ───────────────────────────────────────────────────────────
 def get_onedrive_access_token(client_id, client_secret, refresh_token):
@@ -136,7 +152,7 @@ def upload_to_onedrive(file_path: str, filename: str) -> Tuple[Optional[str], Op
         if item_resp.status_code == 200:
             direct_url = item_resp.json().get("@microsoft.graph.downloadUrl")
             if direct_url:
-                print(f"INFO: Successfully uploaded {filename} to OneDrive: {direct_url}")
+                logger.info(f"Successfully uploaded {filename} to OneDrive: {direct_url}")
                 return direct_url, None
         
         # Fallback to shareable link
@@ -152,7 +168,7 @@ def upload_to_onedrive(file_path: str, filename: str) -> Tuple[Optional[str], Op
         link_resp = requests.post(link_url, headers=link_headers, json=link_data, timeout=15)
         if link_resp.status_code in [200, 201]:
             share_url = link_resp.json().get("link", {}).get("webUrl")
-            print(f"INFO: Successfully uploaded {filename} to OneDrive: {share_url}")
+            logger.info(f"Successfully uploaded {filename} to OneDrive: {share_url}")
             return share_url, None
         else:
             return None, f"Failed to create OneDrive shareable link: {link_resp.text}"
@@ -191,46 +207,85 @@ def get_gdrive_oauth_token(client_id, client_secret, refresh_token):
     except Exception as e:
         return None, f"Network exception when getting Google token: {str(e)}"
 
-def upload_to_google_drive(file_path: str, filename: str) -> Tuple[Optional[str], Optional[str]]:
+def _get_gdrive_bearer_token() -> Tuple[Optional[str], Optional[str]]:
+    """Shared by upload_to_google_drive() and get_gdrive_file_bytes() - same
+    credential resolution (DB settings override env, service account takes
+    priority over OAuth) either way."""
     db_settings = get_db_integrations_settings()
-    folder_id = db_settings.get("gdrive_folder_id") or os.getenv("GDRIVE_FOLDER_ID")
     json_path = os.getenv("GDRIVE_SERVICE_ACCOUNT_JSON")
-    
+
     client_id = db_settings.get("gdrive_client_id") or os.getenv("GDRIVE_CLIENT_ID")
     client_secret = db_settings.get("gdrive_client_secret") or os.getenv("GDRIVE_CLIENT_SECRET")
     refresh_token = db_settings.get("gdrive_refresh_token") or os.getenv("GDRIVE_REFRESH_TOKEN")
-    
-    # Clean quotes and whitespace
+
     if client_id: client_id = client_id.strip('"\' ')
     if client_secret: client_secret = client_secret.strip('"\' ')
     if refresh_token: refresh_token = refresh_token.strip('"\' ')
-    if folder_id: folder_id = folder_id.strip('"\' ')
-    
-    import requests
-    
-    token = None
-    err = None
-    
+
     is_oauth_configured = (
         client_id and client_id != "your_gdrive_client_id_here" and
         client_secret and client_secret != "your_gdrive_client_secret_here" and
         refresh_token and refresh_token != "your_gdrive_refresh_token_here"
     )
-    
+
     if json_path and os.path.exists(json_path):
-        token, err = get_gdrive_access_token(json_path)
+        return get_gdrive_access_token(json_path)
     elif is_oauth_configured:
-        token, err = get_gdrive_oauth_token(client_id, client_secret, refresh_token)
-    else:
-        return None, "Google Drive configuration is incomplete or contains placeholder values."
-        
+        return get_gdrive_oauth_token(client_id, client_secret, refresh_token)
+    return None, "Google Drive configuration is incomplete or contains placeholder values."
+
+
+def is_gdrive_url(url: str) -> bool:
+    return bool(url) and "drive.google.com" in url
+
+
+def extract_gdrive_file_id(url: str) -> Optional[str]:
+    if not url:
+        return None
+    m = re.search(r"[?&]id=([^&]+)", url)
+    return m.group(1) if m else None
+
+
+def get_gdrive_file_bytes(file_id: str) -> Optional[bytes]:
+    """Read a resume's bytes via an authenticated Drive API call instead of
+    the public download link the file used to be shared with (see the
+    comment in upload_to_google_drive) - this is what makes it safe for
+    Drive files to no longer be public."""
+    token, err = _get_gdrive_bearer_token()
+    if err or not token:
+        logger.error(f"Failed to get Drive token for file {file_id}: {err}")
+        return None
+    try:
+        import requests
+        resp = requests.get(
+            f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+        if resp.status_code == 200:
+            return resp.content
+        logger.error(f"Drive file download failed for {file_id}: {resp.status_code} - {resp.text[:200]}")
+        return None
+    except Exception as e:
+        logger.error(f"Drive file download exception for {file_id}: {e}")
+        return None
+
+
+def upload_to_google_drive(file_path: str, filename: str) -> Tuple[Optional[str], Optional[str]]:
+    db_settings = get_db_integrations_settings()
+    folder_id = db_settings.get("gdrive_folder_id") or os.getenv("GDRIVE_FOLDER_ID")
+    if folder_id: folder_id = folder_id.strip('"\' ')
+
+    import requests
+
+    token, err = _get_gdrive_bearer_token()
     if err or not token:
         return None, err or "Google Drive authentication token is empty."
-        
+
     headers = {
         "Authorization": f"Bearer {token}"
     }
-    
+
     try:
         content_type, _ = mimetypes.guess_type(filename)
         if not content_type:
@@ -273,17 +328,17 @@ def upload_to_google_drive(file_path: str, filename: str) -> Tuple[Optional[str]
             return None, f"Google Drive upload failed: {resp.status_code} - {resp.text}"
             
         file_id = resp.json().get("id")
-        
-        # Share the file (make public so it can be downloaded via link)
-        perm_url = f"https://www.googleapis.com/drive/v3/files/{file_id}/permissions"
-        perm_data = {
-            "role": "reader",
-            "type": "anyone"
-        }
-        requests.post(perm_url, headers=headers, json=perm_data, timeout=10)
-        
+
+        # Resumes contain PII (name, phone, email) - the file is NOT shared
+        # publicly. It used to be granted role="reader", type="anyone" here,
+        # making every resume downloadable by anyone with the link. The
+        # `direct_url` below is kept only as a stable identifier (it embeds
+        # the Drive file id, which get_gdrive_file_bytes()/is_gdrive_url()
+        # parse back out) - reading the actual file now always goes through
+        # an authenticated Drive API call using the same service-account/
+        # OAuth credentials this upload used, never a public link.
         direct_url = f"https://drive.google.com/uc?export=download&id={file_id}"
-        print(f"INFO: Successfully uploaded {filename} to Google Drive: {direct_url}")
+        logger.info(f"Successfully uploaded {filename} to Google Drive: {direct_url}")
         return direct_url, None
         
     except Exception as e:
@@ -315,24 +370,22 @@ def upload_to_external_storage(file_path: str, filename: str) -> Tuple[Optional[
             if content_type:
                 extra_args["ContentType"] = content_type
             
-            try:
-                client.upload_file(
-                    file_path,
-                    AWS_BUCKET_NAME,
-                    filename,
-                    ExtraArgs={**extra_args, "ACL": "public-read"}
-                )
-            except Exception as acl_err:
-                print(f"Info: Failed to upload with public-read ACL, retrying without ACL: {acl_err}")
-                client.upload_file(
-                    file_path,
-                    AWS_BUCKET_NAME,
-                    filename,
-                    ExtraArgs=extra_args
-                )
-            
+            # Resumes contain PII (name, phone, email) - upload privately.
+            # This used to request ACL="public-read", making every resume
+            # world-readable via a guessable/enumerable URL as soon as it
+            # was uploaded. The stored `url` below is kept as a stable
+            # identifier (candidates.py/main.py key lookups match on the
+            # filename portion), but reading the object now always requires
+            # a short-lived signed URL via get_s3_presigned_url().
+            client.upload_file(
+                file_path,
+                AWS_BUCKET_NAME,
+                filename,
+                ExtraArgs=extra_args,
+            )
+
             url = f"https://{AWS_BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{filename}"
-            print(f"INFO: Successfully uploaded {filename} to AWS S3: {url}")
+            logger.info(f"Successfully uploaded {filename} to AWS S3: {url}")
             return url, None
         except Exception as e:
             return None, f"S3 upload failed: {str(e)}"
