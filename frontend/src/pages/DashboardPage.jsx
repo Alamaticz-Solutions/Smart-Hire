@@ -1,1075 +1,276 @@
-import { useEffect, useState, useRef } from 'react'
-import axios from 'axios'
+import { useEffect, useState } from 'react'
+import { useOutletContext, useNavigate } from 'react-router-dom'
 import {
-    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-    ResponsiveContainer, Cell
+    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, ResponsiveContainer
 } from 'recharts'
-import { Users, Clock, Download, Plus, Trash2, FileText, X, Loader } from 'lucide-react'
-import { exportToExcel, formatCandidatesForExcel } from '../utils/excelUtils'
+import { Briefcase, BarChart3, Activity as ActivityIcon, Mail, Upload, Check, ChevronRight } from 'lucide-react'
+import apiClient from '../api/client'
+import { useToast } from '../hooks/useToast'
+import ToastHost from '../components/shared/ToastHost'
+import { SkeletonKPIRow, SkeletonBlock } from '../components/shared/Skeleton'
 
-/* ─── Candidate Details Modal ────────────────────────────────────────────── */
-function CandidateDetailsModal({ candidate, onClose, onViewPdf }) {
-    const [activeTab, setActiveTab] = useState('profile');
-    const [jobs, setJobs] = useState([]);
-    const [loadingJobs, setLoadingJobs] = useState(false);
-    const [showAlamaticz, setShowAlamaticz] = useState(false);
-    const [alamaticzData, setAlamaticzData] = useState(null);
-    const [loadingAlamaticz, setLoadingAlamaticz] = useState(false);
+// Reads resolved CSS custom property values via getComputedStyle rather than
+// handing Recharts literal 'var(--x)' strings - SVG presentation attributes
+// resolving a custom property isn't guaranteed the way a stylesheet rule is.
+// Re-reads on theme toggle (watched via MutationObserver on documentElement's
+// data-theme) so a dark/light switch updates the chart without a reload.
+function useCssVars(names) {
+    const [values, setValues] = useState(() => readVars(names))
 
     useEffect(() => {
-        if (candidate?.id) {
-            setLoadingJobs(true);
-            axios.get(`${import.meta.env.VITE_API_URL || ''}/api/candidates/${candidate.id}/jobs`)
-                .then(res => setJobs(res.data || []))
-                .catch(err => console.error("Failed to load candidate matched jobs", err))
-                .finally(() => setLoadingJobs(false));
-        }
-    }, [candidate]);
+        const update = () => setValues(readVars(names))
+        update()
+        const observer = new MutationObserver(update)
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+        return () => observer.disconnect()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [names.join(',')])
 
-    const isImmediate = (val) => {
-        if (val === 0 || val === '0') return true;
-        return String(val || '').toLowerCase().includes('immediate');
-    };
-
-    const isPdf = candidate.filename && candidate.filename.toLowerCase().endsWith('.pdf');
-
-    const hasViewableResume = candidate.filename && 
-        !candidate.filename.toLowerCase().endsWith('.xlsx') && 
-        !candidate.filename.toLowerCase().endsWith('.xls') && 
-        !candidate.filename.toLowerCase().endsWith('.csv');
-
-    const showRightPanel = hasViewableResume || showAlamaticz;
-
-    return (
-        <div style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0,0,0,0.75)', zIndex: 99998,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            backdropFilter: 'blur(4px)'
-        }} onClick={onClose}>
-            <div className="card" onClick={e => e.stopPropagation()} style={{
-                width: '95%', 
-                maxWidth: showRightPanel ? '1400px' : '800px', 
-                height: showRightPanel ? '90vh' : 'auto',
-                maxHeight: '90vh',
-                display: 'flex', 
-                flexDirection: 'row', 
-                padding: 0,
-                overflow: 'hidden', 
-                border: '1px solid var(--border)',
-                boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-                background: 'var(--navy-dark)'
-            }}>
-                {/* Left Panel: Candidate details */}
-                <div style={{
-                    flex: showRightPanel ? '1 1 50%' : '1 1 100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    height: '100%',
-                    overflow: 'hidden',
-                    borderRight: showRightPanel ? '1px solid var(--border)' : 'none'
-                }}>
-                    {/* Header */}
-                    <div style={{
-                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        padding: '16px 24px', background: 'rgba(var(--navy-rgb), 0.95)',
-                        borderBottom: '1px solid var(--border)'
-                    }}>
-                        <div>
-                            <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.25rem', fontWeight: 800 }}>
-                                {candidate.full_name || 'Candidate Details'}
-                            </h3>
-                            <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)', marginTop: '4px', display: 'flex', gap: '15px' }}>
-                                <span>Source: <strong style={{ color: 'var(--gold)' }}>{candidate.source || 'Resume Upload'}</strong></span>
-                                {candidate.timestamp && <span>Analyzed: {new Date(candidate.timestamp).toLocaleDateString()}</span>}
-                            </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                            <button 
-                                onClick={async () => {
-                                    if (showAlamaticz) {
-                                        setShowAlamaticz(false);
-                                        return;
-                                    }
-                                    setShowAlamaticz(true);
-                                    if (!alamaticzData) {
-                                        setLoadingAlamaticz(true);
-                                        try {
-                                            const res = await axios.get(`${import.meta.env.VITE_API_URL || API_URL || ''}/api/candidates/${candidate.id}/formatted-resume`);
-                                            setAlamaticzData(res.data);
-                                        } catch (e) {
-                                            console.error(e);
-                                            alert("Failed to load Alamaticz format data");
-                                            setShowAlamaticz(false);
-                                        } finally {
-                                            setLoadingAlamaticz(false);
-                                        }
-                                    }
-                                }}
-                                style={{
-                                    background: showAlamaticz ? 'rgba(var(--gold-rgb), 0.2)' : 'linear-gradient(135deg, var(--gold) 0%, #D4AF37 100%)', border: showAlamaticz ? '1px solid var(--gold)' : 'none',
-                                    color: showAlamaticz ? 'var(--gold)' : 'var(--navy-dark)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
-                                    fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 800,
-                                    display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s',
-                                    boxShadow: showAlamaticz ? 'none' : '0 4px 10px rgba(var(--gold-rgb), 0.2)'
-                                }}
-                            >
-                                <Eye size={14} /> {showAlamaticz ? 'Hide Alamaticz Format' : 'View Alamaticz Format'}
-                            </button>
-                            {candidate.filename && !candidate.filename.toLowerCase().endsWith('.xlsx') && !candidate.filename.toLowerCase().endsWith('.xls') && !candidate.filename.toLowerCase().endsWith('.csv') && (
-                                isPdf ? (
-                                    <button 
-                                        onClick={() => onViewPdf(candidate.filename, candidate.full_name)}
-                                        style={{
-                                            background: 'rgba(var(--sky-rgb), 0.15)', border: '1px solid rgba(var(--sky-rgb), 0.3)',
-                                            color: 'var(--sky-dim)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
-                                            fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 700,
-                                            display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s'
-                                        }}
-                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.25)'}
-                                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.15)'}
-                                    >
-                                        <FileText size={14} /> Open in New Tab
-                                    </button>
-                                ) : (
-                                    <a 
-                                        href={`${import.meta.env.VITE_API_URL || ''}/static/${candidate.filename}`}
-                                        download={candidate.filename}
-                                        style={{
-                                            background: 'rgba(var(--sky-rgb), 0.15)', border: '1px solid rgba(var(--sky-rgb), 0.3)',
-                                            color: 'var(--sky-dim)', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px',
-                                            fontSize: '0.8rem', fontFamily: 'var(--fh)', fontWeight: 700,
-                                            display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s',
-                                            textDecoration: 'none'
-                                        }}
-                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.25)'}
-                                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--sky-rgb), 0.15)'}
-                                    >
-                                        <Download size={14} /> Download Resume
-                                    </a>
-                                )
-                            )}
-                            <button onClick={onClose} style={{
-                                background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
-                                color: 'var(--gold)', cursor: 'pointer', padding: '6px', borderRadius: '8px',
-                                display: 'flex', transition: 'all 0.2s'
-                            }}
-                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.2)'}
-                            onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.1)'}
-                            >
-                                <X size={18} />
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Tabs Selector */}
-                    <div style={{ display: 'flex', background: 'rgba(var(--navy-rgb), 0.3)', padding: '0 24px', borderBottom: '1px solid var(--border)' }}>
-                        <button 
-                            onClick={() => setActiveTab('profile')}
-                            style={{
-                                padding: '12px 20px', background: 'transparent', border: 'none',
-                                borderBottom: `3px solid ${activeTab === 'profile' ? 'var(--gold)' : 'transparent'}`,
-                                color: activeTab === 'profile' ? 'var(--gold)' : 'var(--text-dim)',
-                                fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
-                                transition: 'all 0.2s', outline: 'none'
-                            }}
-                        >
-                            👤 Profile Details
-                        </button>
-                        <button 
-                            onClick={() => setActiveTab('jobs')}
-                            style={{
-                                padding: '12px 20px', background: 'transparent', border: 'none',
-                                borderBottom: `3px solid ${activeTab === 'jobs' ? 'var(--gold)' : 'transparent'}`,
-                                color: activeTab === 'jobs' ? 'var(--gold)' : 'var(--text-dim)',
-                                fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
-                                transition: 'all 0.2s', outline: 'none'
-                            }}
-                        >
-                            💼 Matched & Selected Jobs ({jobs.length})
-                        </button>
-                    </div>
-
-                    {/* Content */}
-                    <div style={{ flex: 1, overflowY: 'auto', padding: '24px', color: 'var(--text)' }}>
-                        {activeTab === 'profile' ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                                {/* Grid fields */}
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
-                                    <div>
-                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Name</span>
-                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.full_name || '—'}</span>
-                                    </div>
-                                    <div>
-                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Source</span>
-                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--gold)', background: 'rgba(var(--gold-rgb), 0.1)', padding: '2px 8px', borderRadius: '6px', display: 'inline-block' }}>
-                                            {candidate.source || 'Resume Upload'}
-                                        </span>
-                                    </div>
-                                    <div>
-                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Total Experience</span>
-                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.total_experience ? `${candidate.total_experience} yrs` : '—'}</span>
-                                    </div>
-                                    <div>
-                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Pega Experience</span>
-                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.pega_experience ? `${candidate.pega_experience} yrs` : '—'}</span>
-                                    </div>
-                                    <div>
-                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>CDH Experience</span>
-                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.cdh_exp ? `${candidate.cdh_exp} yrs` : '—'}</span>
-                                    </div>
-                                    <div>
-                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Current CTC / salary</span>
-                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.ctc || '—'}</span>
-                                    </div>
-                                    <div>
-                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Expected CTC</span>
-                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.expected_ctc || '—'}</span>
-                                    </div>
-                                    <div>
-                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Percentage Hike</span>
-                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.percentage_hike || '—'}</span>
-                                    </div>
-                                    <div>
-                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Notice Period</span>
-                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>
-                                            <span className={`badge ${isImmediate(candidate.notice_period) ? 'badge-green' : 'badge-sky'}`}>
-                                                {candidate.notice_period === 0 || candidate.notice_period === '0' ? 'Immediate' : (candidate.notice_period ? `${candidate.notice_period} days` : '—')}
-                                            </span>
-                                        </span>
-                                    </div>
-                                    <div>
-                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Current Location</span>
-                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.current_location || '—'}</span>
-                                    </div>
-                                    <div>
-                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Preferred Location</span>
-                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.pref_locations || '—'}</span>
-                                    </div>
-                                    <div>
-                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Current Employment</span>
-                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.current_organization || '—'}</span>
-                                    </div>
-                                    <div>
-                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Phone Number</span>
-                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{candidate.phone || '—'}</span>
-                                    </div>
-                                    <div>
-                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Email Address</span>
-                                        {candidate.email ? (
-                                            <a 
-                                                href={`https://mail.google.com/mail/?view=cm&fs=1&to=${candidate.email}`} 
-                                                target="_blank" 
-                                                rel="noreferrer" 
-                                                style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--sky-dim)', textDecoration: 'underline', wordBreak: 'break-all' }}
-                                                title="Click to compose in Gmail"
-                                            >
-                                                ✉️ {candidate.email}
-                                            </a>
-                                        ) : '—'}
-                                    </div>
-                                    <div>
-                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>LinkedIn Profile</span>
-                                        {candidate.linkedin ? (
-                                            <a href={candidate.linkedin.startsWith('http') ? candidate.linkedin : `https://${candidate.linkedin}`} target="_blank" rel="noreferrer" style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--gold)', textDecoration: 'underline' }}>
-                                                View LinkedIn
-                                            </a>
-                                        ) : '—'}
-                                    </div>
-                                </div>
-
-                                <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '10px 0' }} />
-
-                                {/* Long Text Areas */}
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Skills</span>
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                        {candidate.skills ? String(candidate.skills).split(',').map((s, idx) => (
-                                            <span key={idx} style={{
-                                                background: 'rgba(var(--sky-rgb), 0.12)', border: '1px solid rgba(var(--sky-rgb), 0.25)',
-                                                borderRadius: 5, padding: '3px 8px', fontSize: '0.75rem', color: 'var(--sky-dim)'
-                                            }}>{s.trim()}</span>
-                                        )) : <span style={{ opacity: 0.35 }}>—</span>}
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Certifications</span>
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                        {candidate.certifications ? String(candidate.certifications).split(',').map((c, idx) => (
-                                            <span key={idx} style={{
-                                                background: 'rgba(var(--gold-rgb), 0.12)', border: '1px solid rgba(var(--gold-rgb), 0.25)',
-                                                borderRadius: 5, padding: '3px 8px', fontSize: '0.75rem', color: 'var(--gold)'
-                                            }}>{c.trim()}</span>
-                                        )) : <span style={{ opacity: 0.35 }}>—</span>}
-                                    </div>
-                                </div>
-
-                                {candidate.notescomments && (
-                                    <div>
-                                        <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>Notes / Recruiter Comments</span>
-                                        <div style={{ padding: '12px', background: 'rgba(var(--navy-dark-rgb), 0.3)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.88rem', whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>
-                                            {candidate.notescomments}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {candidate.email_message && (
-                                    <div>
-                                        <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '6px', fontWeight: 600 }}>✉️ Imported Email Message</span>
-                                        <div style={{ 
-                                            padding: '12px', 
-                                            background: 'rgba(var(--navy-dark-rgb), 0.5)', 
-                                            border: '1px solid var(--border)', 
-                                            borderRadius: '8px', 
-                                            fontSize: '0.84rem', 
-                                            whiteSpace: 'pre-wrap', 
-                                            lineHeight: '1.45',
-                                            maxHeight: '200px',
-                                            overflowY: 'auto',
-                                            color: 'var(--text)',
-                                            fontFamily: 'monospace'
-                                        }}>
-                                            {candidate.email_message}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        ) : (
-                            <div>
-                                {loadingJobs ? (
-                                    <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
-                                        <Loader className="spin" size={24} style={{ color: 'var(--gold)' }} />
-                                    </div>
-                                ) : jobs.length === 0 ? (
-                                    <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-dim)', border: '1px dashed var(--border)', borderRadius: '12px' }}>
-                                        No associated job mappings found for this candidate.
-                                    </div>
-                                ) : (
-                                    <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem', textAlign: 'left' }}>
-                                            <thead>
-                                                <tr style={{ background: 'rgba(var(--navy-rgb), 0.85)', borderBottom: '2px solid var(--border)' }}>
-                                                    <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800 }}>Job Title</th>
-                                                    <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800 }}>Client</th>
-                                                    <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800 }}>Status</th>
-                                                    <th style={{ padding: '10px 12px', color: 'var(--gold)', fontFamily: 'var(--fh)', fontWeight: 800, width: '45%' }}>AI Match Reason</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {jobs.map((job, idx) => {
-                                                    const s = String(job.match_status || 'matched').trim();
-                                                    const isSelected = s === 'selected';
-                                                    
-                                                    return (
-                                                        <tr key={idx} style={{ 
-                                                            borderBottom: '1px solid rgba(var(--sky-rgb), 0.08)',
-                                                            background: idx % 2 === 0 ? 'rgba(var(--navy-rgb), 0.15)' : 'transparent'
-                                                        }}>
-                                                            <td style={{ padding: '10px 12px', fontWeight: 'bold' }}>{job.title}</td>
-                                                            <td style={{ padding: '10px 12px' }}>{job.client_name || '—'}</td>
-                                                            <td style={{ padding: '10px 12px' }}>
-                                                                <span style={{
-                                                                    background: isSelected ? 'rgba(45, 212, 191, 0.12)' : 'rgba(56, 189, 248, 0.12)',
-                                                                    color: isSelected ? '#2dd4bf' : '#38bdf8',
-                                                                    border: isSelected ? '1px solid rgba(45, 212, 191, 0.25)' : '1px solid rgba(56, 189, 248, 0.25)',
-                                                                    borderRadius: 5, padding: '2px 8px', fontSize: '0.72rem', fontWeight: 700,
-                                                                    textTransform: 'uppercase', display: 'inline-block'
-                                                                }}>
-                                                                    {s}
-                                                                </span>
-                                                            </td>
-                                                            <td style={{ padding: '10px 12px', color: 'var(--text-dim)', fontSize: '0.8rem', lineHeight: '1.45' }}>
-                                                                {job.ai_reason || '—'}
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Right Panel: Resume PDF embedded directly or Download Placeholder */}
-                {hasViewableResume && (
-                    <div style={{
-                        flex: '1 1 50%',
-                        height: '100%',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        background: isPdf ? '#525659' : 'rgba(var(--navy-dark-rgb), 0.95)',
-                        justifyContent: isPdf ? 'stretch' : 'center',
-                        alignItems: isPdf ? 'stretch' : 'center',
-                        padding: isPdf ? 0 : '40px',
-                        borderLeft: '1px solid var(--border)'
-                    }}>
-                        {isPdf ? (
-                            <iframe 
-                                src={`${import.meta.env.VITE_API_URL || ''}/static/${candidate.filename}#view=FitH`} 
-                                style={{ width: '100%', height: '100%', border: 'none', background: '#525659' }} 
-                                title="Candidate Resume"
-                            />
-                        ) : (
-                            <div style={{
-                                textAlign: 'center',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'center',
-                                gap: '20px',
-                                color: 'var(--text)',
-                                maxWidth: '400px',
-                                margin: '0 auto'
-                            }}>
-                                <div style={{
-                                    width: '80px',
-                                    height: '80px',
-                                    borderRadius: '50%',
-                                    background: 'rgba(var(--gold-rgb), 0.1)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    border: '1px solid rgba(var(--gold-rgb), 0.25)',
-                                    marginBottom: '10px'
-                                }}>
-                                    <FileText size={40} color="var(--gold)" />
-                                </div>
-                                <h4 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.2rem', fontWeight: 700 }}>
-                                    Word Document (.docx/.doc)
-                                </h4>
-                                <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-dim)', lineHeight: 1.5 }}>
-                                    Preview is not supported directly in the browser. Please download the file to view the candidate's resume.
-                                </p>
-                                <a 
-                                    href={`${import.meta.env.VITE_API_URL || ''}/static/${candidate.filename}`}
-                                    download={candidate.filename}
-                                    style={{
-                                        background: 'var(--gradient-gold)',
-                                        color: '#000',
-                                        textDecoration: 'none',
-                                        fontSize: '0.85rem',
-                                        fontFamily: 'var(--fh)',
-                                        fontWeight: 700,
-                                        cursor: 'pointer',
-                                        padding: '10px 24px',
-                                        borderRadius: '8px',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        transition: 'all 0.2s',
-                                        boxShadow: '0 4px 12px rgba(var(--gold-rgb), 0.2)'
-                                    }}
-                                >
-                                    <Download size={16} /> Download Resume
-                                </a>
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
-        </div>
-    );
+    return values
 }
 
-/* ─── Cell Text Modal ─────────────────────────────────────────────────────── */
-function CellTextModal({ data, onClose }) {
-    const [copied, setCopied] = useState(false);
-    
-    const handleCopy = () => {
-        navigator.clipboard.writeText(data.text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    };
-
-    return (
-        <div style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0,0,0,0.75)', zIndex: 99999,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            backdropFilter: 'blur(4px)'
-        }} onClick={onClose}>
-            <div className="card" onClick={e => e.stopPropagation()} style={{
-                width: '90%', maxWidth: '600px', maxHeight: '80vh',
-                display: 'flex', flexDirection: 'column', padding: 0,
-                border: '1px solid var(--border)',
-                boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-                background: 'var(--navy-dark)'
-            }}>
-                <div style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '16px 24px', background: 'rgba(var(--navy-rgb), 0.95)',
-                    borderBottom: '1px solid var(--border)'
-                }}>
-                    <h3 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.1rem', fontWeight: 800 }}>
-                        🔍 View {data.title}
-                    </h3>
-                    <button onClick={onClose} style={{
-                        background: 'rgba(var(--gold-rgb), 0.1)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
-                        color: 'var(--gold)', cursor: 'pointer', padding: 6, borderRadius: '8px',
-                        display: 'flex', transition: 'all 0.2s'
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.2)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(var(--gold-rgb), 0.1)'}
-                    >
-                        <X size={18} />
-                    </button>
-                </div>
-                <div style={{
-                    flex: 1, padding: '24px', overflowY: 'auto',
-                    color: 'var(--text)', fontSize: '0.92rem', lineHeight: '1.5',
-                    whiteSpace: 'pre-wrap', maxHeight: '50vh', background: 'rgba(0,0,0,0.2)'
-                }}>
-                    {data.text}
-                </div>
-                <div style={{
-                    padding: '12px 24px', borderTop: '1px solid var(--border)',
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    background: 'rgba(var(--navy-rgb), 0.3)'
-                }}>
-                    <button 
-                        onClick={handleCopy}
-                        className="btn btn-secondary"
-                        style={{ padding: '6px 12px', fontSize: '0.8rem', gap: '6px', borderColor: 'var(--border)' }}
-                    >
-                        {copied ? '✅ Copied!' : '📋 Copy to Clipboard'}
-                    </button>
-                    <button 
-                        onClick={onClose}
-                        className="btn btn-primary"
-                        style={{ padding: '6px 16px', fontSize: '0.8rem' }}
-                    >
-                        Close
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
+function readVars(names) {
+    const style = getComputedStyle(document.documentElement)
+    const out = {}
+    names.forEach(name => { out[name] = style.getPropertyValue(name).trim() })
+    return out
 }
 
-function SkillBadges({ skills }) {
-    if (!skills) return <span style={{ opacity: 0.35 }}>—</span>
-    const list = String(skills).split(',').map(s => s.trim()).filter(Boolean)
-    return (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-            {list.map((s, i) => (
-                <span key={i} style={{
-                    background: 'rgba(var(--sky-rgb), 0.12)', border: '1px solid rgba(var(--sky-rgb), 0.25)',
-                    borderRadius: 5, padding: '1px 7px', fontSize: '0.73rem',
-                    color: 'var(--sky-dim)', whiteSpace: 'nowrap', lineHeight: '1.6',
-                }}>{s}</span>
-            ))}
-        </div>
-    )
+// The chip *background* tokens (--st-*-bg) are deliberately low-contrast -
+// they're meant to sit behind the chip's own saturated text color, not to
+// stand alone as a bar fill on a plain card background (in light mode
+// --st-new-bg is ~1.1:1 against --surface - functionally invisible). The
+// *text* tokens are the saturated color already designed to read on its own.
+const PIPELINE_STAGES = [
+    { key: 'New', varName: '--st-new-text' },
+    { key: 'In-Review', varName: '--st-review-text' },
+    { key: 'Available', varName: '--st-avail-text' },
+    { key: 'Selected', varName: '--st-selected-text' },
+    { key: 'Engaged', varName: '--st-engaged-text' },
+    { key: 'Offered', varName: '--st-offered-text' },
+    { key: 'Hired', varName: '--st-hired-text' },
+    { key: 'Rejected', varName: '--st-rejected-text' },
+]
+const CHART_VAR_NAMES = ['--text-muted', '--surface', '--border', ...PIPELINE_STAGES.map(s => s.varName)]
+
+const isImmediate = (val) => {
+    if (val === 0 || val === '0') return true
+    return String(val || '').toLowerCase().includes('immediate')
 }
 
-const COLORS = ['#FB8500', '#FFB703', '#219EBC', '#8ECAE6', '#023047']
-
+// Rebuilt per the design audit's S3 findings: the old "dashboard" was two
+// KPIs plus the exact same candidate spreadsheet that already lives on the
+// Candidates page (S3.1) - duplicated delete button, duplicated Add Column,
+// duplicated Download Excel, everything. This page now answers a different
+// question (what does today's pipeline look like) instead of re-rendering
+// the candidates list a second time; the actual candidate management (edit,
+// delete, custom columns, export) stays on the Candidates page's DataTable.
 export default function DashboardPage() {
-    const [candidates, setCandidates] = useState(() => {
-        try {
-            return JSON.parse(sessionStorage.getItem('cached_candidates')) || [];
-        } catch { return []; }
-    })
-    const [columns, setColumns] = useState([])
-    const [loading, setLoading] = useState(true)
-    const [filterType, setFilterType] = useState('all') // 'all' | 'immediate'
-    const summaryRef = useRef(null)
+    const { user } = useOutletContext()
+    const navigate = useNavigate()
+    const { toast, showToast, dismissToast, pauseToast, resumeToast } = useToast()
+    const chartColors = useCssVars(CHART_VAR_NAMES)
 
-    const [showAddCol, setShowAddCol] = useState(false)
-    const [newColLabel, setNewColLabel] = useState('')
-    const [newColDesc, setNewColDesc] = useState('')
-    const [addingCol, setAddingCol] = useState(false)
-    const [editStatusCell, setEditStatusCell] = useState(null)
-    const [selectedCandidateForDetails, setSelectedCandidateForDetails] = useState(null)
-    const [selectedCellText, setSelectedCellText] = useState(null)
+    const [candidates, setCandidates] = useState([])
+    const [jobs, setJobs] = useState([])
+    const [activities, setActivities] = useState([])
+    const [mailboxConnected, setMailboxConnected] = useState(null) // null = unknown (non-admin can't check)
+    const [loading, setLoading] = useState(true)
+
+    // G-28: the empty dashboard used to be a dead end for a brand-new
+    // approved user - no next step, just "No Data Yet". /api/integrations
+    // is admin-only, so a non-admin gets `mailboxConnected` left at null
+    // (unknown) rather than a wrong "not connected" claim.
+    const canSeeIntegrations = user?.role === 'admin' || user?.is_admin === 1 || user?.is_hr === 1
 
     useEffect(() => {
         Promise.all([
-            axios.get(`${import.meta.env.VITE_API_URL || ''}/api/candidates`),
-            axios.get(`${import.meta.env.VITE_API_URL || ''}/api/columns`)
-        ]).then(([candRes, colRes]) => {
+            apiClient.get('/api/candidates'),
+            apiClient.get('/api/jobs', { headers: { 'x-user-username': user?.username } }),
+            apiClient.get('/api/activity'),
+            canSeeIntegrations
+                ? apiClient.get('/api/integrations', { headers: { 'x-user-username': user?.username } }).catch(() => null)
+                : Promise.resolve(null),
+        ]).then(([candRes, jobsRes, activityRes, integrationsRes]) => {
             setCandidates(candRes.data)
-            sessionStorage.setItem('cached_candidates', JSON.stringify(candRes.data))
-            setColumns([...colRes.data.base, ...colRes.data.custom])
-        }).catch(() => { })
-            .finally(() => setLoading(false))
+            setJobs(jobsRes.data)
+            setActivities(activityRes.data.slice(0, 8))
+            if (integrationsRes) {
+                const s = integrationsRes.data
+                setMailboxConnected(!!(s.email_enabled || s.gmail_enabled || s.outlook_enabled))
+            }
+        }).catch(() => {
+            // G-20: this used to fail silently (.catch(() => {})), so a
+            // backend hiccup rendered as an empty dashboard indistinguishable
+            // from "no data yet" - now it's a visible, dismissible error.
+            showToast('Failed to load dashboard data.', 'error')
+        }).finally(() => setLoading(false))
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
-    const handleAddColumn = async () => {
-        if (!newColLabel || !newColDesc) return;
-        setAddingCol(true);
-        try {
-            await axios.post(`${import.meta.env.VITE_API_URL || ''}/api/columns`, {
-                col_key: newColLabel,
-                col_label: newColLabel,
-                description: newColDesc
-            });
-            const cols = await axios.get(`${import.meta.env.VITE_API_URL || ''}/api/columns`);
-            setColumns([...cols.data.base, ...cols.data.custom]);
-            setShowAddCol(false);
-            setNewColLabel('');
-            setNewColDesc('');
-        } catch (e) {
-            alert('Failed to add column: ' + (e.response?.data?.detail || e.message));
-        } finally {
-            setAddingCol(false);
-        }
-    }
-
-    const handleDeleteCandidate = async (id, name) => {
-        if (!window.confirm(`Are you sure you want to delete ${name || 'this candidate'}?`)) return;
-        try {
-            await axios.delete(`${import.meta.env.VITE_API_URL || ''}/api/candidates/${id}`, {
-                headers: { 'x-user-username': user?.username }
-            });
-            setCandidates(prev => prev.filter(c => c.id !== id));
-        } catch (e) {
-            alert('Failed to delete candidate: ' + (e.response?.data?.detail || e.message));
-        }
-    }
-
     const totalCandidates = candidates.length
-    const isImmediate = (val) => {
-        if (val === 0 || val === '0') return true;
-        return String(val || '').toLowerCase().includes('immediate');
-    };
+    // Matches the same fallback JobStatusChip/JobsOverview use: a job with
+    // no job_status set displays and counts as In-progress, so this KPI
+    // doesn't undercount relative to what the Jobs page itself shows.
+    const openJobs = jobs.filter(j => (j.job_status || 'In-progress') === 'In-progress').length
+    const inReview = candidates.filter(c => String(c.candidate_status || 'New').trim() === 'In-Review').length
+    const offersOut = candidates.filter(c => String(c.candidate_status || 'New').trim() === 'Offered').length
+    const immediateJoiners = candidates.filter(c => isImmediate(c.notice_period)).length
 
-    const immediate = candidates.filter(c => isImmediate(c.notice_period)).length
-
-    const filteredCandidates = filterType === 'immediate'
-        ? candidates.filter(c => isImmediate(c.notice_period))
-        : candidates
-
-    const handleKpiClick = (type) => {
-        setFilterType(type)
-        summaryRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }
-
-    const expChartData = candidates.map(c => ({
-        name: c.full_name || c.filename || '?',
-        'Total Exp': +c.total_experience || 0,
-        'Pega Exp': +c.pega_experience || 0,
+    const pipelineData = PIPELINE_STAGES.map(stage => ({
+        name: stage.key,
+        value: candidates.filter(c => String(c.candidate_status || 'New').trim() === stage.key).length,
+        fill: chartColors[stage.varName],
     }))
 
-    const noticeCounts = {}
-    candidates.forEach(c => {
-        let k = String(c.notice_period ?? '').trim()
-        if (k === '0') k = 'Immediate'
-        else if (k !== '' && !isNaN(k)) k = `${k} days`
-        if (k) noticeCounts[k] = (noticeCounts[k] || 0) + 1
-    })
-    const noticeData = Object.entries(noticeCounts).map(([name, value]) => ({ name, value }))
+    const kpis = [
+        { label: 'Total Candidates', value: totalCandidates, caption: 'Across all sources', onClick: () => navigate('/upload') },
+        { label: 'Open Jobs', value: openJobs, caption: 'Currently active', onClick: () => navigate('/jobs') },
+        { label: 'In Review', value: inReview, caption: 'Awaiting a decision', tone: inReview > 0 ? 'warning' : undefined, onClick: () => navigate('/upload') },
+        { label: 'Offers Out', value: offersOut, caption: 'Pending response', onClick: () => navigate('/upload') },
+        { label: 'Immediate Joiners', value: immediateJoiners, caption: 'Available now', tone: immediateJoiners > 0 ? 'positive' : undefined, onClick: () => navigate('/upload') },
+    ]
 
-    const CustomTooltip = ({ active, payload, label }) => {
-        if (!active || !payload?.length) return null
-        return (
-            <div style={{
-                background: 'rgba(var(--navy-dark-rgb), 0.95)', border: '1px solid rgba(var(--gold-rgb), 0.3)',
-                borderRadius: 10, padding: '10px 14px', fontSize: '0.84rem'
-            }}>
-                <p style={{ color: 'var(--gold)', marginBottom: 6, fontWeight: 700 }}>{label}</p>
-                {payload.map(p => (
-                    <p key={p.name} style={{ color: p.color }}>{p.name}: <strong>{p.value} yrs</strong></p>
-                ))}
-            </div>
-        )
-    }
-
+    // G-21: a single 40px spinner replacing the entire page caused a full
+    // layout shift the moment real content arrived. Mirroring the KPI row
+    // + charts shape here means arrival only swaps content in place.
     if (loading) return (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
-            <div className="spinner" style={{ width: 40, height: 40 }} />
+        <div style={{ padding: '2rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '1.5rem' }} aria-busy="true" aria-label="Loading dashboard">
+            <SkeletonKPIRow count={5} />
+            <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <SkeletonBlock width={180} height={20} />
+                <SkeletonBlock height={220} radius={10} />
+            </div>
         </div>
     )
 
     return (
         <div style={{ padding: '2rem', flex: 1 }}>
-
-            {/* KPIs */}
+            {/* KPIs — each navigates to where that data actually lives (Candidates
+                or Jobs) instead of the old in-page "filter the table below" pattern,
+                which had no removable filter chip and no result count (S3.3). */}
             <div className="kpi-grid">
-                {[
-                    { label: 'Total Candidates', value: totalCandidates, Icon: Users, type: 'all' },
-                    { label: 'Immediate Joiners', value: immediate, Icon: Clock, type: 'immediate' },
-                ].map(({ label, value, Icon, type }) => (
-                    <div
-                        className={`kpi-card ${filterType === type ? 'active' : ''}`}
+                {kpis.map(({ label, value, caption, tone, onClick }) => (
+                    <button
+                        type="button"
+                        className="kpi-card"
                         key={label}
-                        onClick={() => handleKpiClick(type)}
-                        style={{ cursor: 'pointer', border: filterType === type ? '1px solid var(--gold)' : '' }}
+                        onClick={onClick}
+                        style={{ cursor: 'pointer', font: 'inherit' }}
                     >
-                        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
-                            <div style={{
-                                width: 42, height: 42, background: 'rgba(var(--gold-rgb), 0.12)',
-                                borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center'
-                            }}>
-                                <Icon size={20} color="var(--gold)" />
-                            </div>
+                        <div className="kpi-card-top">
+                            <span className="kpi-label">{label}</span>
+                            <ChevronRight size={14} color="var(--text-subtle)" />
                         </div>
                         <div className="kpi-value">{value}</div>
-                        <div className="kpi-label">{label}</div>
-                    </div>
+                        <div className={`kpi-caption${tone ? ` tone-${tone}` : ''}`}>{caption}</div>
+                    </button>
                 ))}
             </div>
 
-            {/* Empty state */}
-            {candidates.length === 0 ? (
-                <div className="card" style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-dim)' }}>
-                    <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📊</div>
-                    <p style={{ fontSize: '1.1rem', fontFamily: 'var(--fh)', color: 'var(--gold)' }}>No Data Yet</p>
-                    <p style={{ marginTop: '0.5rem' }}>Upload and analyze resumes to see insights here.</p>
+            {candidates.length === 0 && jobs.length === 0 ? (
+                <div className="card" style={{ padding: '2.5rem' }}>
+                    <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+                        <BarChart3 size={40} style={{ marginBottom: '1rem', color: 'var(--text-dim)' }} />
+                        {/* Was "No Data Yet" in Title Case, --fs-6-sized (17.6px), and
+                            action-orange - the only Title Case heading in the app, and
+                            in the color reserved for interactive elements despite being
+                            plain text. This heading isn't an error state, it's an
+                            onboarding prompt, so it reads as one now. */}
+                        <p style={{ fontSize: 'var(--fs-6)', fontFamily: 'var(--fh)', fontWeight: 700, color: 'var(--text)' }}>Let's set up your pipeline</p>
+                        <p style={{ marginTop: '0.5rem', color: 'var(--text-dim)' }}>Get started in three steps:</p>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '460px', margin: '0 auto' }}>
+                        {[
+                            { key: 'mailbox', label: 'Connect a mailbox', Icon: Mail, done: canSeeIntegrations ? mailboxConnected : null, to: '/connect' },
+                            { key: 'upload', label: 'Upload resumes', Icon: Upload, done: candidates.length > 0, to: '/upload' },
+                            { key: 'job', label: 'Create a job', Icon: Briefcase, done: jobs.length > 0, to: '/jobs' },
+                        ].map((step, i) => (
+                            <button
+                                key={step.key}
+                                type="button"
+                                autoFocus={i === 0}
+                                onClick={() => navigate(step.to)}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: '14px', textAlign: 'left',
+                                    padding: '14px 16px', borderRadius: 'var(--r-md)', border: '1px solid var(--border)',
+                                    background: 'var(--surface)', cursor: 'pointer', font: 'inherit', color: 'var(--text)',
+                                }}
+                            >
+                                <div style={{
+                                    width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.8rem',
+                                    background: step.done ? 'var(--st-hired-bg)' : 'var(--surface-sunken)',
+                                    color: step.done ? 'var(--st-hired-text)' : 'var(--text-dim)',
+                                }}>
+                                    {step.done ? <Check size={14} /> : i + 1}
+                                </div>
+                                <step.Icon size={16} style={{ color: 'var(--gold)', flexShrink: 0 }} />
+                                <span style={{ flex: 1, fontWeight: 600 }}>{step.label}</span>
+                                {step.done === false && <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>To do</span>}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             ) : (
-                <>
-                    {/* Charts */}
-                    <div className="charts-grid">
-                        <div className="card">
-                            <div className="card-title">📊 Experience</div>
-                            <ResponsiveContainer width="100%" height={300}>
-                                <BarChart data={expChartData} margin={{ top: 5, right: 10, bottom: 20, left: 0 }}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                                    <XAxis dataKey="name" tick={{ fill: '#8ECAE6', fontSize: 12 }} angle={-30} textAnchor="end" />
-                                    <YAxis tick={{ fill: '#8ECAE6', fontSize: 12 }} unit=" yr" />
-                                    <Tooltip content={<CustomTooltip />} />
-                                    <Legend wrapperStyle={{ color: '#8ECAE6', fontSize: 13 }} />
-                                    <Bar dataKey="Total Exp" fill="#FB8500" radius={[6, 6, 0, 0]} />
-                                    <Bar dataKey="Pega Exp" fill="#FFB703" radius={[6, 6, 0, 0]} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-
-                        <div className="card">
-                            <div className="card-title">⏱ Notice Period</div>
-                            <ResponsiveContainer width="100%" height={300}>
-                                <BarChart data={noticeData} margin={{ top: 5, right: 10, bottom: 20, left: 0 }}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                                    <XAxis dataKey="name" tick={{ fill: '#8ECAE6', fontSize: 12 }} angle={-30} textAnchor="end" />
-                                    <YAxis tick={{ fill: '#8ECAE6', fontSize: 12 }} allowDecimals={false} />
-                                    <Tooltip contentStyle={{
-                                        background: 'var(--input-bg)',
-                                        border: '1px solid rgba(var(--gold-rgb), 0.3)', borderRadius: 10, color: 'var(--text)'
-                                    }} />
-                                    <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                                        {noticeData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                                    </Bar>
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
+                <div className="charts-grid dashboard-charts-grid" style={{ alignItems: 'stretch' }}>
+                    <div className="card">
+                        <div className="card-title"><BarChart3 size={16} /> Pipeline by Stage</div>
+                        <ResponsiveContainer width="100%" height={280}>
+                            <BarChart data={pipelineData} margin={{ top: 5, right: 10, bottom: 20, left: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke={chartColors['--border']} />
+                                <XAxis dataKey="name" tick={{ fill: chartColors['--text-muted'], fontSize: 11 }} angle={-30} textAnchor="end" interval={0} />
+                                <YAxis tick={{ fill: chartColors['--text-muted'], fontSize: 12 }} allowDecimals={false} />
+                                <Tooltip contentStyle={{ background: chartColors['--surface'], border: '1px solid rgba(var(--gold-rgb), 0.3)', borderRadius: 10, color: 'var(--text)' }} />
+                                <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                                    {pipelineData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
                     </div>
 
-                    {/* Summary Table — responsive layout */}
-                    <div className="card" ref={summaryRef}>
-                        <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', minWidth: '800px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                👥 {filterType === 'immediate' ? 'Immediate Joiners' : 'Candidate Summary'}
-                            </div>
-                            <div style={{ display: 'flex', gap: 8 }}>
-                                <button
-                                    className="btn btn-primary"
-                                    style={{ fontSize: '0.75rem', padding: '6px 12px', gap: 6 }}
-                                    onClick={() => setShowAddCol(true)}
-                                >
-                                    <Plus size={14} /> Add Custom Column
-                                </button>
-                                <button
-                                    className="btn btn-secondary"
-                                    style={{ fontSize: '0.75rem', padding: '6px 12px', gap: 6 }}
-                                    onClick={() => exportToExcel(formatCandidatesForExcel(filteredCandidates, columns), 'hire_ai_candidates.xlsx')}
-                                >
-                                    <Download size={14} /> Download Excel
-                                </button>
-                            </div>
-                        </div>
-                        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', borderRadius: 10, border: '1px solid var(--border)', width: '100%' }}>
-                            <table style={{ minWidth: '2600px', width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                                <thead>
-                                    <tr style={{ background: 'rgba(var(--navy-rgb), 0.9)' }}>
-                                        {columns.map(h => (
-                                            <th key={h.col_key} style={{
-                                                padding: '11px 12px', textAlign: 'left',
-                                                fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.78rem',
-                                                color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.04rem',
-                                                borderBottom: '1px solid var(--border)',
-                                                position: 'sticky',
-                                                top: 0,
-                                                zIndex: 12,
-                                                background: 'rgba(var(--navy-rgb), 0.95)'
+                    <div className="card" style={{ display: 'flex', flexDirection: 'column', minHeight: 280 }}>
+                        <div className="card-title"><ActivityIcon size={16} /> Recent Activity</div>
+                        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px', maxHeight: 280 }}>
+                            {activities.length === 0 ? (
+                                <div style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '2rem 0', fontSize: '0.85rem' }}>No activity logged yet.</div>
+                            ) : (
+                                activities.map(act => {
+                                    const initials = act.username ? act.username.substring(0, 2).toUpperCase() : 'U'
+                                    const date = new Date(act.timestamp)
+                                    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                    const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' })
+                                    return (
+                                        <div key={act.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                                            {/* Was action-orange bold, the color reserved for interactive
+                                                elements, and a second identity (username) for the same
+                                                person shown by full name in the topbar. */}
+                                            <div title={act.username} style={{
+                                                width: 28, height: 28, borderRadius: '50%', background: 'var(--surface-2)', border: '1px solid var(--border)',
+                                                color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                fontWeight: 600, fontSize: '0.72rem', flexShrink: 0,
                                             }}>
-                                                {h.col_label}
-                                            </th>
-                                        ))}
-                                        <th style={{
-                                            padding: '11px 12px', textAlign: 'center',
-                                            fontFamily: 'var(--fh)', fontWeight: 700, fontSize: '0.78rem',
-                                            color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.04rem',
-                                            borderBottom: '1px solid var(--border)',
-                                            position: 'sticky',
-                                            top: 0,
-                                            zIndex: 12,
-                                            background: 'rgba(var(--navy-rgb), 0.95)'
-                                        }}>
-                                            Actions
-                                        </th>
-                                    </tr>
-                                </thead>
-                            <tbody>
-                                {filteredCandidates.map((c, i) => (
-                                    <tr key={i} style={{
-                                        borderBottom: '1px solid rgba(var(--sky-rgb), 0.1)',
-                                        background: i % 2 === 0 ? 'rgba(var(--navy-rgb), 0.2)' : 'transparent'
-                                    }}>
-                                        {columns.map(col => {
-                                            if (col.col_key === 'full_name') {
-                                                return <td style={{ padding: '10px 12px', verticalAlign: 'top', minWidth: '180px' }} key={col.col_key}>
-                                                    <span
-                                                        onClick={() => setSelectedCandidateForDetails(c)}
-                                                        style={{
-                                                            display: 'inline-flex',
-                                                            alignItems: 'center',
-                                                            gap: '6px',
-                                                            color: 'var(--gold)',
-                                                            textDecoration: 'underline',
-                                                            cursor: 'pointer',
-                                                            fontWeight: 700,
-                                                            transition: 'color 0.2s'
-                                                        }}
-                                                        title="View Candidate Profile & Jobs"
-                                                    >
-                                                        <FileText size={14} style={{ flexShrink: 0, color: 'var(--gold)' }} />
-                                                        {c.full_name || '—'}
-                                                    </span>
-                                                </td>
-                                            }
-                                            if (col.col_key === 'skills') {
-                                                return <td 
-                                                    key={col.col_key} 
-                                                    onDoubleClick={() => {
-                                                        if (c.skills) setSelectedCellText({ title: col.col_label, text: String(c.skills) });
-                                                    }}
-                                                    title={c.skills ? "Double-click to view full text" : ""}
-                                                    style={{ padding: '10px 12px', verticalAlign: 'top', cursor: c.skills ? 'pointer' : 'default' }}
-                                                >
-                                                    <SkillBadges skills={c.skills} />
-                                                </td>
-                                            }
-                                            if (col.col_key === 'notice_period' || col.col_key === 'availability_in_days') {
-                                                const val = c[col.col_key];
-                                                const displayVal = val === 0 || val === '0' ? 'Immediate' : (val !== null && val !== '' && !isNaN(val) ? `${val} days` : (val || '—'));
-                                                return <td 
-                                                    key={col.col_key} 
-                                                    onDoubleClick={() => {
-                                                        if (val != null && String(val).trim() !== '') setSelectedCellText({ title: col.col_label, text: String(displayVal) });
-                                                    }}
-                                                    title={val != null && String(val).trim() !== '' ? "Double-click to view full text" : ""}
-                                                    style={{ padding: '10px 12px', verticalAlign: 'top', cursor: val != null && String(val).trim() !== '' ? 'pointer' : 'default' }}
-                                                >
-                                                    <span className={`badge ${isImmediate(val) ? 'badge-green' : 'badge-sky'}`}>
-                                                        {displayVal}
-                                                    </span>
-                                                </td>
-                                            }
-                                            if (col.col_key === 'candidate_status') {
-                                                const s = String(c.candidate_status || 'New').trim();
-                                                const isEditing = editStatusCell?.candidateId === c.id;
- 
-                                                if (isEditing) {
-                                                    const statusOptions = ['New', 'In-Review', 'Available', 'Selected', 'Rejected', 'Engaged', 'Offered', 'Hired'];
-                                                    return (
-                                                        <td key={col.col_key} style={{ padding: '8px 12px', verticalAlign: 'top' }}>
-                                                            <select
-                                                                autoFocus
-                                                                value={s}
-                                                                onChange={async (e) => {
-                                                                    const newVal = e.target.value;
-                                                                    try {
-                                                                        await axios.put(`${import.meta.env.VITE_API_URL || ''}/api/candidates/${c.id}`, { candidate_status: newVal });
-                                                                        setCandidates(prev => prev.map((cand) => cand.id === c.id ? { ...cand, candidate_status: newVal } : cand));
-                                                                    } catch (err) {
-                                                                        alert('Save failed: ' + (err.response?.data?.detail || err.message));
-                                                                    }
-                                                                    setEditStatusCell(null);
-                                                                }}
-                                                                onBlur={() => setEditStatusCell(null)}
-                                                                onKeyDown={e => { if (e.key === 'Escape') setEditStatusCell(null); }}
-                                                                style={{
-                                                                    background: 'var(--input-bg)', border: '1px solid var(--gold)',
-                                                                    borderRadius: 6, padding: '4px 8px', color: 'var(--text)', width: '100%',
-                                                                    fontFamily: 'var(--fb)', fontSize: '0.82rem', outline: 'none'
-                                                                }}
-                                                            >
-                                                                {statusOptions.map(opt => (
-                                                                    <option key={opt} value={opt} style={{ background: 'var(--card-bg)', color: 'var(--text)' }}>
-                                                                        {opt}
-                                                                    </option>
-                                                                ))}
-                                                            </select>
-                                                        </td>
-                                                    );
-                                                }
-
-                                                let color = '#38bdf8';
-                                                let bg = 'rgba(56, 189, 248, 0.12)';
-                                                let border = '1px solid rgba(56, 189, 248, 0.25)';
-
-                                                const lowerS = s.toLowerCase();
-                                                if (lowerS === 'in-review') {
-                                                    color = '#fbbf24'; bg = 'rgba(251, 191, 36, 0.12)'; border = '1px solid rgba(251, 191, 36, 0.25)';
-                                                } else if (lowerS === 'available') {
-                                                    color = '#34d399'; bg = 'rgba(52, 211, 153, 0.12)'; border = '1px solid rgba(52, 211, 153, 0.25)';
-                                                } else if (lowerS === 'selected') {
-                                                    color = '#2dd4bf'; bg = 'rgba(45, 212, 191, 0.12)'; border = '1px solid rgba(45, 212, 191, 0.25)';
-                                                } else if (lowerS === 'rejected') {
-                                                    color = '#f87171'; bg = 'rgba(248, 113, 113, 0.12)'; border = '1px solid rgba(248, 113, 113, 0.25)';
-                                                } else if (lowerS === 'engaged') {
-                                                    color = '#c084fc'; bg = 'rgba(192, 132, 252, 0.12)'; border = '1px solid rgba(192, 132, 252, 0.25)';
-                                                } else if (lowerS === 'offered') {
-                                                    color = '#f43f5e'; bg = 'rgba(244, 63, 94, 0.12)'; border = '1px solid rgba(244, 63, 94, 0.25)';
-                                                } else if (lowerS === 'hired') {
-                                                    color = '#4ade80'; bg = 'rgba(74, 222, 128, 0.15)'; border = '1px solid rgba(74, 222, 128, 0.35)';
-                                                }
-
-                                                return (
-                                                    <td
-                                                        key={col.col_key}
-                                                        onClick={() => setEditStatusCell({ candidateId: c.id })}
-                                                        style={{ padding: '10px 12px', verticalAlign: 'top', cursor: 'pointer' }}
-                                                    >
-                                                        <span style={{
-                                                            background: bg, color: color, border: border,
-                                                            borderRadius: 5, padding: '2px 8px', fontSize: '0.73rem',
-                                                            fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-block',
-                                                            textTransform: 'capitalize'
-                                                        }}>
-                                                            {s}
-                                                        </span>
-                                                    </td>
-                                                );
-                                            }
-                                            if (col.col_key === 'total_experience' || col.col_key === 'pega_experience' || col.col_key === 'cdh_exp') {
-                                                const val = c[col.col_key];
-                                                const displayVal = val ? `${val} yrs` : '—';
-                                                return <td 
-                                                    key={col.col_key} 
-                                                    onDoubleClick={() => {
-                                                        if (val != null && String(val).trim() !== '') setSelectedCellText({ title: col.col_label, text: String(displayVal) });
-                                                    }}
-                                                    title={val != null && String(val).trim() !== '' ? "Double-click to view full text" : ""}
-                                                    style={{ padding: '10px 12px', textAlign: 'center', verticalAlign: 'top', cursor: val != null && String(val).trim() !== '' ? 'pointer' : 'default' }}
-                                                >
-                                                    {displayVal}
-                                                </td>
-                                            }
-                                            return <td 
-                                                key={col.col_key} 
-                                                onDoubleClick={() => {
-                                                    const val = c[col.col_key];
-                                                    if (val != null && String(val).trim() !== '') {
-                                                        setSelectedCellText({ title: col.col_label, text: String(val) });
-                                                    }
-                                                }}
-                                                title={c[col.col_key] ? "Double-click to view full text" : ""}
-                                                style={{ 
-                                                    padding: '10px 12px', 
-                                                    verticalAlign: 'top', 
-                                                    color: col.col_key === 'email' ? 'var(--sky-dim)' : 'inherit', 
-                                                    wordBreak: col.col_key === 'email' ? 'break-all' : 'break-word',
-                                                    cursor: c[col.col_key] ? 'pointer' : 'default'
-                                                }}
-                                            >
-                                                {col.col_key === 'email' && c[col.col_key] ? (
-                                                    <a 
-                                                        href={`https://mail.google.com/mail/?view=cm&fs=1&to=${c[col.col_key]}`} 
-                                                        target="_blank" 
-                                                        rel="noreferrer" 
-                                                        title="Send email via Gmail" 
-                                                        style={{ color: 'var(--sky-dim)', textDecoration: 'underline', cursor: 'pointer' }}
-                                                        onClick={e => e.stopPropagation()}
-                                                    >
-                                                        {c[col.col_key]}
-                                                    </a>
-                                                ) : (
-                                                    c[col.col_key] || '—'
-                                                )}
-                                            </td>
-                                        })}
-                                        <td style={{ padding: '10px 12px', textAlign: 'center', verticalAlign: 'top' }}>
-                                            <button
-                                                className="btn btn-danger"
-                                                style={{ padding: '6px 10px', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.75rem' }}
-                                                onClick={() => handleDeleteCandidate(c.id, c.full_name)}
-                                                title="Delete Candidate"
-                                            >
-                                                <Trash2 size={14} /> Delete
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                </>
-            )}
-
-            {/* Add Column Modal */}
-            {showAddCol && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-                    background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center',
-                    justifyContent: 'center', zIndex: 1000
-                }}>
-                    <div className="card" style={{ width: '400px', padding: '2rem' }}>
-                        <h3 style={{ color: 'var(--gold)', marginBottom: '1.5rem', fontFamily: 'var(--fh)' }}>Add Custom Column</h3>
-                        <div style={{ marginBottom: '1rem' }}>
-                            <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--sky-dim)', marginBottom: '6px' }}>Column Label</label>
-                            <input
-                                type="text"
-                                value={newColLabel}
-                                onChange={e => setNewColLabel(e.target.value)}
-                                placeholder="e.g. Github Profile"
-                                style={{ width: '100%', padding: '10px', background: 'rgba(var(--navy-dark-rgb), 0.8)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6 }}
-                            />
-                        </div>
-                        <div style={{ marginBottom: '1.5rem' }}>
-                            <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--sky-dim)', marginBottom: '6px' }}>AI Extraction Prompt</label>
-                            <textarea
-                                value={newColDesc}
-                                onChange={e => setNewColDesc(e.target.value)}
-                                placeholder="e.g. Extract the candidate's Github URL. Leave empty if none."
-                                rows={3}
-                                style={{ width: '100%', padding: '10px', background: 'rgba(var(--navy-dark-rgb), 0.8)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, resize: 'vertical' }}
-                            />
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                            <button className="btn btn-secondary" onClick={() => setShowAddCol(false)}>Cancel</button>
-                            <button className="btn btn-primary" onClick={handleAddColumn} disabled={addingCol || !newColLabel || !newColDesc}>
-                                {addingCol ? 'Adding...' : 'Add Column'}
-                            </button>
+                                                {initials}
+                                            </div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1, minWidth: 0 }}>
+                                                <div style={{ fontSize: '0.82rem', color: 'var(--text)' }} title={act.username}>
+                                                    <strong style={{ color: 'var(--text)', fontWeight: 600 }}>{act.full_name || act.username}</strong>{' '}
+                                                    <span style={{ color: 'var(--text-muted)' }}>{act.action}</span>
+                                                </div>
+                                                <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)' }}>
+                                                    {dateStr} at {timeStr}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )
+                                })
+                            )}
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Candidate Details Modal */}
-            {selectedCandidateForDetails && (
-                <CandidateDetailsModal 
-                    candidate={selectedCandidateForDetails} 
-                    onClose={() => setSelectedCandidateForDetails(null)} 
-                    onViewPdf={(filename, name) => {
-                        window.open(`${import.meta.env.VITE_API_URL || ''}/static/${filename}`, '_blank');
-                    }}
-                />
-            )}
-
-            {/* Cell Text Modal */}
-            {selectedCellText && (
-                <CellTextModal 
-                    data={selectedCellText} 
-                    onClose={() => setSelectedCellText(null)} 
-                />
-            )}
+            <ToastHost toast={toast} onDismiss={dismissToast} onPause={pauseToast} onResume={resumeToast} />
         </div>
     )
 }
-

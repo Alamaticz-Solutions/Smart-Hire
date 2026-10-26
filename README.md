@@ -4,9 +4,9 @@ Hire AI is a full-stack application built with React/Vite (Frontend) and FastAPI
 
 ## Documentation
 
-Detailed documentation has been moved to the `docs/` directory:
-- [Application Documentation](docs/DOCUMENTATION.md)
-- [System Architecture & Backend Documentation](docs/SYSTEM_DOCUMENTATION.md)
+- [Architecture](docs/ARCHITECTURE.md) — backend/frontend module structure, env vars, external integrations
+- [Technical notes](TECHNICAL_README.md) — background email worker, AI resume parsing, matching logic
+- [Business overview](BUSINESS_README.md) — product pitch and feature summary
 
 ## Quick Start
 
@@ -21,8 +21,8 @@ pip install -r requirements.txt
 cp .env.example .env
 # Fill in your .env values
 
-# Start the backend server
-uvicorn main:app --reload --port 8000
+# Start the backend server (run from the backend/ directory)
+uvicorn app.main:app --reload --port 8000
 ```
 
 ### 2. Frontend Setup
@@ -35,3 +35,24 @@ npm run dev
 ```
 
 The application will be available at `http://localhost:5173`.
+
+### 3. Run the tests
+
+```bash
+cd backend
+pip install -r requirements-dev.txt
+pytest
+```
+
+Tests use a temporary SQLite database and never touch the configured PostgreSQL server.
+
+### API response format
+
+Every JSON endpoint answers with the same envelope:
+
+```json
+{ "success": true, "message": "OK", "data": {}, "meta": null, "error": null, "request_id": "ab12cd34ef56" }
+```
+
+Errors use `success: false`, a human `message` (also in `detail`) and `error.code`
+(`not_found`, `forbidden`, `validation_error`, ...).

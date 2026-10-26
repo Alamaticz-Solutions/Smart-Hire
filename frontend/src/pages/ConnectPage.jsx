@@ -1,20 +1,27 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import axios from 'axios'
-import { Mail, Shield, Check, X, Plus, Trash2, Key, Folder, RefreshCw, Loader, ExternalLink } from 'lucide-react'
-
-const BACKEND_URL = import.meta.env.VITE_API_URL || '';
+import { Mail, Shield, Check, X, Plus, Trash2, Key, Folder, RefreshCw, Loader, ExternalLink, AlertCircle, Lock, Users, Eye, EyeOff } from 'lucide-react'
+import apiClient from '../api/client'
+import { useToast } from '../hooks/useToast'
+import ToastHost from '../components/shared/ToastHost'
+import { useConfirm } from '../hooks/useConfirm'
+import ConfirmDialog from '../components/shared/ConfirmDialog'
+import { formatApiError } from '../utils/apiError'
 
 export default function ConnectPage() {
     const { user } = useOutletContext()
     const [activeTab, setActiveTab] = useState('mail') // 'mail' | 'drive'
-    const [toast, setToast] = useState(null)
+    const { toast, showToast, dismissToast, pauseToast, resumeToast } = useToast()
+    const { confirm, confirmDialogProps } = useConfirm()
     const [saving, setSaving] = useState(false)
     const [testingConnection, setTestingConnection] = useState(false)
     const [testStatus, setTestStatus] = useState({ status: 'idle', message: '' })
     const [gdriveAuthCode, setGdriveAuthCode] = useState('')
     const [exchangingGdriveCode, setExchangingGdriveCode] = useState(false)
     const [loadingSettings, setLoadingSettings] = useState(false)
+    // S8.3: show/hide toggle for pasted credentials, keyed by field name.
+    const [showSecrets, setShowSecrets] = useState({})
+    const toggleSecretVisible = (field) => setShowSecrets(prev => ({ ...prev, [field]: !prev[field] }))
     
     const [integrationsSettings, setIntegrationsSettings] = useState({
         email_enabled: 0, imap_host: 'imap.gmail.com', imap_port: 993,
@@ -37,8 +44,38 @@ export default function ConnectPage() {
         gmail_pass: '',
         outlook_enabled: 0,
         outlook_email: '',
-        additional_emails: '[]'
+        additional_emails: '[]',
+        auto_reply_enabled: 0,
+        mail_import_from: '',
+        mail_import_to: '',
+        skip_automated_senders: 1
     })
+    const [replyLog, setReplyLog] = useState({ counts: { pending: 0, sent: 0, skipped: 0, failed: 0 }, recent: [], failed: [] })
+
+    const [showFailed, setShowFailed] = useState(false)
+
+    const downloadFailedReplies = async () => {
+        try {
+            const res = await apiClient.get('/api/integrations/replies/failed.xlsx', { responseType: 'blob' })
+            const url = URL.createObjectURL(res.data)
+            const link = document.createElement('a')
+            link.href = url
+            link.download = 'failed_replies.xlsx'
+            link.click()
+            URL.revokeObjectURL(url)
+        } catch (err) {
+            console.error('Error downloading failed replies:', err)
+        }
+    }
+
+    const fetchReplyLog = useCallback(async () => {
+        try {
+            const res = await apiClient.get('/api/integrations/replies')
+            setReplyLog(res.data)
+        } catch (err) {
+            console.error('Error fetching reply log:', err)
+        }
+    }, [])
 
     const [newEmailForm, setNewEmailForm] = useState({ 
         email_user: '', 
@@ -52,25 +89,21 @@ export default function ConnectPage() {
     const [testingMailbox, setTestingMailbox] = useState(null)
     const [mailboxTestStatuses, setMailboxTestStatuses] = useState({})
 
-    const showToast = (msg, type = 'success') => {
-        setToast({ msg, type })
-        setTimeout(() => setToast(null), 3500)
-    }
-
     const fetchIntegrationsSettings = useCallback(async () => {
         setLoadingSettings(true)
         try {
-            const res = await axios.get(`${BACKEND_URL}/api/integrations`, {
+            const res = await apiClient.get('/api/integrations', {
                 headers: { 'x-user-username': user?.username }
             })
             setIntegrationsSettings(res.data)
+            fetchReplyLog()
         } catch (err) {
             console.error('Error fetching integrations settings:', err)
             showToast('Failed to load integration settings', 'error')
         } finally {
             setLoadingSettings(false)
         }
-    }, [user?.username])
+    }, [user?.username, fetchReplyLog])
 
     useEffect(() => {
         if (user?.role === 'admin' || user?.is_admin === 1) {
@@ -81,7 +114,7 @@ export default function ConnectPage() {
     const saveIntegrationsSettings = async (showNotification = true) => {
         setSaving(true)
         try {
-            await axios.post(`${BACKEND_URL}/api/integrations`, integrationsSettings, {
+            await apiClient.post('/api/integrations', integrationsSettings, {
                 headers: { 'x-user-username': user?.username }
             })
             if (showNotification) {
@@ -89,15 +122,7 @@ export default function ConnectPage() {
             }
         } catch (err) {
             console.error("Save error:", err);
-            let errMsg = "Failed to save integration settings";
-            if (err.response?.data?.detail) {
-                errMsg = typeof err.response.data.detail === 'string' 
-                    ? err.response.data.detail 
-                    : JSON.stringify(err.response.data.detail);
-            } else if (err.message) {
-                errMsg = err.message;
-            }
-            alert(errMsg);
+            showToast(formatApiError(err, 'Failed to save integration settings'), 'error');
         } finally {
             setSaving(false)
         }
@@ -107,12 +132,12 @@ export default function ConnectPage() {
         setTestingConnection(true)
         setTestStatus({ status: 'testing', message: 'Testing IMAP connection...' })
         try {
-            const res = await axios.get(`${BACKEND_URL}/api/integrations/status`, {
+            const res = await apiClient.get('/api/integrations/status', {
                 headers: { 'x-user-username': user?.username }
             })
             setTestStatus({ status: res.data.status, message: res.data.message })
         } catch (err) {
-            setTestStatus({ status: 'error', message: 'Failed to run connection test: ' + (err.response?.data?.detail || err.message) })
+            setTestStatus({ status: 'error', message: formatApiError(err, 'Failed to run connection test.') })
         } finally {
             setTestingConnection(false)
         }
@@ -122,7 +147,7 @@ export default function ConnectPage() {
         setTestingMailbox(indexKey)
         setMailboxTestStatuses(prev => ({ ...prev, [indexKey]: { status: 'testing', message: 'Testing connection...' } }))
         try {
-            const res = await axios.post(`${BACKEND_URL}/api/integrations/test`, {
+            const res = await apiClient.post('/api/integrations/test', {
                 email_user: mailbox.email_user,
                 email_pass: mailbox.email_pass,
                 imap_host: mailbox.imap_host,
@@ -135,9 +160,9 @@ export default function ConnectPage() {
                 [indexKey]: { status: res.data.status, message: res.data.message } 
             }))
         } catch (err) {
-            setMailboxTestStatuses(prev => ({ 
-                ...prev, 
-                [indexKey]: { status: 'error', message: 'Connection failed: ' + (err.response?.data?.detail || err.message) } 
+            setMailboxTestStatuses(prev => ({
+                ...prev,
+                [indexKey]: { status: 'error', message: formatApiError(err, 'Connection failed.') }
             }))
         } finally {
             setTestingMailbox(null)
@@ -145,8 +170,13 @@ export default function ConnectPage() {
     }
 
     const handleAddMailbox = () => {
-        if (!newEmailForm.email_user || !newEmailForm.email_pass) {
-            alert("Please enter both email address and app password.")
+        // Outlook/office365 mailboxes authenticate via the global Microsoft
+        // Graph API settings configured on the Primary Mailbox - the app
+        // password field is intentionally hidden for them (see the form
+        // below), so requiring it here made it impossible to ever add one.
+        const isOutlookHost = newEmailForm.imap_host?.includes('office365')
+        if (!newEmailForm.email_user || (!isOutlookHost && !newEmailForm.email_pass)) {
+            showToast(isOutlookHost ? "Please enter an email address." : "Please enter both email address and app password.", "error")
             return
         }
         let list = []
@@ -156,7 +186,7 @@ export default function ConnectPage() {
             list = []
         }
         if (list.some(m => m.email_user.toLowerCase() === newEmailForm.email_user.toLowerCase())) {
-            alert("This email account is already added.")
+            showToast("This email account is already added.", "error")
             return
         }
         const updatedList = [...list, { ...newEmailForm }]
@@ -254,7 +284,7 @@ export default function ConnectPage() {
     const handleGenerateGdriveAuthUrl = () => {
         const clientId = integrationsSettings.gdrive_client_id?.trim();
         if (!clientId) {
-            alert('Please enter a Google Client ID first.');
+            showToast('Please enter a Google Client ID first.', 'error');
             return;
         }
         
@@ -273,17 +303,17 @@ export default function ConnectPage() {
         const clientId = integrationsSettings.gdrive_client_id?.trim();
         const clientSecret = integrationsSettings.gdrive_client_secret?.trim();
         if (!clientId || !clientSecret) {
-            alert('Please enter Client ID and Client Secret first.');
+            showToast('Please enter Client ID and Client Secret first.', 'error');
             return;
         }
         if (!gdriveAuthCode.trim()) {
-            alert('Please paste the authorization code or redirect URL first.');
+            showToast('Please paste the authorization code or redirect URL first.', 'error');
             return;
         }
         
         setExchangingGdriveCode(true);
         try {
-            const res = await axios.post(`${BACKEND_URL}/api/integrations/gdrive/exchange`, {
+            const res = await apiClient.post('/api/integrations/gdrive/exchange', {
                 client_id: clientId,
                 client_secret: clientSecret,
                 code: gdriveAuthCode.trim()
@@ -300,14 +330,14 @@ export default function ConnectPage() {
             setGdriveAuthCode('');
             showToast(`Connected successfully to ${email}!`, 'success');
         } catch (err) {
-            alert(err.response?.data?.detail || 'Failed to exchange authorization code.');
+            showToast(formatApiError(err, 'Failed to exchange authorization code.'), 'error');
         } finally {
             setExchangingGdriveCode(false);
         }
     };
 
-    const handleDisconnectGdrive = () => {
-        if (window.confirm('Are you sure you want to disconnect this Google Drive account?')) {
+    const handleDisconnectGdrive = async () => {
+        if (await confirm({ title: 'Disconnect Google Drive?', message: 'Are you sure you want to disconnect this Google Drive account?', confirmLabel: 'Disconnect' })) {
             setIntegrationsSettings(prev => ({
                 ...prev,
                 gdrive_refresh_token: '',
@@ -336,22 +366,14 @@ export default function ConnectPage() {
 
     return (
         <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
-            {toast && <div className={`toast ${toast.type}`}>{toast.msg}</div>}
+            <ToastHost toast={toast} onDismiss={dismissToast} onPause={pauseToast} onResume={resumeToast} />
+            <ConfirmDialog {...confirmDialogProps} />
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
-                <div>
-                    <h1 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                        🔗 System Integrations
-                    </h1>
-                    <p style={{ color: 'var(--text-dim)', fontSize: '0.88rem', margin: '4px 0 0 0' }}>
-                        Configure connection details for background email resume synchronization and Google Drive storage sync.
-                    </p>
-                </div>
-                
-                <button 
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '24px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
+                <button
                     onClick={() => saveIntegrationsSettings(true)} 
                     className="btn" 
-                    style={{ background: 'var(--gradient-gold)', color: '#000', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 8, border: 'none', cursor: 'pointer' }}
+                    style={{ background: 'var(--gold)', color: 'var(--action-fg)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 8, border: 'none', cursor: 'pointer' }}
                     disabled={saving}
                 >
                     {saving ? 'Saving...' : 'Save Settings'}
@@ -395,23 +417,149 @@ export default function ConnectPage() {
                                 <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text)' }}>Enable Candidate Email Sync</div>
                                 <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>Polls Email unseen messages for attached resumes matching keywords.</div>
                             </div>
-                            <label style={{ position: 'relative', display: 'inline-block', width: 48, height: 24, cursor: 'pointer' }}>
-                                <input 
-                                    type="checkbox" 
+                            <label className="switch-container">
+                                <input
+                                    type="checkbox"
+                                    className="switch-input"
                                     checked={integrationsSettings.email_enabled === 1}
                                     onChange={e => setIntegrationsSettings(prev => ({ ...prev, email_enabled: e.target.checked ? 1 : 0 }))}
-                                    style={{ opacity: 0, width: 0, height: 0 }}
+                                    aria-label="Enable candidate email sync"
                                 />
-                                <span style={{
-                                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                                    backgroundColor: integrationsSettings.email_enabled === 1 ? 'var(--gold)' : '#334155',
-                                    transition: '0.3s', borderRadius: 24, display: 'block'
-                                }} />
-                                <span style={{
-                                    position: 'absolute', content: '""', height: 18, width: 18, left: integrationsSettings.email_enabled === 1 ? 26 : 4, bottom: 3,
-                                    backgroundColor: '#000', transition: '0.3s', borderRadius: '50%'
-                                }} />
+                                <span className="switch-slider"></span>
                             </label>
+                        </div>
+
+                        {/* Mail import window + auto-reply */}
+                        <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 16, background: 'rgba(0,0,0,0.1)', marginBottom: 16 }}>
+                            <h3 style={{ margin: '0 0 12px', color: 'var(--gold)', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <Mail size={16} /> Mail import &amp; replies
+                            </h3>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                                <div>
+                                    <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Import mail received from</label>
+                                    <input
+                                        type="date"
+                                        value={integrationsSettings.mail_import_from || ''}
+                                        max={integrationsSettings.mail_import_to || undefined}
+                                        onChange={e => setIntegrationsSettings(prev => ({ ...prev, mail_import_from: e.target.value }))}
+                                        style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)' }}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Import mail received until (inclusive)</label>
+                                    <input
+                                        type="date"
+                                        value={integrationsSettings.mail_import_to || ''}
+                                        min={integrationsSettings.mail_import_from || undefined}
+                                        onChange={e => setIntegrationsSettings(prev => ({ ...prev, mail_import_to: e.target.value }))}
+                                        style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)' }}
+                                    />
+                                </div>
+                            </div>
+                            <p style={{ margin: '8px 0 16px', fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
+                                Only mail received inside this window is imported. Leave a date empty for no limit. Mail outside the window is left untouched, so widening the range later imports it.
+                            </p>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 12 }}>
+                                <div>
+                                    <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Skip automated senders</div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>Ignore noreply@, notifications@, invoice@, newsletters and similar machine-generated mail.</div>
+                                </div>
+                                <label className="switch-container sm">
+                                    <input
+                                        type="checkbox"
+                                        className="switch-input"
+                                        checked={integrationsSettings.skip_automated_senders !== 0}
+                                        onChange={e => setIntegrationsSettings(prev => ({ ...prev, skip_automated_senders: e.target.checked ? 1 : 0 }))}
+                                        aria-label="Skip automated senders"
+                                    />
+                                    <span className="switch-slider"></span>
+                                </label>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+                                <div>
+                                    <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+                                        Auto-reply to candidates: {integrationsSettings.auto_reply_enabled === 1 ? 'ON' : 'OFF'}
+                                    </div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', maxWidth: 520 }}>
+                                        When OFF the app only reads the mailbox and never sends anything. Acknowledgements for imported mail wait in a queue; when you switch this ON, each waiting candidate gets one reply, and anyone already replied to is never emailed again. Remember to click Save.
+                                    </div>
+                                </div>
+                                <label className="switch-container sm">
+                                    <input
+                                        type="checkbox"
+                                        className="switch-input"
+                                        checked={integrationsSettings.auto_reply_enabled === 1}
+                                        onChange={e => {
+                                            const turnOn = e.target.checked
+                                            if (turnOn && !window.confirm(`Turn auto-reply ON?\n\n${replyLog.counts.pending} candidate(s) are waiting for an acknowledgement and will be emailed after you save. People already replied to will not be emailed again.`)) return
+                                            setIntegrationsSettings(prev => ({ ...prev, auto_reply_enabled: turnOn ? 1 : 0 }))
+                                        }}
+                                        aria-label="Auto-reply to candidates"
+                                    />
+                                    <span className="switch-slider"></span>
+                                </label>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
+                                {[['pending', 'Waiting'], ['sent', 'Sent'], ['skipped', 'Skipped'], ['failed', 'Failed']].map(([key, label]) => (
+                                    <span key={key} style={{ padding: '4px 10px', borderRadius: 999, border: '1px solid var(--border)', fontSize: '0.75rem', color: key === 'failed' && replyLog.counts[key] > 0 ? '#fca5a5' : 'var(--text-dim)' }}>
+                                        {label}: <strong>{replyLog.counts[key] ?? 0}</strong>
+                                    </span>
+                                ))}
+                                <button type="button" onClick={fetchReplyLog} style={{ background: 'none', border: 'none', color: 'var(--gold)', cursor: 'pointer', fontSize: '0.75rem' }}>Refresh</button>
+                            </div>
+                            {replyLog.counts.failed > 0 && (
+                                <div style={{ marginTop: 12, border: '1px solid rgba(252,165,165,0.35)', borderRadius: 8, padding: 12 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                        <strong style={{ fontSize: '0.8rem', color: '#fca5a5' }}>
+                                            {replyLog.counts.failed} repl{replyLog.counts.failed === 1 ? 'y' : 'ies'} could not be sent
+                                        </strong>
+                                        <span style={{ display: 'flex', gap: 8 }}>
+                                            <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowFailed(v => !v)}>
+                                                {showFailed ? 'Hide list' : 'Preview list'}
+                                            </button>
+                                            <button type="button" className="btn btn-outline btn-sm" onClick={downloadFailedReplies}>
+                                                Download Excel
+                                            </button>
+                                        </span>
+                                    </div>
+                                    {showFailed && (
+                                        <div style={{ marginTop: 10, maxHeight: 220, overflow: 'auto' }}>
+                                            <table style={{ width: '100%', fontSize: '0.72rem', borderCollapse: 'collapse' }}>
+                                                <thead>
+                                                    <tr style={{ textAlign: 'left', color: 'var(--text-subtle)' }}>
+                                                        <th style={{ padding: '4px 6px' }}>Candidate email</th>
+                                                        <th style={{ padding: '4px 6px' }}>Subject</th>
+                                                        <th style={{ padding: '4px 6px' }}>Reason</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {replyLog.failed.map(r => (
+                                                        <tr key={r.id} style={{ borderTop: '1px solid var(--border)' }}>
+                                                            <td style={{ padding: '4px 6px' }}>{r.recipient}</td>
+                                                            <td style={{ padding: '4px 6px' }}>{r.subject}</td>
+                                                            <td style={{ padding: '4px 6px', color: '#fca5a5' }}>{r.error}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            {replyLog.recent.length > 0 && (
+                                <div style={{ marginTop: 10, maxHeight: 150, overflowY: 'auto', fontSize: '0.72rem', color: 'var(--text-dim)' }}>
+                                    {replyLog.recent.map(r => (
+                                        <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '3px 0', borderBottom: '1px solid var(--border)' }}>
+                                            <span>{r.recipient}</span>
+                                            <span title={r.error || ''}>{r.status}{r.sent_at ? ` · ${String(r.sent_at).slice(0, 10)}` : ''}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 20, opacity: integrationsSettings.email_enabled === 1 ? 1 : 0.5, pointerEvents: integrationsSettings.email_enabled === 1 ? 'auto' : 'none' }}>
@@ -419,29 +567,22 @@ export default function ConnectPage() {
                             <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 16, background: 'rgba(0,0,0,0.1)' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                                     <h3 style={{ margin: 0, color: 'var(--gold)', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-                                        📧 Gmail Integration
+                                        <Mail size={16} /> Gmail Integration
                                     </h3>
-                                    <label style={{ position: 'relative', display: 'inline-block', width: 40, height: 20, cursor: 'pointer' }}>
-                                        <input 
-                                            type="checkbox" 
+                                    <label className="switch-container sm">
+                                        <input
+                                            type="checkbox"
+                                            className="switch-input"
                                             checked={integrationsSettings.gmail_enabled === 1}
                                             onChange={e => setIntegrationsSettings(prev => ({ ...prev, gmail_enabled: e.target.checked ? 1 : 0 }))}
-                                            style={{ opacity: 0, width: 0, height: 0 }}
+                                            aria-label="Enable Gmail integration"
                                         />
-                                        <span style={{
-                                            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                                            backgroundColor: integrationsSettings.gmail_enabled === 1 ? 'var(--gold)' : '#334155',
-                                            transition: '0.3s', borderRadius: 20, display: 'block'
-                                        }} />
-                                        <span style={{
-                                            position: 'absolute', content: '""', height: 14, width: 14, left: integrationsSettings.gmail_enabled === 1 ? 22 : 3, bottom: 3,
-                                            backgroundColor: '#000', transition: '0.3s', borderRadius: '50%'
-                                        }} />
+                                        <span className="switch-slider"></span>
                                     </label>
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, opacity: integrationsSettings.gmail_enabled === 1 ? 1 : 0.5, pointerEvents: integrationsSettings.gmail_enabled === 1 ? 'auto' : 'none' }}>
                                     <div>
-                                        <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Gmail Address</label>
+                                        <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Gmail Address</label>
                                         <input 
                                             value={integrationsSettings.gmail_email || ''}
                                             onChange={e => setIntegrationsSettings(prev => ({ ...prev, gmail_email: e.target.value }))}
@@ -450,14 +591,22 @@ export default function ConnectPage() {
                                         />
                                     </div>
                                     <div>
-                                        <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>App Password</label>
-                                        <input 
-                                            type="password"
-                                            value={integrationsSettings.gmail_pass || ''}
-                                            onChange={e => setIntegrationsSettings(prev => ({ ...prev, gmail_pass: e.target.value }))}
-                                            placeholder={integrationsSettings.gmail_pass === '****' ? '                ' : '16-character app password'}
-                                            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
-                                        />
+                                        <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>App Password</label>
+                                        <div style={{ position: 'relative' }}>
+                                            <input
+                                                type={showSecrets.gmail_pass ? 'text' : 'password'}
+                                                value={integrationsSettings.gmail_pass || ''}
+                                                onChange={e => setIntegrationsSettings(prev => ({ ...prev, gmail_pass: e.target.value }))}
+                                                placeholder={integrationsSettings.gmail_pass === '****' ? '                ' : '16-character app password'}
+                                                style={{ width: '100%', padding: '10px 40px 10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                                            />
+                                            <button type="button" onClick={() => toggleSecretVisible('gmail_pass')}
+                                                aria-label={showSecrets.gmail_pass ? 'Hide app password' : 'Show app password'}
+                                                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', display: 'flex' }}>
+                                                {showSecrets.gmail_pass ? <EyeOff size={16} /> : <Eye size={16} />}
+                                            </button>
+                                        </div>
+                                        <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: 'var(--text-subtle)' }}>Stored encrypted. Once saved, this field shows as •••• and is never displayed again.</p>
                                     </div>
                                 </div>
                             </div>
@@ -466,29 +615,22 @@ export default function ConnectPage() {
                             <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 16, background: 'rgba(0,0,0,0.1)' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                                     <h3 style={{ margin: 0, color: 'var(--gold)', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-                                        📧 Outlook Integration
+                                        <Mail size={16} /> Outlook Integration
                                     </h3>
-                                    <label style={{ position: 'relative', display: 'inline-block', width: 40, height: 20, cursor: 'pointer' }}>
-                                        <input 
-                                            type="checkbox" 
+                                    <label className="switch-container sm">
+                                        <input
+                                            type="checkbox"
+                                            className="switch-input"
                                             checked={integrationsSettings.outlook_enabled === 1}
                                             onChange={e => setIntegrationsSettings(prev => ({ ...prev, outlook_enabled: e.target.checked ? 1 : 0 }))}
-                                            style={{ opacity: 0, width: 0, height: 0 }}
+                                            aria-label="Enable Outlook integration"
                                         />
-                                        <span style={{
-                                            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                                            backgroundColor: integrationsSettings.outlook_enabled === 1 ? 'var(--gold)' : '#334155',
-                                            transition: '0.3s', borderRadius: 20, display: 'block'
-                                        }} />
-                                        <span style={{
-                                            position: 'absolute', content: '""', height: 14, width: 14, left: integrationsSettings.outlook_enabled === 1 ? 22 : 3, bottom: 3,
-                                            backgroundColor: '#000', transition: '0.3s', borderRadius: '50%'
-                                        }} />
+                                        <span className="switch-slider"></span>
                                     </label>
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, opacity: integrationsSettings.outlook_enabled === 1 ? 1 : 0.5, pointerEvents: integrationsSettings.outlook_enabled === 1 ? 'auto' : 'none' }}>
                                     <div>
-                                        <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Outlook Email Address</label>
+                                        <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Outlook Email Address</label>
                                         <input 
                                             value={integrationsSettings.outlook_email || ''}
                                             onChange={e => setIntegrationsSettings(prev => ({ ...prev, outlook_email: e.target.value }))}
@@ -497,7 +639,7 @@ export default function ConnectPage() {
                                         />
                                     </div>
                                     <div>
-                                        <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Application ID (Client ID)</label>
+                                        <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Application ID (Client ID)</label>
                                         <input 
                                             value={integrationsSettings.ms_client_id || ''}
                                             onChange={e => setIntegrationsSettings(prev => ({ ...prev, ms_client_id: e.target.value }))}
@@ -506,30 +648,38 @@ export default function ConnectPage() {
                                         />
                                     </div>
                                     <div>
-                                        <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Tenant ID</label>
+                                        <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Tenant ID</label>
                                         <input 
                                             value={integrationsSettings.ms_tenant_id || ''}
                                             onChange={e => setIntegrationsSettings(prev => ({ ...prev, ms_tenant_id: e.target.value }))}
-                                            placeholder="common or tenant id"
+                                            placeholder="Directory (tenant) ID, e.g. b587dd2a-d8d0-4622-8337-b655855c1604 (not 'common')"
                                             style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
                                         />
                                     </div>
                                     <div>
-                                        <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Client Secret</label>
-                                        <input 
-                                            type="password"
-                                            value={integrationsSettings.ms_client_secret || ''}
-                                            onChange={e => setIntegrationsSettings(prev => ({ ...prev, ms_client_secret: e.target.value }))}
-                                            placeholder={integrationsSettings.ms_client_secret === '****' ? '                ' : 'Client Secret Value'}
-                                            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
-                                        />
+                                        <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Client Secret</label>
+                                        <div style={{ position: 'relative' }}>
+                                            <input
+                                                type={showSecrets.ms_client_secret ? 'text' : 'password'}
+                                                value={integrationsSettings.ms_client_secret || ''}
+                                                onChange={e => setIntegrationsSettings(prev => ({ ...prev, ms_client_secret: e.target.value }))}
+                                                placeholder={integrationsSettings.ms_client_secret === '****' ? '                ' : 'Client Secret Value'}
+                                                style={{ width: '100%', padding: '10px 40px 10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                                            />
+                                            <button type="button" onClick={() => toggleSecretVisible('ms_client_secret')}
+                                                aria-label={showSecrets.ms_client_secret ? 'Hide client secret' : 'Show client secret'}
+                                                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', display: 'flex' }}>
+                                                {showSecrets.ms_client_secret ? <EyeOff size={16} /> : <Eye size={16} />}
+                                            </button>
+                                        </div>
+                                        <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: 'var(--text-subtle)' }}>Stored encrypted. Once saved, this field shows as •••• and is never displayed again.</p>
                                     </div>
                                 </div>
                             </div>
 
                                 {/* Keywords List */}
                                 <div style={{ marginBottom: 16 }}>
-                                    <label className="modern-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Subject/Filename Match Keywords</label>
+                                    <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Subject/Filename Match Keywords</label>
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10, padding: 10, background: 'rgba(var(--navy-dark-rgb), 0.2)', borderRadius: 8, border: '1px solid var(--border)' }}>
                                         {(integrationsSettings.keywords ? integrationsSettings.keywords.split(',').map(k => k.trim()).filter(Boolean) : []).map(kw => (
                                             <span key={kw} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(var(--sky-rgb), 0.15)', border: '1px solid rgba(var(--sky-rgb), 0.3)', color: 'var(--sky-dim)', fontSize: '0.75rem', padding: '3px 8px', borderRadius: 6 }}>
@@ -540,6 +690,7 @@ export default function ConnectPage() {
                                                         const updated = kws.filter(x => x !== kw).join(', ');
                                                         setIntegrationsSettings(prev => ({ ...prev, keywords: updated }));
                                                     }}
+                                                    aria-label={`Remove keyword "${kw}"`}
                                                     style={{ border: 'none', background: 'none', color: 'var(--sky-dim)', cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center' }}
                                                 >
                                                     <X size={12} />
@@ -625,16 +776,16 @@ export default function ConnectPage() {
                                         {testingConnection ? (
                                             <Loader size={16} className="spin" color="var(--gold)" />
                                         ) : testStatus.status === 'connected' ? (
-                                            <Check size={16} color="#4ade80" />
+                                            <Check size={16} color="var(--success-fg)" />
                                         ) : testStatus.status === 'error' ? (
-                                            <X size={16} color="#fca5a5" />
+                                            <X size={16} color="var(--danger-fg)" />
                                         ) : (
                                             <span style={{ fontSize: '0.78rem' }}>ℹ️</span>
                                         )}
                                         <span style={{ 
                                             fontSize: '0.78rem',
-                                            color: testStatus.status === 'connected' ? '#4ade80' : 
-                                                   testStatus.status === 'error' ? '#fca5a5' : 'var(--text)'
+                                            color: testStatus.status === 'connected' ? 'var(--success-fg)' : 
+                                                   testStatus.status === 'error' ? 'var(--danger-fg)' : 'var(--text)'
                                         }}>
                                             {testStatus.message || 'Primary mailbox connection has not been tested.'}
                                         </span>
@@ -651,8 +802,8 @@ export default function ConnectPage() {
 
                             {/* Additional Mailboxes List */}
                             <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 16, background: 'rgba(0,0,0,0.1)' }}>
-                                <h3 style={{ margin: '0 0 10px 0', color: 'var(--gold)', fontSize: '0.95rem' }}>
-                                    👥 Additional HR/Sync Mailboxes ({getAdditionalEmailsCount()})
+                                <h3 style={{ margin: '0 0 10px 0', color: 'var(--gold)', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 7 }}>
+                                    <Users size={14} /> Additional HR/Sync Mailboxes ({getAdditionalEmailsCount()})
                                 </h3>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
                                     {getAdditionalEmailsList().map((mailbox, index) => (
@@ -679,7 +830,7 @@ export default function ConnectPage() {
                                                     type="button" 
                                                     className="btn btn-secondary" 
                                                     onClick={() => handleDeleteMailbox(index)}
-                                                    style={{ color: '#ef233c', borderColor: 'rgba(239, 35, 60, 0.2)', padding: '4px 8px', fontSize: '0.7rem' }}
+                                                    style={{ color: 'var(--danger-fg)', borderColor: 'rgba(var(--red-rgb), 0.2)', padding: '4px 8px', fontSize: '0.7rem' }}
                                                 >
                                                     <Trash2 size={12} /> Delete
                                                 </button>
@@ -688,8 +839,8 @@ export default function ConnectPage() {
                                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.1)', padding: '6px 10px', borderRadius: 6 }}>
                                                 <span style={{ 
                                                     fontSize: '0.72rem',
-                                                    color: mailboxTestStatuses[index]?.status === 'connected' ? '#4ade80' : 
-                                                           mailboxTestStatuses[index]?.status === 'error' ? '#fca5a5' : 'var(--text-dim)'
+                                                    color: mailboxTestStatuses[index]?.status === 'connected' ? 'var(--success-fg)' : 
+                                                           mailboxTestStatuses[index]?.status === 'error' ? 'var(--danger-fg)' : 'var(--text-dim)'
                                                 }}>
                                                     {mailboxTestStatuses[index] ? (
                                                         <>
@@ -719,7 +870,7 @@ export default function ConnectPage() {
 
                                 {/* Add Connection Card */}
                                 <div style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: 16 }}>
-                                    <h4 style={{ margin: '0 0 12px 0', color: 'var(--text)', fontSize: '0.85rem' }}>➕ Add New Shared Mailbox</h4>
+                                    <h4 style={{ margin: '0 0 12px 0', color: 'var(--text)', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 6 }}><Plus size={14} /> Add New Shared Mailbox</h4>
                                     <div style={{ marginBottom: 12 }}>
                                         <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-dim)', marginBottom: 6 }}>Email Provider</label>
                                         <div style={{ display: 'flex', gap: 8 }}>
@@ -770,13 +921,20 @@ export default function ConnectPage() {
                                         ) : (
                                             <div>
                                                 <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-dim)', marginBottom: 4 }}>App Password</label>
-                                                <input 
-                                                    type="password"
-                                                    value={newEmailForm.email_pass}
-                                                    onChange={e => setNewEmailForm(prev => ({ ...prev, email_pass: e.target.value }))}
-                                                    placeholder="app password"
-                                                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', fontSize: '0.8rem' }}
-                                                />
+                                                <div style={{ position: 'relative' }}>
+                                                    <input
+                                                        type={showSecrets.new_email_pass ? 'text' : 'password'}
+                                                        value={newEmailForm.email_pass}
+                                                        onChange={e => setNewEmailForm(prev => ({ ...prev, email_pass: e.target.value }))}
+                                                        placeholder="app password"
+                                                        style={{ width: '100%', padding: '8px 36px 8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none', fontSize: '0.8rem' }}
+                                                    />
+                                                    <button type="button" onClick={() => toggleSecretVisible('new_email_pass')}
+                                                        aria-label={showSecrets.new_email_pass ? 'Hide app password' : 'Show app password'}
+                                                        style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', display: 'flex' }}>
+                                                        {showSecrets.new_email_pass ? <EyeOff size={12} /> : <Eye size={12} />}
+                                                    </button>
+                                                </div>
                                             </div>
                                         )}
                                     </div>
@@ -817,7 +975,7 @@ export default function ConnectPage() {
                                             type="button" 
                                             className="btn" 
                                             onClick={handleAddMailbox}
-                                            style={{ background: 'var(--sky)', color: '#fff', border: 'none', padding: '6px 12px', fontSize: '0.75rem', borderRadius: 6, marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}
+                                            style={{ background: 'var(--sky)', color: 'var(--action-fg)', border: 'none', padding: '6px 12px', fontSize: '0.75rem', borderRadius: 6, marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}
                                         >
                                             <Plus size={14} /> Add Mailbox
                                         </button>
@@ -825,7 +983,7 @@ export default function ConnectPage() {
                                     {mailboxTestStatuses['new'] && (
                                         <div style={{ 
                                             marginTop: 10, fontSize: '0.72rem', padding: '6px 10px', borderRadius: 6,
-                                            color: mailboxTestStatuses['new'].status === 'connected' ? '#4ade80' : '#fca5a5',
+                                            color: mailboxTestStatuses['new'].status === 'connected' ? 'var(--success-fg)' : 'var(--danger-fg)',
                                             background: mailboxTestStatuses['new'].status === 'connected' ? 'rgba(74,222,128,0.06)' : 'rgba(239,68,68,0.06)'
                                         }}>
                                             {mailboxTestStatuses['new'].status === 'connected' ? '✔' : '✘'} {mailboxTestStatuses['new'].message}
@@ -845,30 +1003,22 @@ export default function ConnectPage() {
                                 <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text)' }}>Enable Google Drive Sync</div>
                                 <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>Automatically upload processed candidate resumes to your Google Drive folder.</div>
                             </div>
-                            <label style={{ position: 'relative', display: 'inline-block', width: 48, height: 24, cursor: 'pointer' }}>
-                                <input 
-                                    type="checkbox" 
+                            <label className="switch-container" style={{ opacity: !integrationsSettings.gdrive_refresh_token ? 0.5 : 1, cursor: !integrationsSettings.gdrive_refresh_token ? 'not-allowed' : 'pointer' }}>
+                                <input
+                                    type="checkbox"
+                                    className="switch-input"
                                     checked={integrationsSettings.drive_enabled === 1}
                                     disabled={!integrationsSettings.gdrive_refresh_token}
                                     onChange={e => setIntegrationsSettings(prev => ({ ...prev, drive_enabled: e.target.checked ? 1 : 0 }))}
-                                    style={{ opacity: 0, width: 0, height: 0 }}
+                                    aria-label="Enable Google Drive sync"
                                 />
-                                <span style={{
-                                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                                    backgroundColor: integrationsSettings.drive_enabled === 1 ? 'var(--gold)' : '#334155',
-                                    transition: '0.3s', borderRadius: 24, display: 'block',
-                                    opacity: !integrationsSettings.gdrive_refresh_token ? 0.5 : 1
-                                }} />
-                                <span style={{
-                                    position: 'absolute', content: '""', height: 18, width: 18, left: integrationsSettings.drive_enabled === 1 ? 26 : 4, bottom: 3,
-                                    backgroundColor: '#000', transition: '0.3s', borderRadius: '50%'
-                                }} />
+                                <span className="switch-slider"></span>
                             </label>
                         </div>
                         
                         {!integrationsSettings.gdrive_refresh_token && (
-                            <div style={{ padding: '10px 14px', background: 'rgba(239, 35, 60, 0.08)', border: '1px solid rgba(239, 35, 60, 0.3)', borderRadius: 8, fontSize: '0.78rem', color: '#ef233c' }}>
-                                ⚠️ Google Drive is not authorized. Please complete the authorization process below before enabling sync.
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--danger-bg)', border: '1px solid rgba(var(--red-rgb), 0.3)', borderRadius: 8, fontSize: '0.78rem', color: 'var(--danger-fg)' }}>
+                                <AlertCircle size={14} style={{ flexShrink: 0 }} /> Google Drive is not authorized. Please complete the authorization process below before enabling sync.
                             </div>
                         )}
 
@@ -908,7 +1058,7 @@ export default function ConnectPage() {
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                                 <div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                                        <label className="modern-label" style={{ fontSize: '0.78rem', margin: 0 }}>Google Client ID</label>
+                                        <label className="form-label" style={{ fontSize: '0.78rem', margin: 0 }}>Google Client ID</label>
                                         <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.72rem', color: 'var(--sky-dim)', textDecoration: 'underline' }}>Find Key ↗</a>
                                     </div>
                                     <input 
@@ -920,21 +1070,29 @@ export default function ConnectPage() {
                                 </div>
                                 <div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                                        <label className="modern-label" style={{ fontSize: '0.78rem', margin: 0 }}>Google Client Secret</label>
+                                        <label className="form-label" style={{ fontSize: '0.78rem', margin: 0 }}>Google Client Secret</label>
                                         <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.72rem', color: 'var(--sky-dim)', textDecoration: 'underline' }}>Find Secret ↗</a>
                                     </div>
-                                    <input 
-                                        type="password"
-                                        value={integrationsSettings.gdrive_client_secret || ''}
-                                        onChange={e => setIntegrationsSettings(prev => ({ ...prev, gdrive_client_secret: e.target.value }))}
-                                        placeholder={integrationsSettings.gdrive_client_secret === '****' ? '••••••••••••••••' : 'Enter your OAuth 2.0 Client Secret'}
-                                        style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
-                                    />
+                                    <div style={{ position: 'relative' }}>
+                                        <input
+                                            type={showSecrets.gdrive_client_secret ? 'text' : 'password'}
+                                            value={integrationsSettings.gdrive_client_secret || ''}
+                                            onChange={e => setIntegrationsSettings(prev => ({ ...prev, gdrive_client_secret: e.target.value }))}
+                                            placeholder={integrationsSettings.gdrive_client_secret === '****' ? '••••••••••••••••' : 'Enter your OAuth 2.0 Client Secret'}
+                                            style={{ width: '100%', padding: '10px 40px 10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', outline: 'none' }}
+                                        />
+                                        <button type="button" onClick={() => toggleSecretVisible('gdrive_client_secret')}
+                                            aria-label={showSecrets.gdrive_client_secret ? 'Hide client secret' : 'Show client secret'}
+                                            style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', display: 'flex' }}>
+                                            {showSecrets.gdrive_client_secret ? <EyeOff size={16} /> : <Eye size={16} />}
+                                        </button>
+                                    </div>
+                                    <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: 'var(--text-subtle)' }}>Stored encrypted. Once saved, this field shows as •••• and is never displayed again.</p>
                                 </div>
                             </div>
                             <div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                                    <label className="modern-label" style={{ fontSize: '0.78rem', margin: 0 }}>Google Drive Target Folder ID</label>
+                                    <label className="form-label" style={{ fontSize: '0.78rem', margin: 0 }}>Google Drive Target Folder ID</label>
                                     <a href="https://drive.google.com" target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.72rem', color: 'var(--sky-dim)', textDecoration: 'underline' }}>Open Drive ↗</a>
                                 </div>
                                 <input 
@@ -948,19 +1106,19 @@ export default function ConnectPage() {
 
                         {/* Authorization Area */}
                         <div style={{ background: 'rgba(0, 0, 0, 0.2)', border: '1px solid var(--border)', borderRadius: 12, padding: 18 }}>
-                            <h4 style={{ margin: '0 0 16px 0', color: 'var(--gold)', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.04rem' }}>🔐 Google Drive Account Authorization</h4>
+                            <h4 style={{ margin: '0 0 16px 0', color: 'var(--gold)', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.04rem', display: 'flex', alignItems: 'center', gap: 8 }}><Lock size={14} /> Google Drive Account Authorization</h4>
                             
                             {integrationsSettings.gdrive_email ? (
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(74, 222, 128, 0.05)', border: '1px solid rgba(74, 222, 128, 0.3)', padding: '12px 16px', borderRadius: 8 }}>
                                     <div>
                                         <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Connected Account</div>
-                                        <strong style={{ fontSize: '0.88rem', color: '#4ade80' }}>{integrationsSettings.gdrive_email}</strong>
+                                        <strong style={{ fontSize: '0.88rem', color: 'var(--success-fg)' }}>{integrationsSettings.gdrive_email}</strong>
                                     </div>
                                     <button 
                                         type="button" 
                                         className="btn btn-secondary" 
                                         onClick={handleDisconnectGdrive}
-                                        style={{ color: '#ef233c', borderColor: 'rgba(239, 35, 60, 0.3)', padding: '8px 16px', fontSize: '0.8rem', height: 'fit-content' }}
+                                        style={{ color: 'var(--danger-fg)', borderColor: 'rgba(var(--red-rgb), 0.3)', padding: '8px 16px', fontSize: '0.8rem', height: 'fit-content' }}
                                     >
                                         Disconnect Account
                                     </button>
@@ -968,7 +1126,7 @@ export default function ConnectPage() {
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                                     <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                                        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--gold)', color: '#000', width: 22, height: 22, borderRadius: '50%', fontWeight: 'bold', fontSize: '0.78rem' }}>1</span>
+                                        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--gold)', color: 'var(--action-fg)', width: 22, height: 22, borderRadius: '50%', fontWeight: 'bold', fontSize: '0.78rem' }}>1</span>
                                         <span style={{ fontSize: '0.82rem', color: 'var(--text)' }}>Generate Authorization Link</span>
                                         <button 
                                             type="button" 
@@ -982,7 +1140,7 @@ export default function ConnectPage() {
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                                         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                                            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--gold)', color: '#000', width: 22, height: 22, borderRadius: '50%', fontWeight: 'bold', fontSize: '0.78rem' }}>2</span>
+                                            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--gold)', color: 'var(--action-fg)', width: 22, height: 22, borderRadius: '50%', fontWeight: 'bold', fontSize: '0.78rem' }}>2</span>
                                             <span style={{ fontSize: '0.82rem', color: 'var(--text)' }}>Paste redirect URL or authorization code</span>
                                         </div>
                                         <input 
@@ -993,14 +1151,14 @@ export default function ConnectPage() {
                                         />
                                     </div>
                                     <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 4 }}>
-                                        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--gold)', color: '#000', width: 22, height: 22, borderRadius: '50%', fontWeight: 'bold', fontSize: '0.78rem' }}>3</span>
+                                        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--gold)', color: 'var(--action-fg)', width: 22, height: 22, borderRadius: '50%', fontWeight: 'bold', fontSize: '0.78rem' }}>3</span>
                                         <span style={{ fontSize: '0.82rem', color: 'var(--text)' }}>Establish Google Drive credentials link</span>
                                         <button 
                                             type="button" 
                                             className="btn" 
                                             onClick={handleExchangeGdriveCode}
                                             disabled={exchangingGdriveCode || !gdriveAuthCode}
-                                            style={{ marginLeft: 'auto', background: 'var(--gold)', color: '#000', fontWeight: 'bold', border: 'none', padding: '6px 14px', fontSize: '0.75rem', borderRadius: 6, cursor: 'pointer' }}
+                                            style={{ marginLeft: 'auto', background: 'var(--gold)', color: 'var(--action-fg)', fontWeight: 'bold', border: 'none', padding: '6px 14px', fontSize: '0.75rem', borderRadius: 6, cursor: 'pointer' }}
                                         >
                                             {exchangingGdriveCode ? 'Connecting...' : 'Connect Account'}
                                         </button>

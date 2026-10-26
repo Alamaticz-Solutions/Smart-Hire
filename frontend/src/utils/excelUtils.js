@@ -1,4 +1,4 @@
-import ExcelJS from 'exceljs';
+import { CANDIDATE_STATUSES } from './candidateStatus';
 
 /**
  * Exports JSON data to an Excel file (.xlsx) with status dropdown lists and custom styling
@@ -13,6 +13,14 @@ export const exportToExcel = async (data, filename = 'candidates.xlsx', sheetNam
     }
 
     try {
+        // exceljs alone accounted for most of the 1MB+ "DataTable" bundle
+        // (Jobs and Candidates both import this module, so it loaded on
+        // every visit to either page even if the user never exports
+        // anything). A dynamic import here code-splits it into its own
+        // chunk that only downloads the moment someone actually clicks
+        // Export/Download Excel - every caller already awaits this
+        // function, so nothing else needs to change.
+        const { default: ExcelJS } = await import('exceljs');
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet(sheetName);
 
@@ -37,7 +45,7 @@ export const exportToExcel = async (data, filename = 'candidates.xlsx', sheetNam
                 cell.dataValidation = {
                     type: 'list',
                     allowBlank: true,
-                    formulae: ['"New,In-Review,Available,Selected,Rejected,Engaged,Offered,Hired"']
+                    formulae: [`"${CANDIDATE_STATUSES.join(',')}"`]
                 };
             }
         }

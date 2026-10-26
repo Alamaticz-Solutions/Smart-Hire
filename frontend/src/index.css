@@ -2,77 +2,266 @@
    HIRE AI – Global Design System
    ═══════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+/* Manrope + IBM Plex Mono (and Outfit) are now loaded from a single
+   <link> in index.html - this used to @import Manrope a second time from
+   here, a duplicate blocking Google Fonts request for a face already
+   being fetched. */
 
+/* ═══════════════════════════════════════════════════════
+   Design tokens — Part C of the design/a11y audit (see
+   docs/ARCHITECTURE.md and the audit doc for the full source).
+   Semantic tokens (--bg/--surface/--action/--success-fg etc.)
+   are the source of truth. Every OLD token name below them
+   (--gold, --navy, --sky, --primary, --text-dim, and their
+   -rgb triplets) is kept as an ALIAS pointing at a semantic
+   token, per the audit's own migration note: hundreds of
+   inline styles across every page reference these old names
+   directly, so retargeting what they resolve to reskins the
+   whole app without a risky mass rename. New code should
+   prefer the semantic names on the left.
+   ═══════════════════════════════════════════════════════ */
 :root {
-  --primary: #FB8500;
-  --gold: #FFB703;
-  --navy: #023047;
-  --navy-dark: #011627;
-  --sky: #219EBC;
-  --sky-dim: #8ECAE6;
-  --primary-rgb: 251, 133, 0;
-  --gold-rgb: 255, 183, 3;
-  --navy-rgb: 2, 48, 71;
-  --navy-dark-rgb: 1, 22, 39;
-  --sky-rgb: 33, 158, 188;
-  --sky-dim-rgb: 142, 202, 230;
+  /* Surfaces */
+  --bg: #16181E;
+  --surface: #1E212A;
+  --surface-2: #262A34;
+  --surface-sunken: #101218;
+  --border: #333844;
+  --border-strong: #4B5162;
+
+  /* Text — never expressed as opacity (G-5). --text-subtle is for
+     decorative/non-essential text ONLY (≥3:1); everything else uses
+     --text or --text-muted (≥4.5:1). */
+  --text: #F2F3F7;
+  --text-muted: #B0B5C2;
+  --text-subtle: #8A90A0;
+
+  /* Action — the ONE interactive accent (G-7). Nothing non-interactive
+     (headings, table headers, card titles) should be action-colored. */
+  --action: #F0813C;
+  --action-hover: #FF9A5C;
+  --action-fg: #241206;
+  --action-quiet-bg: #3A251A;
+  --action-rgb: 240, 129, 60;
+  --focus: #FFA96E;
+
+  /* Brand — the Alamaticz mark and wordmark only, never a UI accent */
+  --brand-gold: #F2AE45;
+
+  /* Semantic status colors, both directions (fg = text/icon, bg = tint) */
+  --success-fg: #5FD79B; --success-bg: #10301F;
+  --warning-fg: #FFC46B; --warning-bg: #33240D;
+  --danger-fg: #FF9089; --danger-bg: #3D1618;
+  --info-fg: #7FB6E8; --info-bg: #142737;
+
+  /* Chart categorical palette (G-8) - read from CSS by JS via
+     getComputedStyle where a chart needs literal color values */
+  --chart-1: #F0813C; --chart-2: #7FB6E8; --chart-3: #B48CE0; --chart-4: #5FD79B; --chart-5: #FFC46B;
+
+  /* Type scale (G-10): 11/12/13/14/16/20/28px. New rules should use
+     these; existing per-file font-size values are being migrated
+     incrementally rather than all at once. --fs-8 (24px) was added
+     later for .page-title specifically - it sits between --fs-6 and
+     --fs-7 by value, kept as its own step (not renumbered in place)
+     so it didn't touch every other --fs-7 call site. */
+  --fs-1: 0.6875rem; --fs-2: 0.75rem; --fs-3: 0.8125rem; --fs-4: 0.875rem;
+  --fs-5: 1rem; --fs-6: 1.25rem; --fs-7: 1.75rem; --fs-8: 1.5rem;
+
+  /* Radius scale (G-11): 6/10/16/22/999px */
+  --r-sm: 6px; --r-md: 10px; --r-lg: 16px; --r-xl: 22px; --r-full: 999px;
+
+  /* Spacing scale (G-12): 4px grid. New rules should use these; existing
+     per-file rem/px padding values (1.6rem 1.4rem, 13px 16px, 2.8rem
+     2.4rem, etc. - a different pair on nearly every card/table/nav-link)
+     are being migrated incrementally rather than all at once, same as
+     the G-10 type-scale rollout above. Icon sizes are separately
+     constrained to 14/16/20/24 at each call site (lucide `size` prop
+     isn't a CSS value these tokens can reach). */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-7: 32px; --sp-8: 40px;
+
+  /* G-9: --fh/--fb used to be two independently-hardcoded 'Manrope' values,
+     so a display/body distinction existed in name only. Aliasing --fh to
+     --fb makes that explicit (one font, one source of truth) instead of
+     misleading the next person into thinking they can diverge safely.
+     Give --fh its own value here if/when a real display face ships. */
+  --fb: 'Manrope', system-ui, sans-serif;
+  --fh: var(--fb);
+  --fm: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
+  --radius: var(--r-md);
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+
+  /* ── Legacy aliases (compatibility layer - see note above) ── */
+  --gold: var(--action);
+  --primary: var(--action-hover);
+  --navy: var(--surface);
+  --navy-dark: var(--surface-sunken);
+  --sky: var(--info-fg);
+  --sky-dim: var(--text-muted);
+  --text-dim: var(--text-muted);
+  --card-bg: var(--surface);
+  --bg-gradient: var(--bg);
+  --sidebar-bg: var(--surface-sunken);
+  --topbar-bg: var(--surface);
+  --input-bg: var(--surface-2);
+  --table-header-bg: var(--surface-2);
+  --profile-chip-bg: var(--surface-2);
+  --login-card-bg: var(--surface);
+  --border-gold: rgba(var(--action-rgb), 0.3);
+  /* -rgb triplets can't be derived from the hex/oklch tokens above via
+     CSS alone, so they're kept in sync by hand - literal RGB matching
+     --action/--action-hover/--surface/--surface-sunken/--info-fg/
+     --text-muted respectively. Every existing rgba(var(--gold-rgb), x)
+     etc. rule elsewhere in this file inherits the new palette through
+     these two lines without being touched individually. */
+  --gold-rgb: 240, 129, 60;
+  --primary-rgb: 255, 154, 92;
+  --navy-rgb: 30, 33, 42;
+  --navy-dark-rgb: 16, 18, 24;
+  --sky-rgb: 127, 182, 232;
+  --sky-dim-rgb: 176, 181, 194;
   --black-rgb: 0, 0, 0;
   --white-rgb: 255, 255, 255;
   --red-rgb: 220, 38, 38;
-  --green-rgb: 34, 197, 94;
-  --card-bg: rgba(var(--navy-rgb), 0.45);
-  --border: rgba(var(--sky-rgb), 0.25);
-  --border-gold: rgba(var(--gold-rgb), 0.35);
-  --text: #FFFFFF;
-  --text-dim: #8ECAE6;
-  --fh: 'Outfit', sans-serif;
-  --fb: 'Inter', sans-serif;
-  --radius: 18px;
-  --shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-  --glow: 0 0 15px rgba(var(--gold-rgb), 0.2);
-  --bg-gradient: radial-gradient(ellipse at top right, #051923 0%, #023047 50%, #011627 100%);
-  --sidebar-bg: rgba(var(--navy-dark-rgb), 0.95);
-  --topbar-bg: rgba(var(--navy-dark-rgb), 0.6);
-  --input-bg: rgba(var(--navy-dark-rgb), 0.7);
-  --table-header-bg: rgba(var(--navy-rgb), 0.9);
-  --nav-active-text: #fff;
-  --profile-chip-bg: rgba(var(--navy-rgb), 0.82);
-  --login-card-bg: rgba(2, 36, 56, 0.85);
+  --green-rgb: 34, 150, 94;
+
+  /* Candidate status chips — one hue per status, matched lightness/chroma.
+     Same token names/values as the "Hire AI Redesign" canvas's Foundations
+     sheet, so every page's status chip stays visually identical. Per the
+     audit: this is the one part of the palette that was already correct. */
+  --st-new-bg: oklch(32% 0.015 260); --st-new-text: oklch(85% 0.02 260);
+  --st-review-bg: oklch(34% 0.08 70); --st-review-text: oklch(86% 0.09 70);
+  --st-avail-bg: oklch(32% 0.08 165); --st-avail-text: oklch(84% 0.09 165);
+  --st-selected-bg: oklch(32% 0.09 250); --st-selected-text: oklch(84% 0.1 250);
+  --st-rejected-bg: oklch(34% 0.1 25); --st-rejected-text: oklch(86% 0.1 25);
+  --st-engaged-bg: oklch(34% 0.09 300); --st-engaged-text: oklch(85% 0.1 300);
+  --st-offered-bg: oklch(34% 0.1 350); --st-offered-text: oklch(86% 0.1 350);
+  --st-hired-bg: oklch(30% 0.11 150); --st-hired-text: oklch(82% 0.12 150);
 }
 
 [data-theme="light"] {
-  --primary: #FF8A00;
-  --gold: #E85D04;
-  --navy: #FFFFFF;
-  --navy-dark: #FFFFFF;
-  --sky: #0284C7;
-  --sky-dim: #0ea5e9;
-  --primary-rgb: 255, 138, 0;
-  --gold-rgb: 232, 93, 4;
+  --bg: #FAF8F4;
+  --surface: #FFFFFF;
+  --surface-2: #F5F5F9;
+  --surface-sunken: #EDEEF4;
+  --border: #E9EAF2;
+  --border-strong: #B7BAD1;
+
+  --text: #12173F;
+  --text-muted: #6B6F94;
+  --text-subtle: #8A8FAF;
+
+  --action: #B84E13;
+  --action-hover: #9C3F0D;
+  --action-fg: #FFFFFF;
+  --action-quiet-bg: #FBE3D1;
+  --action-rgb: 184, 78, 19;
+  --focus: #E2661D;
+
+  --brand-gold: #B0650B;
+
+  --success-fg: #1E8E5A; --success-bg: #E1F5EA;
+  --warning-fg: #B0650B; --warning-bg: #FBEBD6;
+  --danger-fg: #C4293A; --danger-bg: #FBE2E5;
+  --info-fg: #1568A6; --info-bg: #DCEBF7;
+
+  --chart-1: #B84E13; --chart-2: #1568A6; --chart-3: #6B4BA8; --chart-4: #1E8E5A; --chart-5: #B0650B;
+
+  --shadow: 0 1px 3px rgba(15, 23, 42, 0.07);
+
+  --gold-rgb: 184, 78, 19;
+  --primary-rgb: 156, 63, 13;
   --navy-rgb: 255, 255, 255;
-  --navy-dark-rgb: 255, 255, 255;
-  --sky-rgb: 2, 132, 199;
-  --sky-dim-rgb: 14, 165, 233;
+  --navy-dark-rgb: 237, 238, 244;
+  --sky-rgb: 21, 104, 166;
+  --sky-dim-rgb: 107, 111, 148;
   --black-rgb: 0, 0, 0;
   --white-rgb: 255, 255, 255;
   --red-rgb: 220, 38, 38;
-  --green-rgb: 34, 197, 94;
-  --card-bg: #FFFFFF;
-  --border: rgba(0, 0, 0, 0.1);
-  --border-gold: rgba(var(--gold-rgb), 0.3);
-  --text: #0F172A;
-  --text-dim: #475569;
-  --shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-  --glow: 0 0 15px rgba(var(--gold-rgb), 0.15);
-  --bg-gradient: #F8FAFC;
-  --sidebar-bg: #FFFFFF;
-  --topbar-bg: #FFFFFF;
-  --input-bg: #FFFFFF;
-  --table-header-bg: #F1F5F9;
-  --nav-active-text: #0F172A;
-  --profile-chip-bg: #FFFFFF;
-  --login-card-bg: #FFFFFF;
+  --green-rgb: 22, 130, 74;
+
+  --st-new-bg: oklch(92% 0.01 260); --st-new-text: oklch(38% 0.02 260);
+  --st-review-bg: oklch(92% 0.05 80); --st-review-text: oklch(40% 0.12 70);
+  --st-avail-bg: oklch(92% 0.05 165); --st-avail-text: oklch(40% 0.12 165);
+  --st-selected-bg: oklch(92% 0.04 240); --st-selected-text: oklch(38% 0.14 250);
+  --st-rejected-bg: oklch(92% 0.05 25); --st-rejected-text: oklch(46% 0.16 25);
+  --st-engaged-bg: oklch(92% 0.05 300); --st-engaged-text: oklch(44% 0.14 300);
+  --st-offered-bg: oklch(92% 0.05 350); --st-offered-text: oklch(44% 0.15 350);
+  --st-hired-bg: oklch(89% 0.08 150); --st-hired-text: oklch(30% 0.14 150);
+}
+
+
+/* ═══════════════════════════════════════════════════════
+   Accent hue picker — amber (default) · violet · teal
+   Set data-accent on <html> (App.jsx / main.jsx). These
+   retarget the ONE interactive accent (--action and its
+   family); the legacy --gold alias already points at
+   --action, so every var(--gold) / var(--gold-rgb) call
+   site across the app re-skins for free. --gold-rgb is a
+   hand-kept literal triplet (not derivable in CSS) so it
+   is set alongside --action-rgb in every block.
+   Source order: these follow the [data-theme] blocks so
+   they win at equal specificity, and the
+   [data-theme="light"] variant of each beats the dark one.
+   ═══════════════════════════════════════════════════════ */
+:root[data-accent="amber"],
+[data-accent="amber"][data-theme="dark"] {
+  --action: #E9A93F;
+  --action-hover: #F2BC5C;
+  --action-fg: #241705;
+  --action-quiet-bg: #2E2210;
+  --action-rgb: 233, 169, 63;
+  --gold-rgb: 233, 169, 63;
+  --focus: #F2BC5C;
+}
+[data-theme="light"][data-accent="amber"] {
+  --action: #8A5B06;
+  --action-hover: #6F4905;
+  --action-fg: #FFFFFF;
+  --action-quiet-bg: #FAF0DA;
+  --action-rgb: 138, 91, 6;
+  --gold-rgb: 138, 91, 6;
+  --focus: #6F4905;
+}
+
+:root[data-accent="violet"],
+[data-accent="violet"][data-theme="dark"] {
+  --action: #8B8BF5;
+  --action-hover: #6F6DEE;
+  --action-fg: #0C0E1C;
+  --action-quiet-bg: #1D2040;
+  --action-rgb: 139, 139, 245;
+  --gold-rgb: 139, 139, 245;
+  --focus: #A9A9F8;
+}
+[data-theme="light"][data-accent="violet"] {
+  --action: #4F4BD9;
+  --action-hover: #3F3BC4;
+  --action-fg: #FFFFFF;
+  --action-quiet-bg: #EDEDFC;
+  --action-rgb: 79, 75, 217;
+  --gold-rgb: 79, 75, 217;
+  --focus: #3F3BC4;
+}
+
+:root[data-accent="teal"],
+[data-accent="teal"][data-theme="dark"] {
+  --action: #4FC7C7;
+  --action-hover: #33B3B3;
+  --action-fg: #05201F;
+  --action-quiet-bg: #10302F;
+  --action-rgb: 79, 199, 199;
+  --gold-rgb: 79, 199, 199;
+  --focus: #7AD6D6;
+}
+[data-theme="light"][data-accent="teal"] {
+  --action: #10756F;
+  --action-hover: #0B5D58;
+  --action-fg: #FFFFFF;
+  --action-quiet-bg: #E4F2F0;
+  --action-rgb: 16, 117, 111;
+  --gold-rgb: 16, 117, 111;
+  --focus: #0B5D58;
 }
 
 
@@ -85,19 +274,84 @@
   padding: 0;
 }
 
+/* ── Focus (WCAG 2.4.7) ───────────────────────────────────
+   Global keyboard-focus indicator. Anything that wants its own custom
+   focus treatment (a box-shadow ring, a border-color swap) already gets
+   it from its own :focus/:focus-within rule; this is the fallback for
+   every element that doesn't define one, so a keyboard user is never
+   left with no visible focus indicator anywhere in the app. */
+/* !important is deliberate and narrow here (unlike G-18's blanket
+   !important sweep): 53 inline styles across 14 files set
+   outline: 'none' directly on inputs (form-input, modern-input, etc.),
+   and a plain outline declaration in a stylesheet can never beat an
+   inline style - only !important can. Without it this rule is a no-op
+   on every one of those fields and G-1 stays broken in practice
+   despite "existing". Restoring keyboard-focus visibility overrides
+   an accidental accessibility regression from inline authoring, which
+   is exactly the kind of case !important exists for. */
+:focus-visible {
+  outline: 2px solid var(--focus) !important;
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Skeleton loaders (G-21) ──────────────────────────────
+   Was four different loading idioms and no skeleton anywhere: a single
+   spinner replacing the whole Dashboard (layout shift on arrival), plain
+   "Loading data..." text on Admin, mismatched "Refreshing..."/"Loading…"
+   strings on Upload. One shimmering block primitive, composed per page
+   into a placeholder that roughly mirrors the real layout, so arrival
+   doesn't reflow the page. Respects the reduced-motion override above
+   automatically (animation-duration caught by the `*` selector). */
+.skeleton-block {
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-sunken) 37%, var(--surface-2) 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
 html,
 body,
 #root {
   height: 100%;
   font-family: var(--fb);
-  background: var(--bg-gradient);
+  background: var(--bg);
   color: var(--text);
-  overflow-x: auto;
+  /* G-15: was `overflow-x: auto` here too, so a wide table scrolled the
+     entire document sideways instead of just itself. .main-content below
+     already gives horizontal scroll its own, correctly-scoped boundary
+     for every routed page under Layout.jsx's <Outlet> - but /login (see
+     App.jsx) renders OUTSIDE Layout, with no .main-content ancestor, so
+     this can't be `overflow-x: hidden` (would silently clip login-card
+     content on a narrow viewport with no way to reach it) - just drop the
+     declaration and let it default to `visible`. */
 }
 
-/* ── Scrollbar ────────────────────────────────────────── */
+/* ── Scrollbar (G-19) ─────────────────────────────────────
+   Was 6px, WebKit-only, sky-tinted - a precision-mouse target on the
+   app's widest surfaces (a 2600px candidate table), and Firefox users
+   saw the OS default so the two browsers looked unrelated. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 12px;
+  height: 12px;
 }
 
 ::-webkit-scrollbar-track {
@@ -105,12 +359,15 @@ body,
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(var(--sky-rgb), 0.4);
-  border-radius: 3px;
+  background: var(--border-strong);
+  border-radius: var(--r-full);
+  border: 3px solid transparent;
+  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--sky);
+  background: var(--text-subtle);
+  background-clip: padding-box;
 }
 
 /* ── Layout Shell ─────────────────────────────────────── */
@@ -129,9 +386,48 @@ body,
   display: flex;
   flex-direction: column;
   padding: 0;
-  backdrop-filter: blur(25px);
   position: relative;
   z-index: 10;
+  transition: width 0.18s ease;
+}
+
+/* S2.2: rail mode - returns 168px to the main content on a product whose
+   primary surface is routinely a wide table. */
+.sidebar.collapsed {
+  width: 72px;
+}
+
+.sidebar.collapsed .sidebar-brand {
+  justify-content: center;
+  padding-left: 0.6rem;
+  padding-right: 0.6rem;
+}
+
+/* Collapsed (icon-only) rail: the expanded row's left-border active
+   indicator reads as a stray sliver at 72px wide with no label to
+   anchor it, so collapsed mode gets its own treatment - a centered,
+   evenly-proportioned square tile per icon with a solid tinted fill
+   for the active/hover states instead of a border. */
+.sidebar.collapsed .nav-link {
+  justify-content: center;
+  align-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  margin: 0 auto;
+  border-width: 1px;
+  border-radius: var(--r-md);
+}
+
+.sidebar.collapsed .nav-link.active {
+  background: rgba(var(--action-rgb), 0.14);
+  border-left-color: transparent;
+}
+
+.sidebar-nav-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 10px 14px;
 }
 
 .sidebar-brand {
@@ -153,13 +449,15 @@ body,
 }
 
 .sidebar-brand-name {
-  font-family: var(--fh);
-  font-size: 1.35rem;
-  font-weight: 800;
-  background: linear-gradient(90deg, #FFB703, #FB8500);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  /* Outfit is already loaded (index.html, used by the resume-preview
+     print templates) - a distinct display face for the one piece of
+     text that's actually a brand wordmark, rather than reusing the
+     app's plain body font (Manrope) here too. */
+  font-family: 'Outfit', var(--fh);
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
 }
 
 .sidebar-nav {
@@ -174,14 +472,18 @@ body,
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 13px 16px;
-  border-radius: 12px;
-  color: var(--text-dim);
+  padding: var(--sp-3) var(--sp-4) var(--sp-3) var(--sp-3);
+  border-radius: var(--r-md);
+  color: var(--text-muted);
   font-weight: 500;
   font-size: 0.9rem;
   cursor: pointer;
-  transition: all 0.25s ease;
-  border: 1px solid transparent;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  /* S2.3: the left edge is reserved for .active's solid indicator bar so it
+     doesn't shift layout when a link becomes active. */
+  border-style: solid;
+  border-width: 1px 1px 1px 3px;
+  border-color: transparent;
   text-decoration: none;
   background: transparent;
   width: 100%;
@@ -191,14 +493,23 @@ body,
 .nav-link:hover {
   background: rgba(var(--gold-rgb), 0.08);
   color: var(--gold);
-  border-color: var(--border-gold);
 }
 
+/* S2.3: active used to be a 14%-opacity fill + 30%-opacity border with hover
+   at 8% fill - close enough in weight that hover read as MORE selected than
+   active in light theme, with text color as the only reliable signal. Active
+   now gets a solid left bar + a full-strength surface fill + bold weight, a
+   combination hover never produces, so which one is "selected" is
+   unambiguous regardless of theme. */
 .nav-link.active {
-  background: linear-gradient(90deg, rgba(var(--primary-rgb), 0.2), rgba(var(--gold-rgb), 0.15));
-  color: var(--nav-active-text);
-  border-color: rgba(var(--primary-rgb), 0.4);
-  box-shadow: 0 4px 15px rgba(var(--primary-rgb), 0.15);
+  background: var(--surface-2);
+  color: var(--action);
+  font-weight: 700;
+  border-left-color: var(--action);
+}
+
+.nav-link.active:hover {
+  background: var(--surface-2);
 }
 
 .nav-link svg {
@@ -207,33 +518,93 @@ body,
   flex-shrink: 0;
 }
 
-.sidebar-footer {
-  padding: 1.2rem;
-  border-top: 1px solid var(--border);
-}
-
-.logout-btn {
-  width: 100%;
-  padding: 10px 16px;
-  background: transparent;
-  border: 1px solid rgba(var(--gold-rgb), 0.4);
-  border-radius: 10px;
-  color: var(--gold);
-  font-family: var(--fh);
-  font-weight: 700;
-  font-size: 0.85rem;
-  letter-spacing: 0.06rem;
+/* S2.7's LOGOUT-duplication note still applies (see git history) - this
+   slot briefly held a full-width footer button for collapse/expand (S2.2);
+   moved to a small edge tab (below) instead, so it doesn't cost the nav
+   list a whole footer row and stays reachable at any nav-list length. */
+.sidebar-collapse-edge-btn {
+  position: absolute;
+  top: 50%;
+  right: -12px;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-full);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
   cursor: pointer;
-  transition: all 0.25s ease;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  padding: 0;
+  box-shadow: var(--shadow);
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  z-index: 11;
 }
 
-.logout-btn:hover {
-  background: rgba(var(--gold-rgb), 0.12);
-  box-shadow: 0 0 15px rgba(var(--gold-rgb), 0.25);
+.sidebar-collapse-edge-btn:hover {
+  background: var(--surface-2);
+  color: var(--action);
+  border-color: var(--border-gold);
+}
+
+/* ── Responsive: sidebar (G-15) ───────────────────────────
+   Rail mode at <=1024px is handled entirely by Layout.jsx's isTabletWidth
+   auto-applying the existing .sidebar.collapsed class (its rules above
+   already cover that width) - real viewport tracking was needed there,
+   not a CSS-only rule, because nav-link/brand-name text is conditionally
+   *rendered*, not just visually hidden. What's CSS-only is the <=680px
+   off-canvas drawer treatment and the hamburger toggle that opens it. */
+.sidebar-mobile-toggle {
+  display: none;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text);
+  padding: 8px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 90;
+}
+
+@media (max-width: 680px) {
+  .sidebar-mobile-toggle {
+    display: inline-flex;
+  }
+  /* Was a permanent 61%-of-viewport column with no dismiss control at
+     this width. mobile-open is only ever toggled true by the hamburger
+     button above, which only renders (via the rule above) at this same
+     breakpoint - so this can't fire on desktop/tablet, where the sidebar
+     keeps its normal in-flow layout. */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    /* !important because .sidebar.collapsed (still applied here too, since
+       isTabletWidth is also true at this width whenever mobile-open is
+       false - see Layout.jsx's effectiveCollapsed) sets width: 72px and
+       would otherwise win. The drawer's *closed* state is consequently a
+       240px off-screen panel rendering rail-mode (icon-only) content -
+       harmless since it's fully off-canvas, but don't "simplify" this
+       !important away without accounting for that. Opening it flips
+       effectiveCollapsed back to false, so labels reappear correctly. */
+    width: 240px !important;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    z-index: 100;
+  }
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
 }
 
 /* ── Main Content ─────────────────────────────────────── */
@@ -250,19 +621,91 @@ body,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem 2rem;
+  padding: 18px 32px;
   border-bottom: 1px solid var(--border);
   background: var(--topbar-bg);
-  backdrop-filter: blur(15px);
   flex-shrink: 0;
+  gap: 16px;
 }
 
-.topbar-title {
+/* The page heading (icon + title + subtitle) now lives here instead of
+   being repeated a second time in the page body below - see the
+   .page-title/.page-subtitle comment further down for why that
+   duplication existed in the first place. */
+.topbar-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.topbar-heading .page-title {
+  font-size: var(--fs-6);
+}
+
+/* Keep the topbar a fixed height regardless of subtitle length (some
+   run long, e.g. Integrations') - truncate rather than let it wrap and
+   push the topbar taller on narrower viewports. Below 1100px (pages
+   like Jobs need every pixel they can get for their own 320px job-list
+   panel + main content), drop the subtitle from the topbar entirely
+   rather than fight it for space - the title alone still answers
+   "where am I". margin-top tightened from the base .page-subtitle's 6px
+   to 2px, matching the audit's tightened topbar spacing now that there's
+   no icon alongside to visually balance against. */
+.topbar-heading .page-subtitle {
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .topbar-heading .page-subtitle {
+    display: none;
+  }
+}
+
+/* AdminPage (and, inline, ConnectPage/TemplatesPage) used
+   className="page-container"/"page-header"/"page-title"/"page-subtitle"
+   or equivalent ad hoc inline styles for their page heading - none of
+   these classes had ANY CSS rule anywhere in this file, so the "title"
+   was a bare, unstyled <h1> at the browser's ~2em/bold default with no
+   relation to this app's --fs type scale, sitting flush against the
+   viewport edge (.page-container had no padding either). That's the
+   actual source of the "different font sizes, messy, header too big"
+   report - not a one-off AdminPage bug. Sized between .section-title
+   (1.2rem/800) and a true page-level heading; icon stays accented,
+   text does not, matching the G-7 discipline already applied to
+   .card-title/.section-title (nothing non-interactive is
+   action-colored - only the icon gets to be gold/action here). */
+.page-container {
+  padding: 24px 32px;
+  flex: 1;
+  min-width: 0;
+}
+
+.page-header {
+  margin-bottom: 24px;
+}
+
+.page-title {
   font-family: var(--fh);
-  font-size: 1.4rem;
+  font-size: var(--fs-8);
   font-weight: 800;
-  color: var(--gold);
-  letter-spacing: 0.05rem;
+  color: var(--text);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  letter-spacing: -0.01em;
+}
+
+.page-subtitle {
+  font-family: var(--fb);
+  font-size: var(--fs-4);
+  font-weight: 400;
+  color: var(--text-muted);
+  margin: 6px 0 0;
 }
 
 .profile-chip {
@@ -271,15 +714,18 @@ body,
   gap: 10px;
   background: var(--profile-chip-bg);
   border: 1px solid var(--border-gold);
-  border-radius: 40px;
+  border-radius: var(--r-full);
   padding: 6px 14px 6px 6px;
-  box-shadow: var(--glow);
+  /* S2.6: was ~38px tall (below the 44px minimum target size) with no
+     affordance beyond cursor:pointer. */
+  min-height: 44px;
+  cursor: pointer;
 }
 
 .profile-avatar {
   width: 32px;
   height: 32px;
-  background: linear-gradient(135deg, var(--primary), var(--gold));
+  background: var(--gold);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -287,7 +733,7 @@ body,
   font-family: var(--fh);
   font-weight: 800;
   font-size: 0.9rem;
-  color: var(--navy-dark);
+  color: var(--action-fg);
 }
 
 .profile-name {
@@ -307,91 +753,105 @@ body,
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 1.5rem;
-  backdrop-filter: blur(12px);
   box-shadow: var(--shadow);
-  transition: all 0.3s ease;
+  transition: border-color 0.2s ease;
 }
 
-.card:hover {
+.card--actionable {
+  cursor: pointer;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.card--actionable:hover {
   border-color: var(--border-gold);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7), var(--glow);
+  transform: translateY(-2px);
+}
+
+.card--actionable:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
 }
 
 .card-title {
   font-family: var(--fh);
   font-size: 1.1rem;
   font-weight: 700;
-  color: var(--gold);
+  color: var(--text);
   margin-bottom: 1rem;
   display: flex;
   align-items: center;
   gap: 8px;
-  text-shadow: 0 0 10px rgba(var(--gold-rgb), 0.3);
 }
 
 /* ── KPI Stats ────────────────────────────────────────── */
+/* auto-fill + a capped max (vs. the old auto-fit/1fr) keeps a short row of
+   KPI tiles from stretching to fill the container - with only 2-4 tiles at
+   a wide viewport that used to mean ~900px-wide cards holding a single
+   number (audit S3.4). justify-content:start keeps the row left-aligned
+   instead of centering the leftover space. */
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 1.2rem;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
   margin-bottom: 2rem;
 }
 
+/* Restructured per the audit's "KPI cards read as clickable" fix: a
+   label+chevron row up top (so the chevron - not just a hoverable
+   cursor - signals "this opens something"), the number in the middle,
+   and a caption line at the bottom instead of a decorative icon box
+   that repeated the same accent color four times in a row and said
+   nothing a screen reader or a glance couldn't already get from the
+   label. Hover/focus reuses .card--actionable's border-gold token. */
 .kpi-card {
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 1.4rem;
-  text-align: center;
-  backdrop-filter: blur(12px);
+  padding: 16px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   box-shadow: var(--shadow);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  overflow: hidden;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
-.kpi-card::before {
-  content: '';
-  position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(circle, rgba(var(--gold-rgb), 0.05), transparent 70%);
-  opacity: 0;
-  transition: opacity 0.3s ease;
+.kpi-card:hover,
+.kpi-card:focus-visible {
+  border-color: var(--border-gold);
+  background: var(--surface-2);
 }
 
-.kpi-card:hover {
-  transform: translateY(-5px) scale(1.02);
-  box-shadow: 0 15px 45px rgba(0, 0, 0, 0.6), var(--glow);
-  border-color: var(--gold);
-}
-
-.kpi-card:hover::before {
-  opacity: 1;
+.kpi-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .kpi-value {
-  font-family: var(--fh);
-  font-size: 2.2rem;
-  font-weight: 800;
-  background: linear-gradient(135deg, var(--gold), var(--primary));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  font-family: var(--fm);
+  font-size: var(--fs-7);
+  font-weight: 600;
+  color: var(--text);
   line-height: 1;
-  margin-bottom: 0.4rem;
-  filter: drop-shadow(0 0 8px rgba(var(--primary-rgb), 0.3));
 }
 
 .kpi-label {
-  font-size: 0.82rem;
-  color: var(--text-dim);
-  font-weight: 500;
+  font-size: var(--fs-2);
+  color: var(--text-muted);
+  font-weight: 700;
   letter-spacing: 0.05rem;
   text-transform: uppercase;
 }
+
+.kpi-caption {
+  font-size: var(--fs-2);
+  color: var(--text-muted);
+}
+
+.kpi-caption.tone-positive { color: var(--success-fg); }
+.kpi-caption.tone-warning { color: var(--warning-fg); }
 
 /* ── Charts Grid ──────────────────────────────────────── */
 .charts-grid {
@@ -407,36 +867,50 @@ body,
   }
 }
 
+/* Dashboard's 3-up (Pipeline / Notice Period / Recent Activity) row - a
+   dedicated class rather than an inline grid-template-columns override, so
+   the 900px stack-to-one-column media query above still applies (an inline
+   style would win over it regardless of viewport). */
+/* Matches the audit's tightened mockup exactly: two containers
+   (Pipeline by Stage, Recent Activity), not three - Notice Period was
+   never in that design. */
+.dashboard-charts-grid {
+  grid-template-columns: 1.4fr 1fr;
+}
+
+@media (max-width: 900px) {
+  .dashboard-charts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── Buttons ──────────────────────────────────────────── */
 .btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   padding: 10px 20px;
-  border-radius: 10px;
+  border-radius: var(--r-md);
   font-family: var(--fb);
   font-weight: 600;
   font-size: 0.9rem;
   cursor: pointer;
   border: none;
-  transition: all 0.25s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
 .btn-primary {
-  background: linear-gradient(90deg, var(--primary), var(--gold));
-  color: var(--navy-dark);
-  box-shadow: 0 4px 15px rgba(var(--primary-rgb), 0.3);
+  background: var(--action);
+  color: var(--action-fg);
 }
 
 .btn-primary:hover {
-  box-shadow: 0 6px 20px rgba(var(--primary-rgb), 0.45);
-  transform: translateY(-1px);
+  background: var(--primary);
 }
 
 .btn-primary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  transform: none;
 }
 
 .btn-secondary {
@@ -447,13 +921,13 @@ body,
 
 .btn-secondary:hover {
   background: rgba(var(--sky-rgb), 0.15);
-  color: #fff;
+  color: var(--text);
   border-color: var(--sky);
 }
 
 .btn-danger {
-  background: rgba(var(--red-rgb), 0.15);
-  color: #f87171;
+  background: var(--danger-bg);
+  color: var(--danger-fg);
   border: 1px solid rgba(var(--red-rgb), 0.3);
 }
 
@@ -465,23 +939,34 @@ body,
 .login-bg {
   min-height: 100vh;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  background: var(--bg-gradient);
+  /* Was center/center with the footer taken out of flow via
+     position:fixed - on a 375px phone the card sat edge-to-edge (no
+     padding at all) and, in register mode, the fixed footer overlapped
+     the submit button because the form is taller than the viewport.
+     flex-start + real padding + scroll fixes both: the card gets
+     breathing room at any width, and anything taller than the viewport
+     scrolls instead of clipping under a floating footer. */
+  justify-content: flex-start;
+  padding: 24px 20px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--bg);
   position: relative;
-  overflow: hidden;
 }
 
+/* Static (not perpetually animating) ambient background - was a 4s/6s
+   infinite pulse behind a login form with no way to pause it (G-18/S1.1) */
 .login-bg::before {
   content: '';
   position: absolute;
   width: 600px;
   height: 600px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(var(--primary-rgb), 0.12), transparent 70%);
+  background: radial-gradient(circle, rgba(var(--gold-rgb), 0.1), transparent 70%);
   top: -100px;
   right: -100px;
-  animation: pulse 4s ease-in-out infinite;
 }
 
 .login-bg::after {
@@ -489,38 +974,38 @@ body,
   position: absolute;
   width: 400px;
   height: 400px;
-  background: radial-gradient(circle, rgba(var(--sky-rgb), 0.1), transparent 70%);
+  background: radial-gradient(circle, rgba(var(--sky-rgb), 0.08), transparent 70%);
   bottom: -50px;
   left: -50px;
-  animation: pulse 6s ease-in-out infinite reverse;
-}
-
-@keyframes pulse {
-
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-
-  50% {
-    transform: scale(1.1);
-    opacity: 0.7;
-  }
 }
 
 .login-card {
   background: var(--login-card-bg);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid var(--border-gold);
-  border-radius: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
   padding: 2.8rem 2.4rem;
   width: 100%;
   max-width: 420px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(var(--gold-rgb), 0.1);
+  /* A richer shadow than the app-wide default - this is the one hero
+     card in the product, worth a touch more visual weight than a
+     table row's card treatment. */
+  box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.28), 0 4px 16px rgba(0, 0, 0, 0.1);
   position: relative;
   z-index: 1;
+  overflow: hidden;
+}
+
+/* Thin brand-gradient accent (matching the logo mark's own orange->blue
+   sweep) instead of a plain flat top edge - a small, deliberate signal
+   that this card belongs to Alamaticz's Hire AI, not a generic form. */
+.login-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #F0813C, #FFC46B, #7FB6E8, #1568A6);
 }
 
 .login-brand {
@@ -538,23 +1023,180 @@ body,
 }
 
 .login-title {
-  font-family: var(--fh);
+  font-family: 'Outfit', var(--fh);
   font-size: 2rem;
   font-weight: 800;
-  background: linear-gradient(90deg, #FFB703, #FB8500);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  letter-spacing: 0.06rem;
-  text-transform: uppercase;
+  color: var(--text);
+  letter-spacing: -0.01em;
 }
 
 .login-subtitle {
   font-size: 0.8rem;
-  color: var(--text-dim);
+  color: var(--text-muted);
   margin-top: 4px;
   letter-spacing: 0.12rem;
   text-transform: uppercase;
+}
+
+/* ── Login: marketing hero + form column ──────────────────
+   Overrides the base .login-bg (single centred card) with a
+   two-column split on wide screens; collapses back to the
+   card-only layout below 900px. Uses cleanup's own action and
+   text tokens, so it re-skins with the accent picker. */
+@media (min-width: 900px) {
+  .login-bg {
+    flex-direction: row;
+    align-items: stretch;
+    justify-content: stretch;
+    padding: 0;
+    overflow-y: hidden;
+  }
+  .login-bg::before,
+  .login-bg::after { display: none; }
+}
+
+.login-hero {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .login-hero {
+    position: relative;
+    flex: 1.05 1 0;
+    padding: 56px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    background:
+      linear-gradient(180deg, rgba(var(--action-rgb), 0.05), transparent 40%),
+      var(--surface);
+    border-right: 1px solid var(--border);
+    overflow: hidden;
+  }
+}
+
+.login-hero-glow {
+  position: absolute;
+  width: 520px;
+  height: 520px;
+  border-radius: 50%;
+  top: -180px;
+  right: -160px;
+  background: radial-gradient(circle, rgba(var(--action-rgb), 0.16), transparent 70%);
+  pointer-events: none;
+}
+
+.login-hero > *:not(.login-hero-glow) {
+  position: relative;
+  z-index: 1;
+}
+
+.login-hero-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--fh);
+  font-weight: 600;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.login-hero-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 420px;
+}
+
+.login-hero-eyebrow {
+  align-self: flex-start;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--action);
+  background: var(--action-quiet-bg);
+  padding: 5px 10px;
+  border-radius: var(--r-full);
+}
+
+.login-hero-copy h1 {
+  font-family: var(--fh);
+  font-size: 2.6rem;
+  font-weight: 700;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  margin: 0;
+  color: var(--text);
+}
+
+.login-hero-copy p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.login-hero-stats {
+  display: flex;
+  gap: 12px;
+  padding-top: 12px;
+}
+
+.login-hero-stats > div {
+  flex: 1;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg);
+}
+
+.login-hero-stats .stat-value {
+  display: block;
+  font-family: var(--fh);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.02em;
+}
+
+.login-hero-stats .stat-label {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--text-subtle);
+  margin-top: 3px;
+}
+
+.login-hero-foot {
+  font-size: 0.75rem;
+  color: var(--text-subtle);
+}
+
+.login-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 24px 20px;
+  width: 100%;
+}
+
+@media (min-width: 900px) {
+  .login-side {
+    flex: 1 1 0;
+    min-height: 100vh;
+    justify-content: center;
+    padding: 40px 24px;
+    overflow-y: auto;
+  }
+}
+
+.login-card-mark {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  margin-bottom: 16px;
 }
 
 /* ── Form Fields ──────────────────────────────────────── */
@@ -564,24 +1206,27 @@ body,
 
 .form-label {
   display: block;
-  font-size: 0.82rem;
+  font-size: var(--fs-3);
   font-weight: 600;
-  color: var(--text-dim);
+  color: var(--text-muted);
   margin-bottom: 6px;
   letter-spacing: 0.04rem;
 }
 
 .form-input {
   width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
   background: var(--input-bg);
-  border: 1.5px solid var(--border);
-  border-radius: 10px;
+  /* Was 1.5px - every other input in the app (filter inputs, etc.) is 1px;
+     this is the one place that drifted. */
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
   padding: 12px 14px;
   color: var(--text);
   font-family: var(--fb);
   font-size: 0.9rem;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
-  outline: none;
 }
 
 .form-input:focus {
@@ -590,7 +1235,7 @@ body,
 }
 
 .form-input::placeholder {
-  color: rgba(var(--sky-dim-rgb), 0.5);
+  color: var(--text-subtle);
 }
 
 .password-input-container {
@@ -605,18 +1250,23 @@ body,
 }
 
 .password-toggle-btn {
+  /* Was a 26px circle (18px icon + 4px padding) - under the 44px touch
+     minimum on the one screen guaranteed to be used on a phone. Hit area
+     is now a real 44x44, right-aligned flush with the field's edge instead
+     of floating 12px in from it. */
   position: absolute;
-  right: 12px;
+  right: 2px;
+  width: 40px;
+  height: 40px;
   background: none;
   border: none;
-  color: var(--text-dim);
+  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 4px;
   border-radius: 50%;
-  transition: all 0.2s ease;
+  transition: color 0.2s ease, background-color 0.2s ease;
 }
 
 .password-toggle-btn:hover {
@@ -625,7 +1275,6 @@ body,
 }
 
 .password-toggle-btn:focus {
-  outline: none;
   color: var(--gold);
 }
 
@@ -641,22 +1290,22 @@ body,
 }
 
 .form-error {
-  background: rgba(var(--red-rgb), 0.15);
+  background: var(--danger-bg);
   border: 1px solid rgba(var(--red-rgb), 0.3);
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   padding: 10px 14px;
   font-size: 0.85rem;
-  color: #f87171;
+  color: var(--danger-fg);
   margin-top: 1rem;
 }
 
 .form-success {
-  background: rgba(var(--green-rgb), 0.15);
+  background: var(--success-bg);
   border: 1px solid rgba(var(--green-rgb), 0.3);
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   padding: 10px 14px;
   font-size: 0.85rem;
-  color: #86efac;
+  color: var(--success-fg);
   margin-top: 1rem;
 }
 
@@ -671,63 +1320,33 @@ body,
 .login-footer {
   text-align: center;
   margin-top: 1.5rem;
-  color: var(--text-dim);
+  color: var(--text-muted);
   font-size: 0.82rem;
 }
 
 /* ── Upload Zone ──────────────────────────────────────── */
+/* S4.2: was a 3rem-padded, gold-on-gold-hover, always-glowing dropzone —
+   the loudest element on the screen for an action taken once per session.
+   UploadDropzone.jsx now sets border/background inline (resting muted,
+   --action-tinted only while a drag is actually active), so the rules
+   below only need to cover layout/transition, not color. */
 .dropzone {
-  border: 2px dashed var(--sky);
   border-radius: var(--radius);
-  padding: 3rem 2rem;
+  padding: 2rem;
   text-align: center;
   cursor: pointer;
-  transition: all 0.25s ease;
-  background: rgba(var(--sky-rgb), 0.05);
+  transition: border-color 0.2s ease, background-color 0.2s ease;
   position: relative;
   overflow: hidden;
 }
 
-.dropzone::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--gold), transparent);
-  animation: scan 3s linear infinite;
-  display: none;
-}
-
-.dropzone.active::after {
-  display: block;
-}
-
-@keyframes scan {
-  0% {
-    top: 0;
-  }
-
-  100% {
-    top: 100%;
-  }
-}
-
-.dropzone:hover,
-.dropzone.active {
-  border-color: var(--gold);
-  background: rgba(var(--gold-rgb), 0.06);
-  box-shadow: 0 0 24px rgba(var(--gold-rgb), 0.1);
-}
-
 .dropzone-icon {
-  font-size: 3rem;
+  font-size: 2.25rem;
   margin-bottom: 1rem;
 }
 
 .dropzone-text {
-  color: var(--text-dim);
+  color: var(--text-muted);
   font-size: 0.9rem;
 }
 
@@ -739,7 +1358,7 @@ body,
 .progress-bar {
   width: 100%;
   height: 6px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-2);
   border-radius: 3px;
   overflow: hidden;
   margin: 0.8rem 0;
@@ -747,7 +1366,7 @@ body,
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--primary), var(--gold));
+  background: var(--gold);
   border-radius: 3px;
   transition: width 0.4s ease;
 }
@@ -775,7 +1394,7 @@ th {
   font-family: var(--fh);
   font-weight: 700;
   font-size: 0.8rem;
-  color: var(--gold);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05rem;
   white-space: nowrap;
@@ -790,7 +1409,7 @@ td {
 }
 
 tbody tr {
-  transition: background 0.15s ease;
+  transition: background-color 0.15s ease;
 }
 
 tbody tr:hover {
@@ -799,6 +1418,31 @@ tbody tr:hover {
 
 tbody tr:last-child td {
   border-bottom: none;
+}
+
+/* Candidates table rows (upload/CandidatesTable.jsx, jobs/CandidatesTable.jsx).
+   Was three inline JS mouse handlers (zebra background computed once,
+   hover/unhover overwriting it directly via style.background) - which made
+   the plain `tbody tr:hover` rule above dead code for these tables
+   specifically, and meant a row reached by keyboard focus (not a mouse)
+   showed no highlight at all. One class covers zebra + hover + keyboard
+   focus + the selected-row state (previously signaled only by the
+   checkbox itself changing, with the row background staying flat). */
+.data-row {
+  background: transparent;
+  transition: background-color 0.15s ease;
+  box-shadow: inset 2px 0 0 0 transparent;
+}
+.data-row[data-zebra='even'] {
+  background: rgba(var(--navy-rgb), 0.25);
+}
+.data-row:hover,
+.data-row:focus-within {
+  background: rgba(var(--sky-rgb), 0.07);
+}
+.data-row[data-selected] {
+  background: var(--action-quiet-bg);
+  box-shadow: inset 2px 0 0 0 var(--gold);
 }
 
 /* ── Chat ─────────────────────────────────────────────── */
@@ -833,29 +1477,28 @@ tbody tr:last-child td {
   align-items: center;
   justify-content: center;
   gap: 1rem;
-  opacity: 0.6;
 }
 
 .chat-empty-icon {
   width: 64px;
   height: 64px;
-  background: linear-gradient(135deg, var(--primary), var(--gold));
-  border-radius: 20px;
+  background: var(--action-quiet-bg);
+  color: var(--gold);
+  border-radius: var(--r-lg);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 2rem;
 }
 
 .chat-empty-title {
   font-family: var(--fh);
   font-size: 1.3rem;
   font-weight: 700;
-  color: var(--gold);
+  color: var(--text);
 }
 
 .chat-empty-sub {
-  color: var(--text-dim);
+  color: var(--text-muted);
   font-size: 0.88rem;
   text-align: center;
   max-width: 320px;
@@ -871,41 +1514,42 @@ tbody tr:last-child td {
   flex-direction: row-reverse;
 }
 
+/* Was a 34px solid-action-orange circle for the assistant (the loudest
+   element in the transcript, in the color reserved for buttons, repeated
+   on every single answer) plus an unrelated blue-ringed circle for the
+   user - two avatar systems in one thread. Now one quiet-tint square for
+   the assistant; the user gets no avatar at all (a right-aligned bubble
+   is already enough to tell the two apart). */
 .msg-avatar {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-sm);
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--fh);
-  font-weight: 800;
-  font-size: 0.85rem;
+  font-weight: 700;
+  font-size: 0.72rem;
   flex-shrink: 0;
 }
 
 .msg-avatar.ai {
-  background: linear-gradient(135deg, var(--primary), var(--gold));
-  color: var(--navy-dark);
-}
-
-.msg-avatar.user-av {
-  background: rgba(var(--sky-rgb), 0.3);
-  border: 1px solid var(--sky);
-  color: var(--sky-dim);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
 }
 
 .msg-bubble {
-  max-width: 72%;
+  max-width: 72ch;
   padding: 12px 16px;
-  border-radius: 16px;
+  border-radius: var(--r-lg);
   font-size: 0.92rem;
   line-height: 1.6;
 }
 
 .message.user .msg-bubble {
-  background: linear-gradient(135deg, rgba(var(--primary-rgb), 0.25), rgba(var(--gold-rgb), 0.2));
-  border: 1px solid rgba(var(--gold-rgb), 0.3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   border-top-right-radius: 4px;
   color: var(--text);
 }
@@ -927,7 +1571,6 @@ tbody tr:last-child td {
   border-top: 1px solid var(--border);
   flex-shrink: 0;
   background: var(--topbar-bg);
-  backdrop-filter: blur(10px);
 }
 
 .chat-input-wrap {
@@ -935,13 +1578,14 @@ tbody tr:last-child td {
   align-items: center;
   gap: 10px;
   background: var(--input-bg);
-  border: 1.5px solid var(--gold);
-  border-radius: 14px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-lg);
   padding: 4px 4px 4px 16px;
-  transition: box-shadow 0.2s ease;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .chat-input-wrap:focus-within {
+  border-color: var(--gold);
   box-shadow: 0 0 0 3px rgba(var(--gold-rgb), 0.15);
 }
 
@@ -953,7 +1597,6 @@ tbody tr:last-child td {
   font-family: var(--fb);
   font-size: 0.92rem;
   resize: none;
-  outline: none;
   min-height: 24px;
   max-height: 120px;
   overflow-y: auto;
@@ -962,26 +1605,26 @@ tbody tr:last-child td {
 }
 
 .chat-textarea::placeholder {
-  color: rgba(var(--sky-dim-rgb), 0.5);
+  color: var(--text-subtle);
 }
 
 .chat-send-btn {
   width: 40px;
   height: 40px;
-  background: linear-gradient(135deg, var(--primary), var(--gold));
+  background: var(--gold);
   border: none;
-  border-radius: 10px;
+  border-radius: var(--r-md);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--navy-dark);
-  transition: all 0.2s ease;
+  color: var(--action-fg);
+  transition: background-color 0.2s ease;
   flex-shrink: 0;
 }
 
 .chat-send-btn:hover {
-  box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.4);
+  background: var(--primary);
 }
 
 .chat-send-btn:disabled {
@@ -1031,7 +1674,7 @@ tbody tr:last-child td {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.84rem;
-  border-radius: 12px;
+  border-radius: var(--r-md);
   overflow: hidden;
   border: 1px solid var(--border);
   margin-top: 0.5rem;
@@ -1052,11 +1695,37 @@ tbody tr:last-child td {
   background: rgba(var(--sky-rgb), 0.06);
 }
 
+/* ── Status chip (candidate pipeline status) ─────────────
+   One shared source of truth for the 8-status color system,
+   instead of each page hand-rolling its own hex per status. */
+.status-chip {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: var(--r-full);
+  font-size: 0.73rem;
+  font-weight: 700;
+  white-space: nowrap;
+  text-transform: capitalize;
+}
+.status-chip.status-new { background: var(--st-new-bg); color: var(--st-new-text); }
+.status-chip.status-in-review { background: var(--st-review-bg); color: var(--st-review-text); }
+.status-chip.status-available { background: var(--st-avail-bg); color: var(--st-avail-text); }
+.status-chip.status-selected { background: var(--st-selected-bg); color: var(--st-selected-text); }
+.status-chip.status-rejected { background: var(--st-rejected-bg); color: var(--st-rejected-text); }
+.status-chip.status-engaged { background: var(--st-engaged-bg); color: var(--st-engaged-text); }
+.status-chip.status-offered { background: var(--st-offered-bg); color: var(--st-offered-text); }
+.status-chip.status-hired { background: var(--st-hired-bg); color: var(--st-hired-text); }
+/* "Error" isn't one of the 8 user-selectable pipeline statuses (see
+   candidateStatus.js) - it's a system-set failure state a failed resume
+   parse writes - so it had no matching class at all and rendered as an
+   unstyled grey pill, the single most important state in the table. */
+.status-chip.status-error { background: var(--danger-bg); color: var(--danger-fg); }
+
 /* ── Badge ────────────────────────────────────────────── */
 .badge {
   display: inline-block;
   padding: 2px 10px;
-  border-radius: 20px;
+  border-radius: var(--r-full);
   font-size: 0.75rem;
   font-weight: 600;
 }
@@ -1074,14 +1743,14 @@ tbody tr:last-child td {
 }
 
 .badge-red {
-  background: rgba(var(--red-rgb), 0.15);
-  color: #f87171;
+  background: var(--danger-bg);
+  color: var(--danger-fg);
   border: 1px solid rgba(var(--red-rgb), 0.3);
 }
 
 .badge-green {
-  background: rgba(var(--green-rgb), 0.15);
-  color: #86efac;
+  background: var(--success-bg);
+  color: var(--success-fg);
   border: 1px solid rgba(var(--green-rgb), 0.3);
 }
 
@@ -1103,7 +1772,8 @@ tbody tr:last-child td {
   gap: 10px;
 }
 
-/* ── Toast ────────────────────────────────────────────── */
+/* ── Toast (G-27: icon + text + dismiss + aria-live wired in JSX;
+   this is the visual shell only) ─────────────────────────────── */
 .toast-container {
   position: fixed;
   bottom: 2rem;
@@ -1115,23 +1785,51 @@ tbody tr:last-child td {
 }
 
 .toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   background: var(--login-card-bg);
-  border: 1px solid var(--border-gold);
-  border-radius: 12px;
-  padding: 12px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
   font-size: 0.88rem;
   color: var(--text);
-  backdrop-filter: blur(12px);
   animation: slideIn 0.3s ease;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow);
+  /* Tinted left edge in addition to the border-color tint, so the status
+     reads at a glance even at a quick skim, not just on close inspection. */
+  border-left-width: 3px;
 }
 
 .toast.success {
   border-color: rgba(var(--green-rgb), 0.4);
+  border-left-color: var(--success-fg);
 }
+.toast.success .toast-icon { color: var(--success-fg); }
 
 .toast.error {
   border-color: rgba(var(--red-rgb), 0.4);
+  border-left-color: var(--danger-fg);
+}
+.toast.error .toast-icon { color: var(--danger-fg); }
+
+.toast-dismiss {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  flex-shrink: 0;
+}
+.toast-dismiss:hover { color: var(--text); }
+
+/* S2.8: was a <style> tag injected inline in Layout.jsx's JSX, re-created in
+   the DOM on every render the activity drawer was open for. */
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
 }
 
 @keyframes slideIn {
@@ -1169,7 +1867,7 @@ tbody tr:last-child td {
   gap: 6px;
   background: rgba(var(--sky-rgb), 0.12);
   border: 1px solid rgba(var(--sky-rgb), 0.25);
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   padding: 4px 10px;
   font-size: 0.82rem;
   color: var(--sky-dim);
@@ -1185,14 +1883,17 @@ tbody tr:last-child td {
 }
 
 .chip {
-  background: rgba(var(--navy-rgb), 0.7);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: var(--r-full);
   padding: 6px 14px;
   font-size: 0.82rem;
-  color: var(--text-dim);
+  color: var(--text-muted);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
 }
 
 .chip:hover {
@@ -1221,14 +1922,15 @@ tbody tr:last-child td {
 }
 
 .msg-bubble strong {
-  color: var(--gold);
+  color: var(--text);
+  font-weight: 700;
 }
 
 .msg-bubble code {
-  background: rgba(var(--gold-rgb), 0.12);
+  background: var(--surface-2);
   padding: 2px 6px;
   border-radius: 4px;
-  font-family: monospace;
+  font-family: var(--fm);
   font-size: 0.85em;
 }
 
@@ -1240,29 +1942,29 @@ tbody tr:last-child td {
   margin-bottom: 2rem;
 }
 
+/* S7.5: same visual base as .kpi-card (border/radius/shadow/hover
+   treatment) - this is the icon-led layout variant of that stat-card
+   language, not a third, separately-designed card. */
 .user-stat-card {
   background: var(--card-bg);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--radius);
   padding: 1.2rem 1.5rem;
   display: flex;
   align-items: center;
   gap: 1rem;
   box-shadow: var(--shadow);
-  transition: all 0.3s ease;
-  backdrop-filter: blur(10px);
+  transition: border-color 0.2s ease;
 }
 
 .user-stat-card:hover {
   border-color: var(--border-gold);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4), var(--glow);
 }
 
 .user-stat-icon-container {
   width: 48px;
   height: 48px;
-  border-radius: 12px;
+  border-radius: var(--r-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1287,19 +1989,19 @@ tbody tr:last-child td {
 
 .user-stat-label {
   font-size: 0.78rem;
-  color: var(--text-dim);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05rem;
   font-weight: 600;
 }
 
-.user-table-card {
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  box-shadow: var(--shadow);
+/* Was its own 22px-radius surface (.card is 10px) - .card--table shares
+   .card's actual tokens and adds only what a table wrapper needs: zero
+   padding and clipped corners so the header row's own corners round
+   along with the card. */
+.card--table {
+  padding: 0;
   overflow: hidden;
-  backdrop-filter: blur(12px);
 }
 
 .user-cell-profile {
@@ -1318,7 +2020,11 @@ tbody tr:last-child td {
   font-family: var(--fh);
   font-weight: 800;
   font-size: 1rem;
-  color: #fff;
+  /* Was a hardcoded #fff with no contrast floor against the per-role
+     background - AdminPage.jsx now always supplies a paired foreground
+     color inline (the same tinted-bg/saturated-fg pairs the status chips
+     use), so this is just the fallback if a caller ever forgets to. */
+  color: var(--text);
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
 }
 
@@ -1336,8 +2042,7 @@ tbody tr:last-child td {
 
 .user-info-username {
   font-size: 0.78rem;
-  color: var(--text-dim);
-  opacity: 0.75;
+  color: var(--text-muted);
 }
 
 /* Beautiful Switch Toggle CSS */
@@ -1356,38 +2061,61 @@ tbody tr:last-child td {
   position: absolute;
 }
 
+/* S8.5: compact variant for switches nested inside a denser layout
+   (Connect's per-provider enable toggles), so those call sites can reuse
+   this component instead of hand-rolling their own smaller slider. */
+.switch-container.sm .switch-slider {
+  width: 40px;
+  height: 20px;
+}
+
+.switch-container.sm .switch-slider::before {
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 3px;
+}
+
+.switch-container.sm .switch-input:checked + .switch-slider::before {
+  transform: translateX(20px);
+}
+
 .switch-slider {
-  width: 46px;
+  width: 44px;
   height: 24px;
-  background-color: rgba(var(--white-rgb), 0.1);
+  background-color: var(--surface-2);
   border: 1.5px solid var(--border);
-  border-radius: 20px;
+  border-radius: var(--r-full);
   position: relative;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.switch-input:focus-visible + .switch-slider {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .switch-slider::before {
   content: '';
   position: absolute;
-  height: 16px;
-  width: 16px;
-  left: 3px;
-  bottom: 2.5px;
-  background-color: var(--text-dim);
+  height: 20px;
+  width: 20px;
+  left: 2px;
+  bottom: 2px;
+  background-color: var(--text-muted);
   border-radius: 50%;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.2s ease, background-color 0.2s ease;
   box-shadow: 0 2px 4px rgba(0,0,0,0.3);
 }
 
 .switch-input:checked + .switch-slider {
-  background-color: rgba(var(--primary-rgb), 0.15);
-  border-color: var(--primary);
+  background-color: rgba(var(--action-rgb), 0.2);
+  border-color: var(--action);
 }
 
 .switch-input:checked + .switch-slider::before {
   transform: translateX(20px);
-  background-color: var(--primary);
-  box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.6);
+  background-color: var(--action);
 }
 
 .switch-label-tag {
@@ -1396,8 +2124,7 @@ tbody tr:last-child td {
   text-transform: uppercase;
   letter-spacing: 0.05rem;
   padding: 2px 8px;
-  border-radius: 6px;
-  transition: all 0.2s ease;
+  border-radius: var(--r-sm);
 }
 
 .switch-label-tag.active {
@@ -1407,32 +2134,24 @@ tbody tr:last-child td {
 }
 
 .switch-label-tag.inactive {
-  background: rgba(var(--white-rgb), 0.05);
-  color: var(--text-dim);
+  background: var(--surface-2);
+  color: var(--text-subtle);
   border: 1px solid transparent;
-  opacity: 0.6;
 }
 
 .current-user-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: rgba(var(--green-rgb), 0.12);
-  color: #4ade80;
+  background: var(--success-bg);
+  color: var(--success-fg);
   border: 1px solid rgba(var(--green-rgb), 0.3);
   padding: 4px 10px;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04rem;
-}
-
-/* Fix Chromium rendering bug where cards inside fixed modal overlays become completely transparent/invisible due to nested backdrop blurs */
-div[style*="position: fixed"] .card,
-div[style*="position:fixed"] .card {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
 }
 
 /* Glassmorphism modal wrapper */
@@ -1442,28 +2161,33 @@ div[style*="position:fixed"] .card {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(1, 10, 18, 0.7); /* Deep dark semi-transparent */
-  backdrop-filter: blur(8px) saturate(140%); /* Modern blur and saturation */
-  -webkit-backdrop-filter: blur(8px) saturate(140%);
+  background: rgba(1, 10, 18, 0.7);
+  /* Was blur(8px) saturate(140%) - compositing that over a 2600px-wide
+     Candidates table every frame drops frames on lower-end laptops, and
+     the saturation boost shifts the brand colors behind the dialog. The
+     opaque scrim already does the real job of separating dialog from
+     page; a lighter blur is just a finishing touch. */
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 99999;
-  animation: overlayFadeIn 0.25s ease-out;
+  animation: overlayFadeIn 0.2s ease-out;
 }
 
 /* Modal Content Card override */
+/* G-18: .modal-overlay .card (specificity 0,2,0, declared after .card and
+   .card:hover) already outranks and overrides both on its own - the
+   !important here was never load-bearing, just defensive leftover. */
 .modal-overlay .card {
   position: relative;
-  background: var(--navy-dark) !important; /* solid deep dark color */
-  border: 1px solid rgba(var(--sky-rgb), 0.35) !important; /* Sleek sky border */
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75), 0 0 30px rgba(var(--gold-rgb), 0.15) !important; /* Gold outer glow & deep shadow */
-  border-radius: 20px !important; /* Modern rounded corners */
+  background: var(--navy-dark);
+  border: 1px solid rgba(var(--sky-rgb), 0.35);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  border-radius: var(--r-xl);
   overflow: hidden;
-  animation: modalScaleUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); /* Bouncy enter animation */
-  transition: all 0.3s ease;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+  animation: modalScaleUp 0.18s ease-out;
 }
 
 [data-theme="light"] .modal-overlay {
@@ -1471,9 +2195,81 @@ div[style*="position:fixed"] .card {
 }
 
 [data-theme="light"] .modal-overlay .card {
-  background: #FFFFFF !important;
-  border: 1px solid rgba(0, 0, 0, 0.1) !important;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.15), 0 0 30px rgba(var(--gold-rgb), 0.08) !important;
+  background: #FFFFFF;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.15);
+}
+
+/* Shared dropdown/menu item treatment (profile menu, job card menu, etc).
+   These used to be styled per call site with onMouseEnter/onMouseLeave
+   inline handlers overwriting style.background directly - which meant a
+   keyboard user tabbing to the item (rather than hovering it with a mouse)
+   got no visual feedback at all. A real CSS :hover/:focus-visible rule
+   gives both input methods the same state for free. */
+.dropdown-menu-item {
+  width: 100%;
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dropdown-menu-item:hover,
+.dropdown-menu-item:focus-visible {
+  background: rgba(var(--gold-rgb), 0.1);
+  outline: none;
+}
+.dropdown-menu-item.danger {
+  color: var(--danger-fg);
+  border-top: 1px solid var(--border);
+}
+.dropdown-menu-item.danger:hover,
+.dropdown-menu-item.danger:focus-visible {
+  background: rgba(var(--red-rgb), 0.1);
+}
+
+/* jobs/JobSidebar.jsx job cards. Selection used to be signaled three ways
+   at once (gold border + 10% gold fill + gold title text) while hover had
+   no state at all - one surface-lift + left-bar treatment now, plus a real
+   hover so the list doesn't feel inert before anything is selected. */
+.job-card {
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  box-shadow: inset 3px 0 0 0 transparent;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.job-card:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+.job-card--selected,
+.job-card--selected:hover {
+  background: var(--action-quiet-bg);
+  border-color: var(--gold);
+  box-shadow: inset 3px 0 0 0 var(--gold);
+}
+
+/* shared/DataTable.jsx's per-column filter-row inputs. */
+.column-filter-input {
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: var(--fs-2);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.column-filter-input:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 4px rgba(var(--gold-rgb), 0.3);
 }
 
 @keyframes overlayFadeIn {
@@ -1484,7 +2280,7 @@ div[style*="position:fixed"] .card {
 @keyframes modalScaleUp {
   from {
     opacity: 0;
-    transform: scale(0.92) translateY(10px);
+    transform: scale(0.97) translateY(6px);
   }
   to {
     opacity: 1;
@@ -1504,49 +2300,27 @@ div[style*="position:fixed"] .card {
   margin-bottom: 1.75rem;
 }
 
+/* Folded onto the app's shared surface tokens (var(--surface-2)/var(--border))
+   instead of hand-rolled sky/navy rgba() values, so this metadata grid reads
+   as the same "card" material as everywhere else - the per-theme overrides
+   these used to need are gone with them, since the tokens already carry
+   correct light/dark values. */
 .jd-param-card {
-  background: rgba(var(--navy-rgb), 0.22);
-  border: 1px solid rgba(var(--sky-rgb), 0.18);
-  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
   padding: 14px 18px;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: border-color 0.2s ease;
   display: flex;
   flex-direction: column;
   position: relative;
   overflow: hidden;
 }
 
-[data-theme="light"] .jd-param-card {
-  background: rgba(var(--sky-rgb), 0.04);
-  border-color: rgba(var(--sky-rgb), 0.15);
-}
-
-.jd-param-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 3px;
-  background: linear-gradient(90deg, rgba(var(--sky-rgb), 0.6), rgba(var(--gold-rgb), 0.6));
-  opacity: 0;
-  transition: opacity 0.25s ease;
-}
-
-.jd-param-card:hover {
-  transform: translateY(-3px);
-  border-color: rgba(var(--gold-rgb), 0.45);
-  box-shadow: 0 10px 24px -10px rgba(0, 0, 0, 0.3), 0 0 15px rgba(var(--gold-rgb), 0.1);
-}
-
-.jd-param-card:hover::before {
-  opacity: 1;
-}
-
 .jd-param-label {
   display: block;
   font-size: 0.72rem;
-  color: var(--text-dim);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05rem;
   margin-bottom: 6px;
@@ -1567,34 +2341,28 @@ div[style*="position:fixed"] .card {
   flex-shrink: 0;
 }
 
-/* Skills Pills */
+/* Skill pills reuse the app's shared .chip treatment (surface-2/border,
+   gold on hover) instead of a one-off sky-tinted pill, so a skill tag here
+   looks like every other tag/chip in the app. */
 .jd-skill-pill {
   font-size: 0.78rem;
   font-weight: 600;
   padding: 6px 14px;
-  border-radius: 20px;
-  background: rgba(var(--sky-rgb), 0.08);
-  color: var(--sky-dim);
-  border: 1px solid rgba(var(--sky-rgb), 0.25);
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   cursor: default;
 }
 
-[data-theme="light"] .jd-skill-pill {
-  background: rgba(var(--sky-rgb), 0.08);
-  color: var(--sky);
-  border-color: rgba(var(--sky-rgb), 0.3);
-}
-
 .jd-skill-pill:hover {
-  background: rgba(var(--sky-rgb), 0.18);
-  border-color: rgba(var(--sky-rgb), 0.6);
-  color: var(--text);
-  transform: translateY(-2px) scale(1.03);
-  box-shadow: 0 6px 15px -4px rgba(var(--sky-rgb), 0.3);
+  background: rgba(var(--gold-rgb), 0.08);
+  border-color: var(--gold);
+  color: var(--gold);
 }
 
 /* Markdown Container */
@@ -1603,42 +2371,39 @@ div[style*="position:fixed"] .card {
   font-size: 0.95rem;
   line-height: 1.7;
   padding: 24px;
-  background: rgba(var(--navy-dark-rgb), 0.25);
+  background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--r-lg);
   min-height: 200px;
-  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+  transition: border-color 0.2s ease;
 }
 
-[data-theme="light"] .jd-markdown-container {
-  background: rgba(248, 250, 252, 0.7);
-  border-color: rgba(0, 0, 0, 0.08);
-}
-
+/* This one is interactive (double-click to edit inline), so it keeps a
+   hover affordance - now the same border-gold token .card--actionable
+   uses, instead of a one-off sky-tinted hover. */
 .jd-markdown-container:hover {
-  border-color: rgba(var(--sky-rgb), 0.45);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+  border-color: var(--border-gold);
 }
 
 .jd-markdown-container p {
   margin-bottom: 14px;
 }
 
-.jd-markdown-container h1, 
-.jd-markdown-container h2, 
+.jd-markdown-container h1,
+.jd-markdown-container h2,
 .jd-markdown-container h3 {
   font-family: var(--fh);
-  color: var(--gold);
+  color: var(--text);
   margin-top: 22px;
   margin-bottom: 10px;
   font-weight: 700;
 }
 
-.jd-markdown-container h1 { font-size: 1.45rem; border-bottom: 1px solid rgba(var(--sky-rgb), 0.2); padding-bottom: 8px; }
+.jd-markdown-container h1 { font-size: 1.45rem; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
 .jd-markdown-container h2 { font-size: 1.3rem; }
 .jd-markdown-container h3 { font-size: 1.15rem; }
 
-.jd-markdown-container ul, 
+.jd-markdown-container ul,
 .jd-markdown-container ol {
   margin-left: 24px;
   margin-bottom: 14px;
@@ -1649,54 +2414,35 @@ div[style*="position:fixed"] .card {
 }
 
 .jd-markdown-container strong {
-  color: var(--gold);
+  color: var(--text);
   font-weight: 700;
 }
 
 .jd-markdown-container code {
-  font-family: monospace;
-  background: rgba(var(--navy-rgb), 0.5);
+  font-family: var(--fm);
+  background: var(--surface-2);
   padding: 3px 6px;
   border-radius: 5px;
-  color: var(--sky-dim);
+  color: var(--gold);
   font-size: 0.85rem;
 }
 
-/* Premium Form Design System */
-.modern-form-card {
-  background: rgba(var(--navy-dark-rgb), 0.45);
-  border: 1px solid rgba(var(--sky-rgb), 0.22);
-  border-radius: 24px;
-  padding: 3rem;
-  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.4), 0 0 35px rgba(var(--sky-rgb), 0.05);
-  transition: all 0.3s ease;
-  position: relative;
-  overflow: hidden;
-}
-
-[data-theme="light"] .modern-form-card {
-  background: #FFFFFF;
-  border-color: rgba(var(--sky-rgb), 0.18);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.05), 0 0 30px rgba(var(--sky-rgb), 0.02);
-}
-
-.modern-form-card::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 250px;
-  height: 250px;
-  background: radial-gradient(circle, rgba(var(--gold-rgb), 0.08) 0%, transparent 70%);
-  pointer-events: none;
-  z-index: 0;
+/* Was its own "Premium Form Design System" with a sky-tinted border and
+   22px/48px radius/padding - one of three different card surface
+   treatments in the app (.card at 10px/24px, .user-table-card at 22px,
+   this one at 22px/48px). .card--spacious now covers the same "roomier
+   form container" need while sharing .card's actual border/radius/shadow
+   tokens, so a form card and every other card in the app read as the
+   same surface. */
+.card--spacious {
+  padding: 2rem;
 }
 
 .form-section-title {
   font-family: var(--fh);
   font-size: 1.1rem;
   font-weight: 800;
-  color: var(--gold);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.06rem;
   margin-top: 2rem;
@@ -1704,7 +2450,7 @@ div[style*="position:fixed"] .card {
   display: flex;
   align-items: center;
   gap: 8px;
-  border-bottom: 1px solid rgba(var(--sky-rgb), 0.15);
+  border-bottom: 1px solid var(--border);
   padding-bottom: 6px;
 }
 
@@ -1712,82 +2458,36 @@ div[style*="position:fixed"] .card {
   margin-top: 0;
 }
 
-.modern-input-group {
+/* Structural wrapper for a .form-input with a leading icon - not a
+   surface/visual treatment of its own, so it stays separate from the
+   .modern-* deletion above. Pair with .form-input.form-input--icon-inset. */
+.form-input-group {
   position: relative;
   display: flex;
   align-items: center;
 }
 
-.modern-input-icon {
+.form-input-icon {
   position: absolute;
   left: 14px;
-  color: var(--text-dim);
-  transition: color 0.25s ease;
+  color: var(--text-muted);
+  transition: color 0.2s ease;
   pointer-events: none;
   z-index: 10;
 }
 
-.modern-input,
-.modern-select,
-.modern-textarea {
-  width: 100%;
-  padding: 12px 14px 12px 42px !important;
-  border-radius: 12px !important;
-  border: 1px solid rgba(var(--sky-rgb), 0.25) !important;
-  background: rgba(var(--navy-dark-rgb), 0.5) !important;
-  color: var(--text) !important;
-  font-family: var(--fb) !important;
-  font-size: 0.9rem !important;
-  outline: none !important;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
-}
-
-[data-theme="light"] .modern-input,
-[data-theme="light"] .modern-select,
-[data-theme="light"] .modern-textarea {
-  background: #F8FAFC !important;
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
-}
-
-.modern-textarea {
-  padding: 14px !important;
-  resize: vertical;
-}
-
-.modern-input-group:focus-within .modern-input-icon {
+.form-input-group:focus-within .form-input-icon {
   color: var(--gold);
 }
 
-.modern-input:focus,
-.modern-select:focus,
-.modern-textarea:focus {
-  border-color: var(--gold) !important;
-  box-shadow: 0 0 0 4px rgba(var(--gold-rgb), 0.12) !important;
-  background: rgba(var(--navy-dark-rgb), 0.8) !important;
+.form-input--icon-inset {
+  padding-left: 42px;
 }
 
-[data-theme="light"] .modern-input:focus,
-[data-theme="light"] .modern-select:focus,
-[data-theme="light"] .modern-textarea:focus {
-  background: #FFFFFF !important;
-  border-color: var(--gold) !important;
-  box-shadow: 0 0 0 4px rgba(var(--gold-rgb), 0.1) !important;
-}
-
-.modern-input:hover,
-.modern-select:hover,
-.modern-textarea:hover {
-  border-color: rgba(var(--sky-rgb), 0.5) !important;
-}
-
-.modern-label {
-  display: block;
-  margin-bottom: 8px;
-  color: var(--text-dim);
-  font-size: 0.82rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04rem;
+.form-input.form-input--textarea {
+  padding: 14px;
+  resize: vertical;
+  min-height: unset;
 }
 
 @keyframes spin {
