@@ -24,3 +24,4 @@ class User(Base):
     email: Mapped[Optional[str]] = mapped_column(Text)
     mobile: Mapped[Optional[str]] = mapped_column(Text)
     is_approved: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    firebase_uid: Mapped[Optional[str]] = mapped_column(Text)  # bound on first verified Firebase sign-in

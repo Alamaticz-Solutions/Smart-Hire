@@ -56,10 +56,12 @@ from app.core.logging import get_logger
 from app.db.engine import session_scope
 from app.repositories import CandidateRepository, CustomColumnRepository
 from app.services import vector_store
+from app.services.completeness import derive_state
 from app.services.ai_clients import _processing_lock, get_models
 from app.services.json_parsing import parse_llm_json
 from app.services.matching import match_candidate_to_all_jobs
 from app.services.retry import retry_with_backoff
+from app.services.rules_extract import extract_by_rules, fill_gaps
 
 logger = get_logger(__name__)
 
@@ -139,6 +141,34 @@ Resume and Email Content:
 {text}
 
 JSON:"""
+
+
+#: Fields never sent to the AI: defaults / recruiter notes, not resume content.
+_NEVER_ASK_AI = {"candidate_interview_status", "source"}
+
+
+def build_gap_prompt(text: str, rules_found: dict, custom_fields: str = "", custom_keys: Optional[list] = None) -> Optional[str]:
+    """Short extraction prompt asking ONLY for the fields the rules could not read.
+
+    Returns None when nothing is left to ask. The wording of each field comes from ``EXTRACT_PROMPT`` so
+    the AI gets exactly the same instructions as before, just for fewer fields.
+    """
+    template = EXTRACT_PROMPT.replace("{{", "{").replace("}}", "}")
+    head = template.split("\n{\n", 1)[0]
+    rules_block = "Rules:" + template.split("Rules:", 1)[1].split("Resume and Email Content:", 1)[0]
+    lines = {m.group(1): m.group(0).strip().rstrip(",") for m in re.finditer(r'^\s*"(\w+)":.*$', template, re.M)}
+    covered = set(rules_found)
+    if "notice_period" in covered:
+        covered.add("availability_in_days")
+    if "ctc" in covered and "expected_ctc" in covered:
+        covered.add("percentage_hike")
+    wanted = [line for key, line in lines.items() if key not in covered and key not in _NEVER_ASK_AI]
+    for extra in (c.strip().lstrip(",").strip() for c in custom_fields.split(",\n") if c.strip()):
+        wanted.append(extra.rstrip(","))
+    if not wanted:
+        return None
+    note = f"\nThese fields were already read from the document and are NOT needed: {', '.join(sorted(covered))}.\n" if covered else ""
+    return f"{head}\n{{\n" + ",\n".join(wanted) + f"\n}}\n{note}\n{rules_block}Resume and Email Content:\n{text}\n\nJSON:"
 
 
 # ── Shared resume-formatter prompt/invoke helpers (dedup) ─────────────────
@@ -253,6 +283,8 @@ def pre_format_candidate_resume(candidate_id: int, text: str, filename: str):
     try:
         data = _invoke_resume_formatter(text, llm)
         data["original_page_count"] = original_page_count
+        with session_scope() as session:
+            data["_source_hash"] = _source_hash(CandidateRepository(session).get_row(candidate_id) or {})
 
         with session_scope() as session:
             CandidateRepository(session).set_formatted_json(candidate_id, _json_dumps(data))
@@ -268,6 +300,62 @@ def _json_dumps(data: dict) -> str:
 
 
 # ── On-demand resume formatting for GET .../formatted-resume ──────────────
+
+# ── Formatted-resume cache + data sheet ───────────────────────────────────
+_HASHED_FIELDS = ("full_name", "total_experience", "pega_experience", "cdh_exp", "skills", "certifications", "current_organization",
+                  "current_location", "pref_locations", "domain", "ctc", "expected_ctc", "notice_period", "linkedin", "email", "phone")
+
+
+def _source_hash(candidate: dict) -> str:
+    import hashlib
+    import json
+
+    return hashlib.md5(json.dumps([str(candidate.get(f) or "") for f in _HASHED_FIELDS]).encode()).hexdigest()[:12]
+
+
+def _cache_is_current(cached: dict, candidate: dict) -> bool:
+    """A cached formatted resume is reused unless the candidate's data changed since it was built.
+
+    Resumes edited by hand (``_edited``) are always kept; legacy caches without a hash are kept too.
+    """
+    if cached.get("_edited"):
+        return True
+    stamp = cached.get("_source_hash")
+    return stamp is None or stamp == _source_hash(candidate)
+
+
+def _split(value) -> list[str]:
+    return [part.strip() for part in str(value or "").split(",") if part.strip()]
+
+
+def build_data_sheet(candidate: dict) -> dict:
+    """The resume template filled ONLY with facts on file; everything else stays empty ("Not provided")."""
+    years = candidate.get("total_experience")
+    try:
+        years = float(years or 0)
+    except (TypeError, ValueError):
+        years = 0.0
+    parts = []
+    if years > 0:
+        parts.append(f"{years:g} years of experience")
+    if candidate.get("pega_experience") and float(candidate.get("pega_experience") or 0) > 0:
+        parts.append(f"{float(candidate['pega_experience']):g} years in Pega")
+    organization = candidate.get("current_organization")
+    return {
+        "full_name": candidate.get("full_name") or "",
+        "job_title": "",
+        "profile_summary": ("; ".join(parts) + ".") if parts else "",
+        "domain_skills": _split(candidate.get("skills"))[:6],
+        "technical_skills": {},
+        "education": [],
+        "certifications": _split(candidate.get("certifications")),
+        "work_experience": [{"company": organization, "dates": "", "role": "", "bullets": []}] if organization else [],
+        "recognitions": [],
+        "limited": True,   # the UI shows "only the details on file - no resume document to read"
+        "_source_hash": _source_hash(candidate),
+    }
+
+
 def format_candidate_resume(candidate: dict, candidate_id: int) -> dict:
     """Build (or return cached) formatted-resume JSON for one candidate.
 
@@ -347,7 +435,7 @@ def format_candidate_resume(candidate: dict, candidate_id: int) -> dict:
         except Exception:
             pass
 
-    if cached_data:
+    if cached_data and _cache_is_current(cached_data, candidate):
         if temp_path and os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
@@ -375,26 +463,24 @@ def format_candidate_resume(candidate: dict, candidate_id: int) -> dict:
         except Exception:
             pass
 
-    # Fallback to metadata if file text couldn't be loaded.
+    # No readable document (e.g. imported from Excel): build a plain data sheet from what is on file.
+    # The AI is NOT asked to write a resume from a few metadata fields - it would invent the rest.
     if not text:
-        text = f"""
-        Name: {candidate.get('full_name')}
-        Experience: {candidate.get('total_experience')} years (Pega: {candidate.get('pega_experience')} years, CDH: {candidate.get('cdh_exp')} years)
-        Current Employment: {candidate.get('current_organization')}
-        Location: {candidate.get('current_location')}
-        Skills: {candidate.get('skills')}
-        Certifications: {candidate.get('certifications')}
-        Preferred Location: {candidate.get('pref_locations')}
-        CTC: {candidate.get('ctc')}
-        Expected CTC: {candidate.get('expected_ctc')}
-        """
-
+        sheet = build_data_sheet(candidate)
+        sheet["original_page_count"] = original_page_count
+        try:
+            with session_scope() as session:
+                CandidateRepository(session).set_formatted_json(candidate_id, json.dumps(sheet))
+        except Exception as e_cache:
+            logger.error(f"Error caching data sheet: {e_cache}")
+        return sheet
 
     _, llm = get_models()
 
     try:
         data = _invoke_resume_formatter(text, llm)
         data["original_page_count"] = original_page_count
+        data["_source_hash"] = _source_hash(candidate)
 
         # Cache the result in DB.
         try:
@@ -405,32 +491,104 @@ def format_candidate_resume(candidate: dict, candidate_id: int) -> dict:
 
     except Exception as e:
         logger.error(f"Error parsing resume via LLM: {e}")
-        # Return fallback structured data.
-        data = {
-            "full_name": candidate.get("full_name"),
-            "job_title": "Pega Professional",
-            "profile_summary": f"{candidate.get('total_experience', 0)} years of experience in IT with skills in {candidate.get('skills', '')}.",
-            "domain_skills": [s.strip() for s in str(candidate.get("skills", "")).split(",") if s.strip()][:4],
-            "technical_skills": {
-                "primary": "Primary Tool/Platform: Pega",
-                "languages": "Languages: Java, SQL",
-                "frontend": "Frontend: HTML, CSS, JavaScript",
-                "others": "Others: Git, Jira",
-            },
-            "education": [],
-            "certifications": [c.strip() for c in str(candidate.get("certifications", "")).split(",") if c.strip()],
-            "work_experience": [
-                {
-                    "company": candidate.get("current_organization") or "Current Employer",
-                    "dates": "N/A",
-                    "role": "Pega Developer",
-                    "bullets": ["Contributed to application development and configuration."],
-                }
-            ],
-            "recognitions": [],
-        }
+        # Never invent skills / roles when the model fails: show what is really on file.
+        data = build_data_sheet(candidate)
+        data["original_page_count"] = original_page_count
+        return data
 
     return data
+
+
+
+# ── Extraction helpers shared by import, follow-up and re-extraction ─────
+class NotAResumeError(Exception):
+    """The attachment is an invoice / visa paper / receipt etc., not a resume."""
+
+
+class ExtractionRateLimited(Exception):
+    """The AI provider rate-limited the request; callers should stop and try later."""
+
+
+EXTRACTION_TEXT_LIMIT = 14000  # was 7000: long resumes lost their skills / certifications / location sections
+
+_LOCATION_ALIASES = {
+    "hyd": "Hyderabad", "hyderabad": "Hyderabad", "secunderabad": "Hyderabad", "blr": "Bangalore", "bangalore": "Bangalore",
+    "bengaluru": "Bangalore", "blore": "Bangalore", "chn": "Chennai", "chennai": "Chennai", "madras": "Chennai",
+    "pune": "Pune", "mumbai": "Mumbai", "bombay": "Mumbai", "delhi": "Delhi", "ncr": "Delhi NCR", "noida": "Noida",
+    "gurgaon": "Gurgaon", "gurugram": "Gurgaon", "kolkata": "Kolkata", "calcutta": "Kolkata", "kochi": "Kochi",
+    "cochin": "Kochi", "tvm": "Trivandrum", "trivandrum": "Trivandrum", "cbe": "Coimbatore", "coimbatore": "Coimbatore",
+    "vizag": "Visakhapatnam", "vskp": "Visakhapatnam", "ahmedabad": "Ahmedabad", "jaipur": "Jaipur",
+}
+
+
+def normalize_location(value):
+    """Expand short city codes ("hyd" -> "Hyderabad"); anything longer is returned as written."""
+    text = str(value or "").strip()
+    if not text:
+        return text
+    key = re.sub(r"[^a-z]", "", text.lower())
+    return _LOCATION_ALIASES.get(key, text)
+
+
+def normalize_extracted(data: dict) -> dict:
+    """Clean the fields the model returned (phone digits, e-mail sanity, numbers, notice period, city codes)."""
+    if data.get("phone"):
+        data["phone"] = re.sub(r"[^\d+]", "", str(data["phone"]))
+    if data.get("email") and "@" not in str(data["email"]):
+        data["email"] = ""
+
+    for exp_field in ("total_experience", "pega_experience", "cdh_exp"):
+        if data.get(exp_field) not in (None, ""):
+            try:
+                match = re.search(r"\d+(\.\d+)?", str(data[exp_field]))
+                # Unreadable text such as "six years" is "unknown", not "0 years" (0 would read as a fresher).
+                data[exp_field] = float(match.group()) if match else None
+            except Exception:
+                data[exp_field] = None
+
+    for num_field in ("notice_period", "availability_in_days"):
+        if data.get(num_field) not in (None, ""):
+            np_str = str(data[num_field]).lower()
+            if "immediate" in np_str:
+                data[num_field] = 0
+            else:
+                try:
+                    match = re.search(r"\d+(\.\d+)?", np_str)
+                    val = float(match.group()) if match else ""
+                    if match and "month" in np_str:
+                        val = val * 30
+                    data[num_field] = int(round(val)) if match else ""
+                except Exception:
+                    data[num_field] = ""
+
+    for key in ("skills", "certifications", "pref_locations"):  # the model sometimes returns a JSON list
+        if isinstance(data.get(key), list):
+            data[key] = ", ".join(str(item).strip() for item in data[key] if str(item).strip())
+    for key in ("current_location", "pref_locations"):
+        if data.get(key):
+            data[key] = ", ".join(normalize_location(part) for part in str(data[key]).split(",") if part.strip())
+    return data
+
+
+_RESUME_WORDS = ("experience", "education", "skills", "projects", "summary", "objective", "certification", "employment",
+                 "curriculum vitae", "resume", "responsibilities", "profile", "qualification")
+_NOT_RESUME_FILENAME = ("invoice", "receipt", "visa", "i797", "i-797", "passport", "payslip", "bill", "statement",
+                        "ticket", "boarding", "offer_letter", "offer letter", "certificate_of")
+
+
+def looks_like_resume(filename: str, text: str) -> tuple[bool, str]:
+    """Cheap gate so invoices, visa papers, receipts... are not imported as candidates."""
+    name = (filename or "").lower()
+    for token in _NOT_RESUME_FILENAME:
+        if token in name:
+            return False, f"File name suggests this is not a resume ('{token}')"
+    body = (text or "").lower()
+    if len(body.strip()) < 200:
+        return True, ""  # scanned / image-only resumes have almost no text: do not reject them here
+    hits = sum(1 for word in _RESUME_WORDS if word in body)
+    if hits < 2:
+        return False, "The document has no resume sections (experience / education / skills)"
+    return True, ""
 
 
 # ── Core resume ingestion (main.py original lines 1805-2090) ──────────────
@@ -450,6 +608,7 @@ def process_resume_logic(
     docs = None
     text = ""
     candidate_id = None
+    ai_fallback = False
     try:
         _, llm = get_models()
 
@@ -460,6 +619,16 @@ def process_resume_logic(
             loader = Docx2txtLoader(path)
         docs = loader.load()
         text = "\n".join([d.page_content for d in docs])
+
+        if not text.strip():
+            # Image-only (scanned) file: an empty prompt only wastes tokens and yields an empty or invented
+            # profile. Fail it visibly so a person can handle it.
+            raise ValueError("The document has no readable text (it may be a scanned image) - needs OCR or manual entry")
+
+        if username == "email_worker":
+            is_resume, why = looks_like_resume(safe_name, text)
+            if not is_resume:
+                raise NotAResumeError(why)
 
         # Fetch custom columns for the prompt.
         with session_scope() as session:
@@ -476,42 +645,69 @@ def process_resume_logic(
                     desc_str += f" ({desc})"
                 custom_fields_str += f',\n  "{col_key}": "<{desc_str}>"'
 
-        combined_text = text[:7000]
+        combined_text = text[:EXTRACTION_TEXT_LIMIT]
         if email_message:
             combined_text += f"\n\n=== EMAIL MESSAGE BODY ===\n{email_message}\n=========================="
 
-        prompt_str = EXTRACT_PROMPT.format(text=combined_text, custom_fields=custom_fields_str)
+        # Rules first: read what regular expressions can read. The AI is then asked ONLY for the fields
+        # that are still missing (shorter prompt, fewer tokens), and never overrides a rules-read value.
+        rules_found = extract_by_rules(combined_text)
+        if email_message:  # the e-mail is more recent than the resume for these three
+            from_mail = extract_by_rules(email_message)
+            rules_found.update({k: from_mail[k] for k in ("ctc", "expected_ctc", "notice_period") if k in from_mail})
+        custom_keys = [c[0] for c in custom_cols]
+        prompt_str = build_gap_prompt(combined_text, rules_found, custom_fields_str, custom_keys)
 
         # Retry mechanism for rate limits (was a hand-rolled loop at main.py
         # original lines 1841-1852: max_retries=5, sleep 20 + attempt*10,
         # retryable on "429" or "rate").
-        resp = retry_with_backoff(
-            lambda: llm.invoke([HumanMessage(content=prompt_str)]),
-            max_retries=5,
-            base_delay=20,
-            delay_increment=10,
-            retryable_markers=("429", "rate"),
-            raise_on_exhaustion=True,
-        )
+        try:
+            if prompt_str is None:  # nothing left for the AI to fill
+                ai_data = {}
+            else:
+                resp = retry_with_backoff(
+                    lambda: llm.invoke([HumanMessage(content=prompt_str)]),
+                    max_retries=5,
+                    base_delay=20,
+                    delay_increment=10,
+                    retryable_markers=("429", "rate"),
+                    raise_on_exhaustion=True,
+                )
 
-        if resp is None:
-            raise Exception("Failed to get response from AI model")
+                if resp is None:
+                    raise Exception("Failed to get response from AI model")
 
-        # JSON extraction (was fence-stripping + bracket-slicing at main.py
-        # original lines 1859-1867).
-        data = parse_llm_json(resp.content, bracket="{")
+                # JSON extraction (was fence-stripping + bracket-slicing at main.py
+                # original lines 1859-1867).
+                ai_data = parse_llm_json(resp.content, bracket="{")
+        except Exception as ai_err:
+            # Mailbox imports (username "email_worker") keep the old behaviour: fail, release the mail and
+            # retry later, so the profile is filled properly. A person who uploaded a file gets a candidate
+            # built from the rules-read fields instead of a failed row (it lands in "review"; the
+            # "populate missing fields" repair fills the rest once the AI is available).
+            rate_limited = "429" in str(ai_err) or "rate limit" in str(ai_err).lower()
+            if username == "email_worker" or not rate_limited or not (rules_found.get("email") or rules_found.get("phone")):
+                raise
+            logger.warning(f"AI rate-limited for {safe_name}; creating the candidate from rules-read fields only")
+            ai_data = {}
+            ai_fallback = True
 
         # Safeguard against LLM placeholder hallucinations (e.g. John Doe).
         placeholder_names = {"john doe", "john doe's", "jane doe", "candidate name", "name of the candidate", "placeholder"}
-        extracted_name = str(data.get("full_name", "")).strip()
-        if not extracted_name or extracted_name.lower() in placeholder_names:
-            data["full_name"] = ""
-
+        extracted_name = str(ai_data.get("full_name", "")).strip()
         if extracted_name.lower() in placeholder_names:
+            ai_data["full_name"] = ""
             for field in ["email", "phone", "linkedin", "current_location", "pref_locations"]:
-                val = str(data.get(field, "")).lower()
+                val = str(ai_data.get(field, "")).lower()
                 if "example.com" in val or "johndoe" in val or "123456" in val or "new york" in val:
-                    data[field] = ""
+                    ai_data[field] = ""
+
+        # Rules-read values win; the AI supplies only what is still empty.
+        data = dict(rules_found)
+        filled_by_ai = fill_gaps(data, ai_data)
+        data.setdefault("full_name", "")
+        data.setdefault("source", "Resume Upload")
+        logger.info(f"{safe_name}: read by rules: {', '.join(sorted(rules_found)) or '-'}; filled by AI: {', '.join(filled_by_ai) or '-'}")
 
         if username == "email_worker":
             data["source"] = "uploaded from mail"
@@ -520,42 +716,8 @@ def process_resume_logic(
         if sender_email:
             data["sender_email"] = sender_email
 
-        # -- Start Data Validation & Normalization --
+        normalize_extracted(data)
 
-        # Phone: Keep only digits and +.
-        if "phone" in data and data["phone"]:
-            data["phone"] = re.sub(r"[^\d+]", "", str(data["phone"]))
-
-        # Email: Basic validation.
-        if "email" in data and data["email"]:
-            if "@" not in str(data["email"]):
-                data["email"] = ""
-
-        # Experience: Force float.
-        for exp_field in ["total_experience", "pega_experience", "cdh_exp"]:
-            if exp_field in data and data[exp_field] not in [None, ""]:
-                try:
-                    match = re.search(r"\d+(\.\d+)?", str(data[exp_field]))
-                    data[exp_field] = float(match.group()) if match else 0.0
-                except Exception:
-                    data[exp_field] = 0.0
-
-        # Integer fields.
-        for num_field in ["notice_period", "availability_in_days"]:
-            if num_field in data and data[num_field] not in [None, ""]:
-                np_str = str(data[num_field]).lower()
-                if "immediate" in np_str:
-                    data[num_field] = 0
-                else:
-                    try:
-                        match = re.search(r"\d+", np_str)
-                        val = int(match.group()) if match else ""
-                        if match and "month" in np_str:
-                            val = val * 30
-                        data[num_field] = val
-                    except Exception:
-                        data[num_field] = ""
-        # -- End Data Validation & Normalization --
 
         # Attach to an existing candidate with the same filename (excluding the placeholder).
         external_url = file_url
@@ -634,6 +796,15 @@ def process_resume_logic(
                 else:
                     candidate_id = candidates.insert(data)
 
+    except NotAResumeError as not_resume:
+        logger.info(f"{safe_name} is not a resume ({not_resume}) - not importing it")
+        if placeholder_id:
+            try:
+                with session_scope() as session:
+                    CandidateRepository(session).delete(placeholder_id)
+            except Exception as db_err:
+                logger.error(f"Could not remove placeholder for non-resume {safe_name}: {db_err}")
+        return
     except Exception as e:
         import traceback
 
@@ -666,7 +837,7 @@ def process_resume_logic(
     # (original main.py line 2085; `match_candidate_to_all_jobs` now lives
     # in `app.services.matching`, imported above). No try/except here,
     # matching the original's behavior of letting a match failure propagate.
-    if candidate_id and is_approved == 1:
+    if candidate_id and is_approved == 1 and not ai_fallback:  # no more AI calls while rate-limited
         match_candidate_to_all_jobs(candidate_id)
         # Pre-format resume in background to avoid on-the-fly LLM latency.
         try:
@@ -697,9 +868,166 @@ def process_resume(
     try:
         with _processing_lock:
             process_resume_logic(safe_name, path, is_approved, username, email_message, sender_email, file_url, placeholder_id)
+        if placeholder_id:
+            try:
+                with session_scope() as session:
+                    repo = CandidateRepository(session)
+                    row = repo.get_row(placeholder_id)
+                    if row:
+                        repo.update(placeholder_id, {"record_state": derive_state(row)})
+            except Exception as exc:
+                logger.error(f"Could not set record state for candidate {placeholder_id}: {exc}")
     finally:
         try:
             if os.path.exists(path):
                 os.remove(path)
         except Exception:
             pass
+
+
+# ── Re-read a stored document and fill the fields that are still empty ────
+FILLABLE_FIELDS = (
+    "full_name", "email", "phone", "total_experience", "pega_experience", "cdh_exp", "skills", "certifications",
+    "current_organization", "current_location", "pref_locations", "ctc", "expected_ctc", "notice_period", "linkedin",
+    "domain", "tier", "certification_version", "current_client",
+)
+_ZERO_MEANS_EMPTY = ("total_experience", "pega_experience", "cdh_exp")
+
+
+def _candidate_file_bytes(row: dict) -> Optional[bytes]:
+    data = row.get("file_bytes")
+    if data:
+        return data.tobytes() if isinstance(data, memoryview) else bytes(data)
+    filename, url = row.get("filename"), row.get("file_url")
+    if not (filename and url):
+        return None
+    try:
+        from app.services.storage import extract_gdrive_file_id, get_gdrive_file_bytes, get_s3_presigned_url, is_gdrive_url, is_s3_url
+
+        if is_gdrive_url(url):
+            drive_id = extract_gdrive_file_id(url)
+            return get_gdrive_file_bytes(drive_id) if drive_id else None
+        import requests
+
+        response = requests.get((get_s3_presigned_url(filename) if is_s3_url(url) else None) or url, timeout=15)
+        return response.content if response.status_code == 200 else None
+    except Exception as exc:
+        logger.warning(f"Could not fetch stored file for candidate {row.get('id')}: {exc}")
+        return None
+
+
+def _is_empty(field: str, value) -> bool:
+    if value is None or str(value).strip() == "":
+        return True
+    if field in _ZERO_MEANS_EMPTY:
+        try:
+            return float(value) == 0
+        except (TypeError, ValueError):
+            return True
+    return False
+
+
+def populate_missing_fields(candidate_id: int) -> dict:
+    """Read the candidate's document again and fill ONLY fields that are empty (never overwrites edits).
+
+    Returns ``{"status": ..., "filled": [...]}`` with status ``ok`` / ``no_file`` / ``no_text`` / ``not_resume`` /
+    ``missing``. Raises :class:`ExtractionRateLimited` when the AI provider says to slow down.
+    """
+    import tempfile
+
+    from app.services.completeness import derive_state
+
+    with session_scope() as session:
+        row = CandidateRepository(session).get_row(candidate_id)
+    if not row:
+        return {"status": "missing", "filled": []}
+    data = _candidate_file_bytes(row)
+    if not data:
+        return {"status": "no_file", "filled": []}
+
+    suffix = os.path.splitext(row.get("filename") or "")[1].lower() or ".pdf"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as handle:
+        handle.write(data)
+        path = handle.name
+    try:
+        loader = SafePyMuPDFLoader(path) if suffix == ".pdf" else Docx2txtLoader(path)
+        text = "\n".join(doc.page_content for doc in loader.load())
+    except Exception as exc:
+        logger.warning(f"Could not read document for candidate {candidate_id}: {exc}")
+        text = ""
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+    if len(text.strip()) < 80:
+        return {"status": "no_text", "filled": []}  # scanned / image-only
+    is_resume, _why = looks_like_resume(row.get("filename") or "", text)
+    if not is_resume:
+        return {"status": "not_resume", "filled": []}
+
+    combined = text[:EXTRACTION_TEXT_LIMIT]
+    if row.get("email_message"):
+        combined += f"\n\n=== EMAIL MESSAGE BODY ===\n{str(row['email_message'])[:3000]}\n=========================="
+    _, llm = get_models()
+    prompt = EXTRACT_PROMPT.format(text=combined, custom_fields="")
+    try:
+        response = retry_with_backoff(
+            lambda: llm.invoke([HumanMessage(content=prompt)]),
+            max_retries=3, base_delay=5, retryable_markers=("429", "rate"), raise_on_exhaustion=True,
+        )
+    except Exception as exc:
+        if "429" in str(exc) or "rate" in str(exc).lower():
+            raise ExtractionRateLimited(str(exc)) from exc
+        raise
+    extracted = normalize_extracted(parse_llm_json(response.content, bracket="{"))
+
+    updates: dict = {}
+    for field in FILLABLE_FIELDS:
+        new, old = extracted.get(field), row.get(field)
+        if _is_empty(field, new):
+            continue
+        if field == "notice_period":
+            if old is None or str(old).strip() == "":
+                updates[field] = new
+        elif _is_empty(field, old):
+            updates[field] = new
+    # "hyd" typed in an e-mail beats nothing, but the resume's full city name is better
+    location = row.get("current_location")
+    if location and not updates.get("current_location"):
+        expanded = normalize_location(location)
+        if expanded != location:
+            updates["current_location"] = expanded
+    if updates:
+        with session_scope() as session:
+            repo = CandidateRepository(session)
+            repo.update(candidate_id, updates)
+            repo.update(candidate_id, {"record_state": derive_state({**row, **updates})})
+    return {"status": "ok", "filled": sorted(updates)}
+
+
+def candidates_to_populate(limit: int = 25) -> list[int]:
+    """Candidates with a stored document and at least one empty core field, oldest first."""
+    from sqlalchemy import select as sa_select
+
+    from app.models import Candidate
+    from app.services.completeness import missing_fields
+
+    with session_scope() as session:
+        rows = session.execute(
+            sa_select(Candidate).where(
+                (Candidate.file_bytes.is_not(None)) | (Candidate.file_url.is_not(None)),
+                Candidate.origin.in_(("mail", "resume")),
+                Candidate.candidate_status != "Error",
+            ).order_by(Candidate.id)
+        ).scalars().all()
+        wanted = []
+        for candidate in rows:
+            record = {c.name: getattr(candidate, c.name) for c in candidate.__table__.columns if c.name != "file_bytes"}
+            missing = [m for m in missing_fields(record) if m not in ("Name",)]
+            if missing and (record.get("record_state") or "active") != "failed":
+                wanted.append(candidate.id)
+            if len(wanted) >= limit:
+                break
+    return wanted

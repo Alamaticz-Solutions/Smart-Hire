@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import axios from 'axios'
-import { LayoutDashboard, Upload, MessageSquare, LogOut, Sun, Moon, Monitor, Briefcase, Shield, Users, Download, Activity, X, Link, FileText, AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, Menu } from 'lucide-react'
+import { LayoutDashboard, Upload, MessageSquare, LogOut, Sun, Moon, Monitor, Briefcase, Shield, Users, Download, Activity, X, Link, FileText, Mail, FileSpreadsheet, MessagesSquare, AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, Menu } from 'lucide-react'
 import alamaticzMark from '../assets/alamaticz-mark.png'
 import { useModalA11y } from '../hooks/useModalA11y'
 import { usePageTitle } from '../hooks/usePageTitle'
@@ -22,6 +22,9 @@ const PAGE_META = {
     '/': { title: 'Dashboard', subtitle: 'Overview of your recruiting pipeline and candidate insights.' },
     '/jobs': { title: 'Jobs', subtitle: 'Track open roles and their candidate funnel status.' },
     '/upload': { title: 'Candidates', subtitle: 'Upload resumes and manage your candidate database.' },
+    '/mail': { title: 'Mail Inbox', subtitle: 'Every mail pulled from Outlook: when it arrived and what happened to it.' },
+    '/conversations': { title: 'Conversations', subtitle: 'What people asked by e-mail, the AI reply, and what was sent.' },
+    '/imports': { title: 'Excel Imports', subtitle: 'Every uploaded spreadsheet and the result of each row.' },
     '/chat': { title: 'Assistant', subtitle: 'Ask questions about your candidates in natural language.' },
     '/connect': { title: 'Integrations', subtitle: 'Connect mailboxes and Drive storage.' },
     '/templates': { title: 'Email Templates', subtitle: 'Draft automated email responses sent to candidates.' },
@@ -126,6 +129,9 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
             })
             .catch(err => {
                 console.error("Failed to check user status", err);
+                // The server no longer recognises this login (expired, or issued by a different server
+                // session): sign out so the person sees the login page, not an empty dashboard.
+                if (err.response?.status === 401) onLogout();
             });
     }, []);
 
@@ -166,6 +172,11 @@ export default function Layout({ user, onLogout, theme, resolvedTheme, setTheme,
             { to: '/', label: PAGE_TITLES['/'], Icon: LayoutDashboard },
             ...((user?.is_hr === 1 || user?.is_admin === 1) ? [{ to: '/jobs', label: PAGE_TITLES['/jobs'], Icon: Briefcase }] : []),
             { to: '/upload', label: PAGE_TITLES['/upload'], Icon: Users },
+            ...((user?.is_hr === 1 || user?.is_admin === 1) ? [
+                { to: '/mail', label: PAGE_TITLES['/mail'], Icon: Mail },
+                { to: '/imports', label: PAGE_TITLES['/imports'], Icon: FileSpreadsheet },
+                { to: '/conversations', label: PAGE_TITLES['/conversations'], Icon: MessagesSquare },
+            ] : []),
             { to: '/chat', label: PAGE_TITLES['/chat'], Icon: MessageSquare },
         ]
 

@@ -9,6 +9,7 @@ import DataTable from '../../components/shared/DataTable'
 import { useModalA11y } from '../../hooks/useModalA11y'
 import { CANDIDATE_STATUSES } from '../../utils/candidateStatus'
 import { displayCandidateName } from '../../utils/nameDisplay'
+import SourceTabs from './SourceTabs'
 
 // Extracted from UploadPage.jsx: the "Table" card — header toolbar (Filter
 // button, Columns visibility popover, Add Candidate, Add Column, Download
@@ -56,6 +57,10 @@ export default function CandidatesTable({
     activeFilterCount,
     showAddCandidate,
     setShowAddCandidate,
+    sourceView,
+    changeView,
+    summary,
+    isStaff,
     newCandidateForm,
     setNewCandidateForm,
     handleAddCandidateSubmit,
@@ -329,6 +334,20 @@ export default function CandidatesTable({
                             )}
                         </span>
                     );
+                } else if (key === 'origin') {
+                    const label = { mail: 'Email', excel: 'Excel', resume: 'Resume', manual: 'Manual' }[val] || (val ? String(val) : '—');
+                    display = <span className="status-chip" style={{ textTransform: 'none' }}>{label}</span>;
+                } else if (key === 'profile_completeness') {
+                    const pct = Number(val);
+                    const color = pct >= 80 ? '#4ade80' : pct >= 60 ? '#facc15' : '#f87171';
+                    display = Number.isFinite(pct) ? (
+                        <span title={row.missing_fields ? `Missing: ${row.missing_fields}` : 'Complete'} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ width: 46, height: 6, borderRadius: 3, background: 'var(--input-bg)', overflow: 'hidden' }}>
+                                <span style={{ display: 'block', height: '100%', width: `${pct}%`, background: color }} />
+                            </span>
+                            {pct}%
+                        </span>
+                    ) : '—';
                 } else if (key === 'mail_received_at') {
                     const received = val ? new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(String(val)) ? val : `${val}Z`) : null  // stored in UTC
                     display = received && !isNaN(received) ? received.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '—';
@@ -405,7 +424,7 @@ export default function CandidatesTable({
     )
 
     return (
-        <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, width: '100%', minHeight: 0 }}>
+        <div className="card" style={{ flex: '1 0 auto', display: 'flex', flexDirection: 'column', minWidth: 0, width: '100%' }}>
             {/* Was six btn-secondary buttons, three recolored ad hoc (Filter/Add
                 Candidate in sky, Add Column in gold) with no primary action and
                 two fontWeight:900 "+" glyphs standing in for an icon - the
@@ -477,10 +496,12 @@ export default function CandidatesTable({
                 </div>
             </div>
 
+            <SourceTabs view={sourceView} onChange={changeView} summary={summary} isStaff={isStaff} />
+
             {candidates.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-dim)' }}>
                     <FileText size={40} style={{ marginBottom: 12, opacity: 0.4 }} />
-                    <p>No candidates yet. Upload resumes to get started.</p>
+                    <p>{sourceView === 'all' ? 'No candidates yet. Upload resumes to get started.' : 'Nothing here for this filter.'}</p>
                 </div>
             ) : (
                 <>
@@ -593,7 +614,7 @@ export default function CandidatesTable({
                             just echoed the label above the field ("Enter Total Exp") were dropped -
                             the label already says that; only full_name stays required up front. */}
                         <div style={{ overflowY: 'auto', flex: 1, paddingRight: 5, display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '15px 20px', marginBottom: 15, alignContent: 'start' }}>
-                            {cols.filter(c => c.key !== '_actions' && c.key !== 'source').map(c => (
+                            {cols.filter(c => !['_actions', 'source', 'mail_received_at', 'origin', 'profile_completeness'].includes(c.key)).map(c => (
                                 <div key={c.key} style={c.key === 'full_name' ? { gridColumn: '1 / -1' } : undefined}>
                                     <label style={{ display: 'block', marginBottom: 5, fontSize: '0.8rem', color: 'var(--text-dim)', fontWeight: 500 }}>
                                         {c.label} {c.key === 'full_name' ? '*' : ''}

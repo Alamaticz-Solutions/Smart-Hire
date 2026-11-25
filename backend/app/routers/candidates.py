@@ -16,6 +16,8 @@ from app.core.responses import EnvelopeRoute
 from app.db.engine import get_session
 from app.dependencies import assert_owns_or_admin, require_approved_user
 from app.models import MATCH_RELATED_FIELDS
+from app.services.completeness import completeness_percent, derive_state, missing_fields
+from app.services.resume_processing import ExtractionRateLimited, candidates_to_populate, populate_missing_fields
 from app.repositories import (
     ActivityRepository,
     CandidateRepository,
@@ -52,7 +54,9 @@ BASE_COLUMNS = [
     {"col_key": "full_name", "col_label": "Name"},
     {"col_key": "candidate_status", "col_label": "Candidate Status"},
     {"col_key": "source", "col_label": "Source"},
+    {"col_key": "origin", "col_label": "Origin"},
     {"col_key": "mail_received_at", "col_label": "Mail Received"},
+    {"col_key": "profile_completeness", "col_label": "Profile %"},
     {"col_key": "total_experience", "col_label": "Total Exp"},
     {"col_key": "pega_experience", "col_label": "Pega Exp"},
     {"col_key": "cdh_exp", "col_label": "CDH Exp"},
@@ -158,6 +162,8 @@ def list_candidates(
     request: Request,
     limit: Optional[int] = None,
     offset: int = 0,
+    origin: Optional[str] = None,
+    state: Optional[str] = None,
     session: Session = Depends(get_session),
 ):
     username = request.headers.get("x-user-username")
@@ -177,7 +183,10 @@ def list_candidates(
 
     owner = None if (is_admin_role or staff or not username) else username
     candidates = CandidateRepository(session)
-    rows = candidates.list_rows(owner, limit=limit, offset=offset)
+    rows = candidates.list_rows(owner, limit=limit, offset=offset, origin=origin, state=state)
+    for row in rows:
+        row["profile_completeness"] = completeness_percent(row)
+        row["missing_fields"] = ", ".join(missing_fields(row))
 
     for row in rows:
         row.pop("file_bytes", None)
@@ -193,18 +202,88 @@ def list_candidates(
     rows = apply_user_hidden_fields(rows, username)
 
     if limit is not None:
-        return {"items": rows, "total": candidates.count(owner)}
+        return {"items": rows, "total": candidates.count(owner, origin, state)}
     return rows
+
+
+@router.get("/api/candidates/{candidate_id}/resume-preview")
+def resume_preview(candidate_id: int, request: Request, token: Optional[str] = None, session: Session = Depends(get_session)):
+    """The candidate's stored resume, ready to show in an <iframe> inside the profile.
+
+    PDFs and images are returned as they are, Word files are rendered to HTML, other types get a short
+    explanation. A browser iframe cannot send headers, so the session token may come as ``?token=``
+    (same rule as ``/static``).
+    """
+    from fastapi.responses import RedirectResponse, Response
+
+    from app.repositories import JobRepository
+    from app.services import resume_preview as previews
+    from app.services.session_tokens import verify_session_token
+
+    username = request.headers.get("x-user-username") or (verify_session_token(token) if token else None)
+    if not username or not is_user_approved(username):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    row = _get_candidate_or_404(session, candidate_id)
+    info = get_user_info(username) or {}
+    privileged = info.get("is_admin") == 1 or info.get("role") == "admin" or is_admin_or_hr(username)
+    if not privileged and (row.get("created_by") or "").lower() != username.lower():
+        if not JobRepository(session).candidate_shared_with(candidate_id, username):
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+    filename = row.get("filename") or ""
+    data = row.get("file_bytes")
+    if isinstance(data, memoryview):
+        data = data.tobytes()
+    file_url = row.get("file_url")
+    if not data and file_url:
+        from app.services.storage import (
+            extract_gdrive_file_id, get_gdrive_file_bytes, get_s3_presigned_url, is_gdrive_url, is_s3_url,
+        )
+
+        if is_gdrive_url(file_url):
+            drive_id = extract_gdrive_file_id(file_url)
+            data = get_gdrive_file_bytes(drive_id) if drive_id else None
+        elif is_s3_url(file_url):
+            signed = get_s3_presigned_url(filename)
+            if signed:
+                return RedirectResponse(url=signed)
+        else:
+            return RedirectResponse(url=file_url)
+    if not data:
+        return Response(
+            content=previews.message_page("No resume on file", "This candidate has no resume document (for example an Excel row, a manual entry, or an e-mail without an attachment).").encode("utf-8"),
+            media_type="text/html; charset=utf-8", status_code=404,
+        )
+    body, media_type = previews.preview_for(filename, data)
+    headers = {"Content-Disposition": "inline"}
+    if media_type.startswith("text/html"):
+        headers["Content-Security-Policy"] = "sandbox"  # a rendered document must never run scripts
+    return Response(content=body, media_type=media_type, headers=headers)
+
+
+@router.get("/api/candidates/summary")
+def candidates_summary(request: Request, session: Session = Depends(get_session)):
+    """Counts for the source filter buttons (All / Emails / Excel / Resumes / Manual) and the review / failed tabs."""
+    username = request.headers.get("x-user-username")
+    info = get_user_info(username) if username else None
+    if info and info["is_external"] == 1:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if not is_user_approved(username):
+        return {"usable": 0, "by_origin": {}, "by_state": {}}
+    staff = bool(info) and (info["is_admin"] == 1 or info["is_hr"] == 1 or info["role"] == "admin")
+    return CandidateRepository(session).summary(None if (staff or not username) else username)
 
 
 @router.post("/api/candidates")
 def add_candidate_manually(body: dict, username: str = Depends(require_approved_user), session: Session = Depends(get_session)):
     candidates = CandidateRepository(session)
-    valid = candidates.column_names - {"id", "timestamp"}
+    valid = candidates.column_names - {"id", "timestamp", "mail_received_at"}  # system-set columns
     record = {k: v for k, v in body.items() if k in valid}
     record["source"] = record.get("source") or "Manual Entry"
     record["candidate_status"] = record.get("candidate_status") or "New"
     record["created_by"] = username or "admin"
+    record["origin"] = "manual"
+    record["record_state"] = derive_state({**record, "candidate_status": record["candidate_status"]})
 
     if not record.get("full_name"):
         raise HTTPException(status_code=400, detail="Candidate Name is required")
@@ -224,6 +303,8 @@ async def update_candidate(
     session: Session = Depends(get_session),
 ):
     body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Formatted resume must be a JSON object")
     row = _get_candidate_or_404(session, candidate_id)
     assert_owns_or_admin(row.get("created_by"), username)
 
@@ -238,6 +319,8 @@ async def update_candidate(
 
     candidates = CandidateRepository(session)
     candidates.update(candidate_id, updates)
+    # Edited data changes how complete the profile is.
+    candidates.update(candidate_id, {"record_state": derive_state(candidates.get_row(candidate_id) or {})})
     ActivityRepository(session).add(
         username or "unknown", f"updated candidate '{candidates.get_name(candidate_id)}' details"
     )
@@ -292,6 +375,60 @@ def retry_candidate_processing(
     return {"status": "retrying"}
 
 
+@router.post("/api/candidates/populate-missing")
+def populate_missing_for_many(
+    request: Request, background_tasks: BackgroundTasks, limit: int = 25, session: Session = Depends(get_session),
+):
+    """Re-read stored documents for candidates with empty fields (slowly, in the background)."""
+    username = request.headers.get("x-user-username")
+    if not is_admin_or_hr(username):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    ids = candidates_to_populate(max(1, min(limit, 100)))
+    ActivityRepository(session).add(username, f"started re-reading documents for {len(ids)} candidate(s)")
+    session.commit()
+    background_tasks.add_task(_populate_many, ids)
+    return {"queued": len(ids)}
+
+
+def _populate_many(candidate_ids: list[int]) -> None:
+    """One at a time with a short pause; stops at the first AI rate limit."""
+    import time
+
+    for candidate_id in candidate_ids:
+        try:
+            result = populate_missing_fields(candidate_id)
+            logger.info("Re-read candidate %s: %s %s", candidate_id, result["status"], result["filled"])
+        except ExtractionRateLimited:
+            logger.warning("AI rate limit hit while re-reading documents - stopping this run")
+            return
+        except Exception as exc:
+            logger.error("Could not re-read candidate %s: %s", candidate_id, exc)
+        time.sleep(2.0)
+
+
+@router.post("/api/candidates/{candidate_id}/re-extract")
+def re_extract_candidate(
+    candidate_id: int, username: str = Depends(require_approved_user), session: Session = Depends(get_session),
+):
+    """Read this candidate's document again and fill the empty fields."""
+    row = _get_candidate_or_404(session, candidate_id)
+    assert_owns_or_admin(row.get("created_by"), username)
+    session.commit()  # release the transaction while the AI call runs
+    try:
+        result = populate_missing_fields(candidate_id)
+    except ExtractionRateLimited:
+        raise HTTPException(status_code=503, detail="The AI service is busy or rate-limited. Please try again in a few minutes.")
+    messages = {
+        "no_file": "This candidate has no stored document to read (e.g. imported from Excel).",
+        "no_text": "The document has no readable text (it may be a scanned image).",
+        "not_resume": "The document does not look like a resume.",
+        "missing": "Candidate not found.",
+    }
+    if result["status"] != "ok":
+        raise HTTPException(status_code=400, detail=messages.get(result["status"], "Could not read the document."))
+    return {"status": "ok", "filled": result["filled"]}
+
+
 @router.post("/api/candidates/bulk-delete")
 def bulk_delete_candidates(
     req: BulkDeleteRequest, username: str = Depends(require_approved_user), session: Session = Depends(get_session)
@@ -327,10 +464,13 @@ def get_candidate_jobs(
 
 @router.get("/api/candidates/{candidate_id}/formatted-resume")
 def get_formatted_resume_data(
-    candidate_id: int, username: str = Depends(require_approved_user), session: Session = Depends(get_session)
+    candidate_id: int, refresh: bool = False, username: str = Depends(require_approved_user), session: Session = Depends(get_session)
 ):
     candidate = _get_candidate_or_404(session, candidate_id)
     assert_owns_or_admin(candidate.get("created_by"), username)
+    if refresh:  # "Regenerate": drop the saved version (including hand edits) and build it again
+        candidate["formatted_json"] = None
+        CandidateRepository(session).set_formatted_json(candidate_id, None)
     session.commit()  # release the transaction: formatting may call the LLM for seconds
     return format_candidate_resume(candidate, candidate_id)
 
@@ -343,10 +483,13 @@ async def update_formatted_resume_data(
     session: Session = Depends(get_session),
 ):
     body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Formatted resume must be a JSON object")
     row = _get_candidate_or_404(session, candidate_id)
     assert_owns_or_admin(row.get("created_by"), username)
 
     candidates = CandidateRepository(session)
+    body["_edited"] = True  # a hand-edited resume is never regenerated over
     candidates.set_formatted_json(candidate_id, json.dumps(body))
     ActivityRepository(session).add(
         username or "unknown", f"updated formatted resume for candidate '{candidates.get_name(candidate_id)}'"

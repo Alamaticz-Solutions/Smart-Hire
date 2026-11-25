@@ -8,6 +8,7 @@ import apiClient from '../api/client'
 import { useToast } from '../hooks/useToast'
 import ToastHost from '../components/shared/ToastHost'
 import { SkeletonKPIRow, SkeletonBlock } from '../components/shared/Skeleton'
+import DashboardInsights from '../components/DashboardInsights'
 
 // Reads resolved CSS custom property values via getComputedStyle rather than
 // handing Recharts literal 'var(--x)' strings - SVG presentation attributes
@@ -213,6 +214,8 @@ export default function DashboardPage() {
                     </div>
                 </div>
             ) : (
+                <>
+                <DashboardInsights isStaff={user?.is_admin === 1 || user?.is_hr === 1} />
                 <div className="charts-grid dashboard-charts-grid" style={{ alignItems: 'stretch' }}>
                     <div className="card">
                         <div className="card-title"><BarChart3 size={16} /> Pipeline by Stage</div>
@@ -268,6 +271,7 @@ export default function DashboardPage() {
                         </div>
                     </div>
                 </div>
+                </>
             )}
 
             <ToastHost toast={toast} onDismiss={dismissToast} onPause={pauseToast} onResume={resumeToast} />

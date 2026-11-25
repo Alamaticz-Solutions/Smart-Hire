@@ -6,6 +6,7 @@ authentication at all).
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core import config
 from app.core.logging import get_logger
 from app.core.responses import EnvelopeRoute
 from app.db.engine import get_session
@@ -26,6 +27,8 @@ router = APIRouter(route_class=EnvelopeRoute)
 
 @router.post("/api/reset")
 def reset_all(username: str = Depends(require_approved_user), session: Session = Depends(get_session)):
+    if not config.ALLOW_DATA_RESET:
+        raise HTTPException(status_code=403, detail="Data reset is disabled on this server (set ALLOW_DATA_RESET=true to enable).")
     if not is_admin_or_hr(username):
         raise HTTPException(status_code=403, detail="Only admins can reset all data")
 

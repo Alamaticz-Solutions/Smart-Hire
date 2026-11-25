@@ -665,6 +665,17 @@ body,
   }
 }
 
+/* Phones: the title + accent picker + theme switch + user menu are wider than the
+   screen, which pushed the user menu (profile / sign out) off-screen. Let the bar
+   wrap onto a second row instead of clipping it. */
+@media (max-width: 680px) {
+  .topbar {
+    flex-wrap: wrap;
+    padding: 12px 14px;
+    row-gap: 10px;
+  }
+}
+
 /* AdminPage (and, inline, ConnectPage/TemplatesPage) used
    className="page-container"/"page-header"/"page-title"/"page-subtitle"
    or equivalent ad hoc inline styles for their page heading - none of

@@ -47,7 +47,7 @@ export default function UploadDropzone({
                     <UploadCloud size={36} className="icon" style={{ color: isDragActive ? 'var(--action)' : 'var(--text-muted)' }} />
                 </div>
                 <div className="dropzone-text" style={{ color: 'var(--text-dim)' }}>
-                    {isDragActive ? <strong>Drop here…</strong> : <><strong>Drag & drop</strong> PDF / DOCX resumes or XLSX/XLS/CSV sheets, or click to browse</>}
+                    {isDragActive ? <strong>Drop here…</strong> : <><strong>Drag & drop</strong> PDF / DOCX resumes or XLSX/CSV sheets, or click to browse</>}
                 </div>
             </div>
             {progress.length > 0 && (

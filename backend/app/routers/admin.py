@@ -260,6 +260,8 @@ def update_user_permissions(
 ):
     _require_admin(request)
     user = UserRepository(session).get_by_id(user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
     if user is not None:
         is_external = body.is_external if body.is_external is not None else 0
         is_hr, is_admin = body.is_hr, body.is_admin
@@ -270,6 +272,8 @@ def update_user_permissions(
         user.hidden_fields = body.hidden_fields if body.hidden_fields is not None else ""
         if body.is_approved is not None:
             user.is_approved = body.is_approved
+            if body.is_approved:
+                ChangeRequestRepository(session).resolve_pending_approvals(user.username)
         invalidate_user_cache(user.username)
     return {"status": "updated"}
 

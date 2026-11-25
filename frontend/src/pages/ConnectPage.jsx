@@ -8,6 +8,14 @@ import { useConfirm } from '../hooks/useConfirm'
 import ConfirmDialog from '../components/shared/ConfirmDialog'
 import { formatApiError } from '../utils/apiError'
 
+const FAQ_PLACEHOLDER = [
+    'Company facts the AI may answer from, e.g.',
+    '- Standard notice period: 30 days',
+    '- Work mode: hybrid, Hyderabad',
+    '- Interview process: 2 technical rounds + HR',
+    "(Anything not listed here gets 'our team will get back to you'.)",
+].join('\n')
+
 export default function ConnectPage() {
     const { user } = useOutletContext()
     const [activeTab, setActiveTab] = useState('mail') // 'mail' | 'drive'
@@ -48,7 +56,11 @@ export default function ConnectPage() {
         auto_reply_enabled: 0,
         mail_import_from: '',
         mail_import_to: '',
-        skip_automated_senders: 1
+        skip_automated_senders: 1,
+        reply_max_age_days: 7,
+        ai_answers_mode: 'draft',
+        company_faq: '',
+        skip_if_emailed_days: 180
     })
     const [replyLog, setReplyLog] = useState({ counts: { pending: 0, sent: 0, skipped: 0, failed: 0 }, recent: [], failed: [] })
 
@@ -503,8 +515,43 @@ export default function ConnectPage() {
                                 </label>
                             </div>
 
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+                                <label htmlFor="reply-max-age" style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>Only reply to mail received in the last</label>
+                                <input
+                                    id="reply-max-age"
+                                    type="number" min="0" max="365"
+                                    value={integrationsSettings.reply_max_age_days ?? 7}
+                                    onChange={e => setIntegrationsSettings(prev => ({ ...prev, reply_max_age_days: e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value, 10) || 0) }))}
+                                    style={{ width: 70, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)' }}
+                                />
+                                <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>days (0 = no limit). Older queued replies are skipped, never sent.</span>
+                            </div>
+
+                            <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+                                <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>AI answers to candidates' questions</div>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', margin: '2px 0 8px' }}>
+                                    When someone asks a question by e-mail, the AI drafts an answer using ONLY the company facts below. See and send them on the Conversations page.
+                                </div>
+                                <select value={integrationsSettings.ai_answers_mode || 'draft'} onChange={e => setIntegrationsSettings(prev => ({ ...prev, ai_answers_mode: e.target.value }))}
+                                    aria-label="AI answers mode" style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)' }}>
+                                    <option value="off">Off - only the normal acknowledgement</option>
+                                    <option value="draft">Draft - a person approves every AI answer (recommended)</option>
+                                    <option value="auto">Automatic - confident answers are sent when auto-reply is on</option>
+                                </select>
+                                <textarea value={integrationsSettings.company_faq || ''} onChange={e => setIntegrationsSettings(prev => ({ ...prev, company_faq: e.target.value }))}
+                                    rows={5} placeholder={FAQ_PLACEHOLDER}
+                                    style={{ width: '100%', marginTop: 8, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit' }} />
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
+                                    <label htmlFor="skip-emailed" style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>Don't send the standard acknowledgement again to anyone already e-mailed from this mailbox in the last</label>
+                                    <input id="skip-emailed" type="number" min="0" max="3650" value={integrationsSettings.skip_if_emailed_days ?? 180}
+                                        onChange={e => setIntegrationsSettings(prev => ({ ...prev, skip_if_emailed_days: e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value, 10) || 0) }))}
+                                        style={{ width: 70, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text)' }} />
+                                    <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>days (checks Sent Items; 0 = don't check)</span>
+                                </div>
+                            </div>
+
                             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
-                                {[['pending', 'Waiting'], ['sent', 'Sent'], ['skipped', 'Skipped'], ['failed', 'Failed']].map(([key, label]) => (
+                                {[['draft', 'Needs approval'], ['pending', 'Waiting'], ['sent', 'Sent'], ['skipped', 'Skipped'], ['failed', 'Failed']].map(([key, label]) => (
                                     <span key={key} style={{ padding: '4px 10px', borderRadius: 999, border: '1px solid var(--border)', fontSize: '0.75rem', color: key === 'failed' && replyLog.counts[key] > 0 ? '#fca5a5' : 'var(--text-dim)' }}>
                                         {label}: <strong>{replyLog.counts[key] ?? 0}</strong>
                                     </span>
@@ -606,7 +653,7 @@ export default function ConnectPage() {
                                                 {showSecrets.gmail_pass ? <EyeOff size={16} /> : <Eye size={16} />}
                                             </button>
                                         </div>
-                                        <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: 'var(--text-subtle)' }}>Stored encrypted. Once saved, this field shows as •••• and is never displayed again.</p>
+                                        <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: 'var(--text-subtle)' }}>{integrationsSettings.secrets_encrypted ? 'Stored encrypted.' : 'Not encrypted yet (SECRETS_KEY is not set on the server).'} Once saved, this field shows as •••• and is never displayed again.</p>
                                     </div>
                                 </div>
                             </div>
@@ -672,7 +719,7 @@ export default function ConnectPage() {
                                                 {showSecrets.ms_client_secret ? <EyeOff size={16} /> : <Eye size={16} />}
                                             </button>
                                         </div>
-                                        <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: 'var(--text-subtle)' }}>Stored encrypted. Once saved, this field shows as •••• and is never displayed again.</p>
+                                        <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: 'var(--text-subtle)' }}>{integrationsSettings.secrets_encrypted ? 'Stored encrypted.' : 'Not encrypted yet (SECRETS_KEY is not set on the server).'} Once saved, this field shows as •••• and is never displayed again.</p>
                                     </div>
                                 </div>
                             </div>
@@ -1087,7 +1134,7 @@ export default function ConnectPage() {
                                             {showSecrets.gdrive_client_secret ? <EyeOff size={16} /> : <Eye size={16} />}
                                         </button>
                                     </div>
-                                    <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: 'var(--text-subtle)' }}>Stored encrypted. Once saved, this field shows as •••• and is never displayed again.</p>
+                                    <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: 'var(--text-subtle)' }}>{integrationsSettings.secrets_encrypted ? 'Stored encrypted.' : 'Not encrypted yet (SECRETS_KEY is not set on the server).'} Once saved, this field shows as •••• and is never displayed again.</p>
                                 </div>
                             </div>
                             <div>

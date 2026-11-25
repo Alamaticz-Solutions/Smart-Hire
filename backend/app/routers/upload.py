@@ -34,7 +34,7 @@ from langchain_core.messages import HumanMessage
 from app.core.config import UPLOAD_DIR
 from app.core.logging import get_logger
 from app.db.engine import session_scope
-from app.repositories import ActivityRepository
+from app.repositories import ActivityRepository, ImportBatchRepository
 from app.dependencies import require_approved_user
 from app.services.json_parsing import parse_llm_json
 from app.services.retry import retry_with_backoff
@@ -52,7 +52,9 @@ router = APIRouter(route_class=EnvelopeRoute)
 # file could exhaust disk space or hang the parser.
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB
 ALLOWED_JD_EXTENSIONS = {".pdf", ".docx", ".doc"}
-ALLOWED_RESUME_EXTENSIONS = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".csv"}
+# ".doc" / ".xls" (legacy binary Office formats) cannot be parsed - rejecting them up front beats
+# creating a candidate that is guaranteed to end in the Error state.
+ALLOWED_RESUME_EXTENSIONS = {".pdf", ".docx", ".xlsx", ".csv"}
 
 
 def _reject_if_too_large(content: bytes) -> None:
@@ -79,9 +81,11 @@ async def upload_resume(
 
     ext = os.path.splitext((file.filename or "").lower())[1]
     if ext not in ALLOWED_RESUME_EXTENSIONS:
-        raise HTTPException(status_code=400, detail="Unsupported file type. Please upload a PDF, Word, or Excel/CSV file.")
+        raise HTTPException(status_code=400, detail="Unsupported file type. Please upload a PDF, DOCX, XLSX or CSV file (legacy .doc/.xls: save as .docx/.xlsx first).")
 
     content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="The uploaded file is empty.")
     _reject_if_too_large(content)
 
     # uuid-prefixed and basename-stripped: file.filename is client-supplied
@@ -95,7 +99,9 @@ async def upload_resume(
     ext = os.path.splitext(safe_name.lower())[1]
     if ext in [".xlsx", ".xls", ".csv"]:
         _log_activity_db(username or "unknown", f"uploaded candidate excel sheet '{safe_name}'")
-        background_tasks.add_task(process_excel_file, safe_name, path, username or "unknown")
+        with session_scope() as session:
+            batch_id = ImportBatchRepository(session).create("excel", os.path.basename(file.filename), username or "unknown").id
+        background_tasks.add_task(process_excel_file, safe_name, path, username or "unknown", batch_id)
         return {"status": "processing", "message": "Excel sheet uploaded and is processing in the background."}
     else:
         # Placeholder while processing in background
@@ -109,6 +115,7 @@ async def upload_resume(
                 "created_by": username or "unknown",
                 "file_bytes": content,
                 "file_url": None,
+                "origin": "resume",
             }
         )
 

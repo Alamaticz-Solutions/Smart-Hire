@@ -38,31 +38,16 @@ def test_graph_connection(tenant_id: str, client_id: str, client_secret: str, ma
     message from the mailbox's Inbox to confirm the token actually has
     access to it.
     """
-    import requests
+    from app.services.graph_client import GraphError, GraphSession, error_text
 
     try:
-        token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
-        data = {
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "scope": "https://graph.microsoft.com/.default",
-            "grant_type": "client_credentials"
-        }
-        token_res = requests.post(token_url, data=data)
-        token_data = token_res.json()
-        if "access_token" not in token_data:
-            return {"status": "error", "message": f"Failed to get Microsoft token: {token_data.get('error_description', 'Unknown error')}"}
-
-        access_token = token_data["access_token"]
-        headers = {"Authorization": f"Bearer {access_token}"}
-        msg_url = f"https://graph.microsoft.com/v1.0/users/{mailbox_email}/mailFolders/Inbox/messages?$top=1"
-        msg_res = requests.get(msg_url, headers=headers)
-
-        if msg_res.status_code == 200:
+        session = GraphSession(tenant_id, client_id, client_secret)
+        response = session.get(f"/users/{mailbox_email}/mailFolders/Inbox/messages?$top=1")
+        if response.status_code == 200:
             return {"status": "connected", "message": f"Successfully connected to {mailbox_email} via Microsoft Graph API!"}
-        else:
-            err = msg_res.json().get('error', {})
-            return {"status": "error", "message": f"Graph API Error: {err.get('message', 'Unknown')}"}
+        return {"status": "error", "message": f"Graph API Error: {error_text(response) or 'Unknown'}"}
+    except GraphError as exc:
+        return {"status": "error", "message": str(exc)}
     except Exception as e:
         return {"status": "error", "message": f"Graph API Connection failed: {str(e)}"}
 

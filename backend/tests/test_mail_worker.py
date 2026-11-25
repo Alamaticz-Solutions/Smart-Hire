@@ -14,7 +14,7 @@ SETTINGS_BODY = {
 }
 
 
-def _resume_email(sender: str = "candidate@example.com") -> bytes:
+def _resume_email(sender: str = "candidate@example.com", filename: str = "asha_resume.docx", body: str = "Please find my resume attached.") -> bytes:
     document = docx.Document()
     document.add_paragraph("Asha Raman - Pega Senior System Architect")
     buffer = io.BytesIO()
@@ -26,10 +26,10 @@ def _resume_email(sender: str = "candidate@example.com") -> bytes:
     message["Subject"] = "Application - Pega architect"
     message["Message-ID"] = "<unit-test-1@example.com>"
     message["Date"] = "Tue, 10 Jun 2025 09:00:00 +0000"
-    message.set_content("Please find my resume attached.")
+    message.set_content(body)
     message.add_attachment(
         buffer.getvalue(), maintype="application",
-        subtype="vnd.openxmlformats-officedocument.wordprocessingml.document", filename="asha_resume.docx",
+        subtype="vnd.openxmlformats-officedocument.wordprocessingml.document", filename=filename,
     )
     return message.as_bytes()
 
@@ -97,17 +97,18 @@ def _reset(monkeypatch):
     FakeImap.sender = "candidate@example.com"
     worker._guards.date_from = worker._guards.date_to = None
     worker._guards.skip_automated = True
+    worker._pacing.update(resumes=0, cooldown_until=0.0)
     monkeypatch.setattr(worker.smtplib, "SMTP", SmtpRecorder)
     yield
 
 
-def _run_worker(monkeypatch, sender="candidate@example.com"):
+def _run_worker(monkeypatch, sender="candidate@example.com", filename="asha_resume.docx", body="Please find my resume attached.", llm=None):
     import app.services.email_worker as worker
 
-    FakeImap.raw = _resume_email(sender)
+    FakeImap.raw = _resume_email(sender, filename, body)
     FakeImap.sender = sender
     monkeypatch.setattr(worker.imaplib, "IMAP4_SSL", FakeImap)
-    FakeChat.handler = staticmethod(lambda prompt: (
+    FakeChat.handler = llm or staticmethod(lambda prompt: (
         '{"full_name": "Asha Raman", "total_experience": 8, "email": "asha@example.com", "skills": "Pega"}'
         if "expert resume and email parser" in prompt else "[]"
     ))
@@ -138,7 +139,7 @@ def test_poller_imports_resume_and_only_queues_a_reply(client, monkeypatch):
     assert [r["full_name"] for r in rows] == ["Asha Raman"]
     assert rows[0]["source"] == "uploaded from mail"
     assert SmtpRecorder.sent == []
-    assert _replies(client)["counts"] == {"pending": 1, "sent": 0, "skipped": 0, "failed": 0}
+    assert _replies(client)["counts"] == {"draft": 0, "pending": 1, "sent": 0, "skipped": 0, "failed": 0}
 
 
 def test_nothing_is_sent_while_auto_reply_is_off(client, monkeypatch):
@@ -155,7 +156,7 @@ def test_queued_reply_is_sent_once_when_switched_on(client, monkeypatch):
     assert worker.send_pending_replies(settings) == 1
     assert worker.send_pending_replies(settings) == 0  # second pass: nothing left
     assert len(SmtpRecorder.sent) == 1
-    assert _replies(client)["counts"] == {"pending": 0, "sent": 1, "skipped": 0, "failed": 0}
+    assert _replies(client)["counts"] == {"draft": 0, "pending": 0, "sent": 1, "skipped": 0, "failed": 0}
 
 
 def test_recipient_already_answered_is_not_emailed_again(client, monkeypatch):
@@ -183,7 +184,7 @@ def test_unsendable_reply_is_retried_then_given_up(client, monkeypatch):
 def test_automated_senders_are_skipped(client, monkeypatch):
     _run_worker(monkeypatch, sender="invoice@vendor.com")
     assert _candidates(client) == []
-    assert _replies(client)["counts"] == {"pending": 0, "sent": 0, "skipped": 0, "failed": 0}
+    assert _replies(client)["counts"] == {"draft": 0, "pending": 0, "sent": 0, "skipped": 0, "failed": 0}
 
 
 def test_automated_sender_filter_can_be_turned_off(client, monkeypatch):
@@ -257,3 +258,72 @@ def test_candidate_keeps_the_date_its_mail_was_received(client, monkeypatch):
     row = _candidates(client)[0]
     assert str(row["mail_received_at"]).startswith("2025-06-10T09:00")
     assert any(c["col_key"] == "mail_received_at" for c in payload(client.get("/api/columns", headers=login(client)))["base"])
+
+
+def test_ai_rate_limit_releases_the_mail_and_pauses_imports(client, monkeypatch):
+    """A 429 used to save an Error candidate AND mark the mail processed, so it never retried."""
+    import time
+
+    import app.services.retry as retry
+    from app.db.engine import session_scope
+    from app.repositories import ProcessedEmailRepository
+
+    monkeypatch.setattr(retry.time, "sleep", lambda *_: None)
+    import app.services.email_worker as worker
+
+    def rate_limited(prompt):
+        raise RuntimeError("Error code: 429 - Rate limit reached")
+
+    _run_worker(monkeypatch)  # builds the fake mailbox; then swap in the failing LLM and run again
+    FakeChat.handler = staticmethod(rate_limited)
+    with session_scope() as session:
+        ProcessedEmailRepository(session).unmark("unit-test-1@example.com")
+    for row in _candidates(client):
+        client.delete(f"/api/candidates/{row['id']}", headers=login(client))
+    worker._pacing["cooldown_until"] = 0.0
+    worker.process_single_mailbox(
+        "careers@alamaticz.com", "secret", "imap.example.com", 993, "smtp.example.com", 587,
+        "resume,job", "professional", None, None, None,
+    )
+
+    assert _candidates(client) == []  # no junk Error candidate
+    with session_scope() as session:
+        assert not ProcessedEmailRepository(session).exists("unit-test-1@example.com")  # will retry
+    assert worker._pacing["cooldown_until"] > time.time()  # and the importer pauses
+
+
+def test_cooldown_skips_the_mailbox_entirely(client, monkeypatch):
+    import time
+
+    import app.services.email_worker as worker
+
+    worker._pacing["cooldown_until"] = time.time() + 600
+    _run_worker(monkeypatch)
+    assert _candidates(client) == []
+
+
+def test_old_queued_replies_are_skipped_not_sent(client, monkeypatch):
+    """Turning auto-reply on must not email people whose mail is weeks old."""
+    from sqlalchemy import text
+
+    from app.db.engine import session_scope
+
+    worker = _run_worker(monkeypatch)
+    with session_scope() as session:
+        session.execute(text("update mail_replies set created_at = datetime('now', '-30 days')"))
+
+    settings = _smtp_settings(auto_reply_enabled=1, reply_max_age_days=7)
+    assert worker.send_pending_replies(settings) == 0
+    assert SmtpRecorder.sent == []
+    assert _replies(client)["counts"]["skipped"] == 1
+
+
+def test_reply_age_limit_zero_means_no_limit(client, monkeypatch):
+    from sqlalchemy import text
+
+    from app.db.engine import session_scope
+
+    worker = _run_worker(monkeypatch)
+    with session_scope() as session:
+        session.execute(text("update mail_replies set created_at = datetime('now', '-30 days')"))
+    assert worker.send_pending_replies(_smtp_settings(auto_reply_enabled=1, reply_max_age_days=0)) == 1

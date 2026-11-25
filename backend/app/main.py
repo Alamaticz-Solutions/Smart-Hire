@@ -43,13 +43,13 @@ _backend_env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath
 if os.path.exists(_backend_env_path):
     load_dotenv(_backend_env_path, override=True)
 
-from app.core.config import IS_POSTGRES, PROJECT_ROOT, UPLOAD_DIR  # noqa: E402
+from app.core.config import EMAIL_WORKER_ENABLED, IS_POSTGRES, PROJECT_ROOT, UPLOAD_DIR  # noqa: E402
 from app.core.logging import get_logger  # noqa: E402
 from app.core.responses import error_response, request_id_ctx  # noqa: E402
 from app.db.init_db import init_db  # noqa: E402
 from app.db.engine import dispose_engine, session_scope  # noqa: E402
 from app.repositories import CandidateRepository, JobRepository  # noqa: E402
-from app.core.config import ENVIRONMENT, SHOW_ERROR_DETAIL  # noqa: E402
+from app.core.config import DEBUG, ENVIRONMENT, SHOW_ERROR_DETAIL  # noqa: E402
 from app.services.ai_clients import get_models  # noqa: E402
 from app.services.auth import get_user_info, is_admin_or_hr, is_user_approved  # noqa: E402
 from app.services.email_worker import poll_emails_and_process  # noqa: E402
@@ -86,7 +86,10 @@ async def lifespan(app: FastAPI):
     """Start-up: create/migrate the schema, warm the AI clients, start the mailbox poller."""
     init_db()
     threading.Thread(target=get_models, daemon=True).start()
-    threading.Thread(target=poll_emails_and_process, daemon=True).start()
+    if EMAIL_WORKER_ENABLED:
+        threading.Thread(target=poll_emails_and_process, daemon=True).start()
+    else:
+        logger.info("EMAIL_WORKER_ENABLED=false - mailbox poller not started.")
     yield
     dispose_engine()  # release pooled database connections
 
@@ -115,6 +118,27 @@ async def request_id_middleware(request: Request, call_next):
     finally:
         request_id_ctx.reset(token)
     response.headers["X-Request-ID"] = request_id
+    return response
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    path = request.url.path
+    if path.startswith("/static/") or path.endswith("/resume-preview"):
+        # Resumes are shown in an <iframe> by the frontend, which is a different origin from this API
+        # (Vite dev server, or Netlify vs Render). SAMEORIGIN would blank the preview, so these responses
+        # allow framing by the configured frontend origins only (they still need a valid session token).
+        ancestors = " ".join(["'self'", *CORS_ALLOWED_ORIGINS])
+        existing = response.headers.get("Content-Security-Policy")
+        response.headers["Content-Security-Policy"] = f"{existing}; frame-ancestors {ancestors}" if existing else f"frame-ancestors {ancestors}"
+    else:
+        response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    if not DEBUG:
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response
 
 
@@ -262,7 +286,9 @@ from app.routers import (  # noqa: E402
     auth,
     candidates,
     chat,
+    conversations,
     health,
+    inbox,
     integrations,
     jobs,
     matching,
@@ -270,7 +296,7 @@ from app.routers import (  # noqa: E402
     upload,
 )
 
-for _router_module in (health, candidates, upload, chat, matching, jobs, auth, admin, integrations, reset):
+for _router_module in (health, candidates, upload, chat, matching, jobs, auth, admin, integrations, inbox, conversations, reset):
     app.include_router(_router_module.router)
 
 

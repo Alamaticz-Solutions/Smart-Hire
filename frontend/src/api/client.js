@@ -82,6 +82,18 @@ apiClient.interceptors.request.use((config) => {
 
 installEnvelope(apiClient);
 
+// A 401 on a call that carried a session token means the login is no longer valid: tell the app to sign out.
+apiClient.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        const url = error?.config?.url || '';
+        if (error?.response?.status === 401 && error.config?.headers?.['x-session-token'] && !/\/api\/auth\//.test(url)) {
+            window.dispatchEvent(new Event('hire-ai:session-expired'));
+        }
+        return Promise.reject(error);
+    },
+);
+
 export default apiClient;
 
 /**
@@ -100,6 +112,18 @@ export default apiClient;
  * @param {string} filename - The stored filename to build a static URL for.
  * @returns {string} The full URL to the static asset.
  */
+export function getResumePreviewUrl(candidateId) {
+    // Preview of the stored resume (PDF as-is, Word rendered to HTML) for an <iframe> inside the profile.
+    let token = null;
+    try {
+        token = JSON.parse(localStorage.getItem('hire_ai_user'))?.token || null;
+    } catch {
+        // no token: the request 401s server-side like any other unauthenticated call
+    }
+    const url = `${BASE_URL}/api/candidates/${candidateId}/resume-preview`;
+    return token ? `${url}?token=${encodeURIComponent(token)}` : url;
+}
+
 export function getStaticUrl(filename) {
     // /static/{filename} now requires a verified session (previously fully
     // open to anyone who knew/guessed a filename). This URL is handed

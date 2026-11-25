@@ -25,3 +25,4 @@ SQLAlchemy~=2.0
 # Storage providers
 boto3~=1.43
 google-auth~=2.61
+cryptography>=44

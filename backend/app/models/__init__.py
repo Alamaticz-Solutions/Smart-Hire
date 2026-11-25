@@ -1,6 +1,7 @@
 """ORM models. Importing this package registers every table on ``Base``."""
 from app.models.base import Base
 from app.models.candidate import CANDIDATE_LIST_COLUMNS, MATCH_RELATED_FIELDS, Candidate
+from app.models.imports import MAIL_OUTCOMES, ImportBatch, ImportItem, MailMessage
 from app.models.job import Job, JobCandidate, JobShare
 from app.models.system import (
     ActivityLog,
@@ -21,11 +22,15 @@ __all__ = [
     "Candidate",
     "ChangeRequest",
     "CustomColumn",
+    "ImportBatch",
+    "ImportItem",
     "IntegrationSettings",
     "Job",
     "JobCandidate",
     "JobShare",
     "MATCH_RELATED_FIELDS",
+    "MAIL_OUTCOMES",
+    "MailMessage",
     "MailReply",
     "MaskedKeyword",
     "ProcessedEmail",

@@ -473,3 +473,14 @@ The poller (`app/services/email_worker.py`) is configured from the Connect page 
 - **Skip automated senders** (`skip_automated_senders`, default on): `noreply`, `invoice`, `billing`, newsletters and similar (`app/services/mail_filters.py`).
 - **Auto-reply** (`auto_reply_enabled`, default **off**). Importing a message only queues a row in `mail_replies`; nothing is sent while the switch is off. When it is turned on, queued rows are sent once each. A recipient already answered for the same candidate is marked `skipped`, failures retry up to 3 times, and every outcome is committed immediately so a crash cannot cause a duplicate. `GET /api/integrations/replies` returns the counts and latest entries.
 - Outlook sending needs the `Mail.Send` application permission and a real tenant ID (not `common`).
+
+### Pacing and auto-reply safety
+
+- Imports are paced: at most `MAIL_MAX_NEW_PER_CYCLE` (40) new messages are downloaded and `MAIL_MAX_RESUMES_PER_CYCLE` (15) resumes parsed per cycle. If the AI provider rate-limits a parse, the placeholder candidate is removed, the mail is released (not marked processed) and imports pause for `MAIL_RATE_LIMIT_COOLDOWN_MINUTES` (15).
+- `reply_max_age_days` (Connect page, default 7, 0 = no limit): queued replies for older mail are skipped, never sent.
+- `EMAIL_WORKER_ENABLED=false` starts the API without the poller.
+- `python -m scripts.retry_failed_imports` re-parses rows that failed on a rate limit, slowly.
+
+### Firebase sign-in
+
+`POST /api/auth/firebase-sync` requires a Firebase ID token, which the server verifies with Google (`FIREBASE_API_KEY`). Accounts are bound to the Firebase uid on first sync; admin/HR accounts need a verified email for that first sync, otherwise they sign in with their password.

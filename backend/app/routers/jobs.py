@@ -175,6 +175,8 @@ def create_job(
     username: str = Depends(require_approved_user),
     session: Session = Depends(get_session),
 ):
+    if not (job.title or "").strip() or not (job.description or "").strip():
+        raise HTTPException(status_code=400, detail="Title and Description are required")
     created = JobRepository(session).add(Job(**job.model_dump(), created_by=username))
     ActivityRepository(session).add(username or "unknown", f"posted a Job Description for '{job.title}'")
     result = _present_job(session, created)
@@ -312,18 +314,20 @@ def share_job(
 
     users = UserRepository(session)
     valid = []
+    skipped = []
     for name in req.usernames:
         user = users.get_by_username(name)
         if user is not None:
             valid.append(user.username)  # canonical casing (FK to users.username)
         else:
+            skipped.append(name)
             logger.warning("share_job: skipping unknown username %r for job %s", name, job_id)
 
     JobRepository(session).replace_shares(job_id, valid)
     ActivityRepository(session).add(
         username or "unknown", f"shared Job Description '{job.title}' with {len(valid)} external users"
     )
-    return {"status": "shared"}
+    return {"status": "shared", "shared_with": valid, "skipped_unknown": skipped}
 
 
 @router.get("/api/jobs/{job_id}/shares")

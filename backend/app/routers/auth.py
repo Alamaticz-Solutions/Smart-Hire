@@ -1,4 +1,5 @@
 """Authentication endpoints: register, login, Firebase sync, profile, password reset."""
+import re
 import random
 import secrets
 import smtplib
@@ -32,6 +33,9 @@ OTP_TTL_SECONDS = 300.0
 
 
 # ── schemas ────────────────────────────────────────────────────────────────
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
+
+
 class RegisterRequest(BaseModel):
     full_name: str
     username: str
@@ -45,6 +49,7 @@ class LoginRequest(BaseModel):
 
 
 class FirebaseSyncRequest(BaseModel):
+    id_token: str  # Firebase ID token proving the caller really signed in
     email: str
     full_name: str
     username: str
@@ -177,8 +182,16 @@ def send_otp_email(to_email: str, otp: str) -> bool:
 # ── endpoints ──────────────────────────────────────────────────────────────
 @router.post("/api/auth/register")
 def register(req: RegisterRequest, session: Session = Depends(get_session)):
+    if not config.ALLOW_LOCAL_REGISTRATION:
+        raise HTTPException(status_code=403, detail="Registration is handled through the sign-up page.")
+    if len(req.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters long")
     if not _has_digit(req.password):
         raise HTTPException(status_code=400, detail="Password must contain at least one digit")
+    if not _EMAIL_RE.match(req.email.strip()):
+        raise HTTPException(status_code=400, detail="Please enter a valid email address")
+    if not req.username.strip() or not req.full_name.strip():
+        raise HTTPException(status_code=400, detail="Name and username are required")
 
     users = UserRepository(session)
     if users.username_exists(req.username):
@@ -215,8 +228,36 @@ def login(req: LoginRequest, request: Request, session: Session = Depends(get_se
     return _profile(user, with_token=True)
 
 
+def verify_firebase_token(id_token: str) -> Optional[dict]:
+    """Ask Google to validate a Firebase ID token. Returns ``{uid, email, email_verified}`` or ``None``."""
+    import requests
+
+    try:
+        response = requests.post(
+            f"https://identitytoolkit.googleapis.com/v1/accounts:lookup?key={config.FIREBASE_API_KEY}",
+            json={"idToken": id_token}, timeout=10,
+        )
+        users = response.json().get("users") if response.status_code == 200 else None
+    except Exception as exc:
+        logger.error("Firebase token verification failed: %s", exc)
+        return None
+    if not users:
+        return None
+    user = users[0]
+    return {"uid": user.get("localId"), "email": (user.get("email") or "").lower(), "email_verified": bool(user.get("emailVerified"))}
+
+
 @router.post("/api/auth/firebase-sync")
 def firebase_sync(req: FirebaseSyncRequest, session: Session = Depends(get_session)):
+    """Create / sign in the local account for a Firebase user.
+
+    The caller must present a Firebase ID token that Google confirms; without it anyone could
+    request a session for any username (including an admin) just by naming it.
+    """
+    identity = verify_firebase_token(req.id_token)
+    if identity is None or not identity["uid"] or identity["email"] != req.email.strip().lower():
+        raise HTTPException(status_code=401, detail="Could not verify your sign-in. Please sign in again.")
+
     users = UserRepository(session)
     user = users.get_by_username(req.username)
 
@@ -228,15 +269,29 @@ def firebase_sync(req: FirebaseSyncRequest, session: Session = Depends(get_sessi
             full_name=req.full_name, username=req.username,
             # Authentication is delegated to Firebase: an unguessable local password.
             password_hash=hash_password(secrets.token_urlsafe(32)),
-            email=req.email, mobile=req.mobile, role="user", is_approved=approved,
+            email=req.email, mobile=req.mobile, role="user", is_approved=approved, firebase_uid=identity["uid"],
         ))
         if not approved:
             _request_approval(session, req.full_name, req.username)
         ActivityRepository(session).add(req.username, "registered an account via Firebase")
-    elif not user.email and req.email:
-        user.email = req.email
+    else:
+        if user.firebase_uid:
+            if user.firebase_uid != identity["uid"]:
+                raise HTTPException(status_code=401, detail="Could not verify your sign-in. Please sign in again.")
+        else:
+            # First Firebase sign-in for an existing account: the token must belong to the e-mail on file,
+            # and privileged accounts additionally need a verified address (Firebase lets anyone sign up
+            # with any unverified e-mail), otherwise they keep using their password.
+            if user.email and user.email.strip().lower() != identity["email"]:
+                raise HTTPException(status_code=401, detail="Could not verify your sign-in. Please sign in again.")
+            if (user.is_admin or user.is_hr) and not identity["email_verified"]:
+                raise HTTPException(status_code=401, detail="Please sign in with your password.")
+            user.firebase_uid = identity["uid"]
+        if not user.email and req.email:
+            user.email = req.email
 
     if not user.is_approved:
+        session.commit()  # keep the new account + its approval request: raising rolls the session back
         raise HTTPException(status_code=403, detail="Access denied. Your account is pending admin approval.")
     ActivityRepository(session).add(user.username, "logged in to the portal")
     return _profile(user, with_token=True)
@@ -313,6 +368,8 @@ def reset_password(req: ResetPasswordRequest, request: Request, session: Session
     lookup = req.username.strip().lower()
     if is_rate_limited(f"otp-reset:{_client_ip(request)}:{lookup}", max_attempts=8, window_seconds=300):
         raise HTTPException(status_code=429, detail="Too many attempts. Please request a new code.")
+    if len(req.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters long")
     if not _has_digit(req.new_password):
         raise HTTPException(status_code=400, detail="Password must contain at least one digit")
 

@@ -73,6 +73,17 @@ def received_from_header(value: Optional[str]) -> Optional[datetime]:
         return None
 
 
+def parse_iso_utc(value: Optional[str]) -> Optional[datetime]:
+    """Graph timestamps such as ``2026-11-23T12:29:40Z`` -> naive UTC datetime."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return to_naive_utc(parsed)
+
+
 def to_naive_utc(value: Optional[datetime]) -> Optional[datetime]:
     """UTC wall-clock time without tzinfo, as stored in the database."""
     if value is None:

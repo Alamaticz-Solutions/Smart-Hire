@@ -108,6 +108,7 @@ export default function LoginPage({ onLogin }) {
                 const fbUser = userCredential.user
                 
                 const res = await apiClient.post('/api/auth/firebase-sync', {
+                    id_token: await fbUser.getIdToken(),
                     email: fbUser.email,
                     full_name: fbUser.displayName || cred,
                     username: usernameLower
@@ -174,12 +175,13 @@ export default function LoginPage({ onLogin }) {
             // 2. Generate unique Firebase email (Gmail subaddressing support)
             const firebaseEmail = getFirebaseEmail(email, cred);
             
+            let firebaseUser;
             try {
-                await createUserWithEmailAndPassword(auth, firebaseEmail, pass);
+                firebaseUser = (await createUserWithEmailAndPassword(auth, firebaseEmail, pass)).user;
             } catch (fbErr) {
                 if (fbErr.code === 'auth/email-already-in-use') {
-                    // This is the case where they were deleted from SQLite but still exist in Firebase Auth.
-                    // We can just proceed to sync them!
+                    // Deleted from the local database but still in Firebase Auth: sign in to prove it is theirs.
+                    firebaseUser = (await signInWithEmailAndPassword(auth, firebaseEmail, pass)).user;
                 } else {
                     throw fbErr;
                 }
@@ -187,6 +189,7 @@ export default function LoginPage({ onLogin }) {
             
             try {
                 await apiClient.post('/api/auth/firebase-sync', {
+                    id_token: await firebaseUser.getIdToken(),
                     email: firebaseEmail,
                     full_name: name,
                     username: usernameLower,

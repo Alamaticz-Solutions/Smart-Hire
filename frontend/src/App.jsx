@@ -19,6 +19,9 @@ const ChatPage = lazy(() => import('./pages/ChatPage'))
 const AdminPage = lazy(() => import('./pages/AdminPage'))
 const ConnectPage = lazy(() => import('./pages/ConnectPage'))
 const TemplatesPage = lazy(() => import('./pages/TemplatesPage'))
+const MailInboxPage = lazy(() => import('./pages/MailInboxPage'))
+const ImportsPage = lazy(() => import('./pages/ImportsPage'))
+const ConversationsPage = lazy(() => import('./pages/ConversationsPage'))
 
 // Minimal fallback shown only for the brief moment a route's chunk is
 // downloading (typically imperceptible on repeat visits once cached).
@@ -107,6 +110,12 @@ export default function App() {
         setUser(null)
         localStorage.removeItem('hire_ai_user')
     }
+    useEffect(() => {
+        const onExpired = () => logout()
+        window.addEventListener('hire-ai:session-expired', onExpired)
+        return () => window.removeEventListener('hire-ai:session-expired', onExpired)
+    })
+
     const updateUser = (u) => { setUser(u); localStorage.setItem('hire_ai_user', JSON.stringify(u)) }
     const changeAccent = (a) => setAccent(a)
 
@@ -125,6 +134,9 @@ export default function App() {
                         <Route path="/jobs" element={(user?.is_hr === 1 || user?.is_admin === 1 || user?.is_external === 1) ? <JobsPage /> : <Navigate to="/" />} />
                         <Route path="/upload" element={isExternal ? <Navigate to="/jobs" /> : <UploadPage />} />
                         <Route path="/candidates/:id" element={isExternal ? <Navigate to="/jobs" /> : <CandidatePage />} />
+                        <Route path="/mail" element={(user?.is_hr === 1 || user?.is_admin === 1) && !isExternal ? <MailInboxPage /> : <Navigate to="/" />} />
+                        <Route path="/imports" element={(user?.is_hr === 1 || user?.is_admin === 1) && !isExternal ? <ImportsPage /> : <Navigate to="/" />} />
+                        <Route path="/conversations" element={(user?.is_hr === 1 || user?.is_admin === 1) && !isExternal ? <ConversationsPage /> : <Navigate to="/" />} />
                         <Route path="/chat" element={isExternal ? <Navigate to="/jobs" /> : <ChatPage />} />
                         <Route path="/admin" element={(user?.is_admin === 1 || user?.role === 'admin') && user?.is_external !== 1 ? <AdminPage /> : <Navigate to="/" />} />
                         <Route path="/connect" element={(user?.is_admin === 1 || user?.role === 'admin') && user?.is_external !== 1 ? <ConnectPage /> : <Navigate to="/" />} />

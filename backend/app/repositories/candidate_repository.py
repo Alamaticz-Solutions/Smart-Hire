@@ -13,7 +13,7 @@ import warnings
 from typing import Any, Iterable, Optional, Sequence
 
 from sqlalchemy import event, exc as sa_exc
-from sqlalchemy import MetaData, Table, and_, delete, func, insert, or_, select, update
+from sqlalchemy import MetaData, Table, and_, case, delete, func, insert, or_, select, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
@@ -90,6 +90,15 @@ def _coerce(column_type: Any, value: Any) -> Any:
     except (TypeError, ValueError):
         return None
     return value
+
+
+def _has_resume():
+    """1 when a resume file is on record (stored bytes or an external URL), else 0 - without loading the file."""
+    return case(
+        (Candidate.file_bytes.is_not(None), 1),
+        (and_(Candidate.file_url.is_not(None), Candidate.file_url != ""), 1),
+        else_=0,
+    ).label("has_resume")
 
 
 class CandidateRepository(BaseRepository):
@@ -210,23 +219,59 @@ class CandidateRepository(BaseRepository):
         self.session.execute(delete(Candidate))
 
     # ── reads (lists) ────────────────────────────────────────────────────
+    @staticmethod
+    def _scope(stmt, owner: Optional[str], origin: Optional[str], state: Optional[str]):
+        """Apply owner / source / state filters.
+
+        ``origin``: mail | excel | resume | manual (comma separated allowed).
+        ``state``: active | review | failed | all; the default (``None``) is *usable* = active + review,
+        so failed imports never clutter the main list.
+        """
+        if owner:
+            stmt = stmt.where(func.lower(Candidate.created_by) == owner.lower())
+        if origin and origin != "all":
+            stmt = stmt.where(Candidate.origin.in_([o for o in origin.split(",") if o]))
+        if state in (None, "", "usable"):
+            # Failed *mail* imports are noise (see the Mail Inbox to retry them); a failed manual upload
+            # stays visible so the person who uploaded it sees the error and the Retry button.
+            stmt = stmt.where(~((func.coalesce(Candidate.record_state, "active") == "failed") & (func.coalesce(Candidate.origin, "resume") == "mail")))
+        elif state != "all":
+            stmt = stmt.where(func.coalesce(Candidate.record_state, "active") == state)
+        return stmt
+
     def list_rows(
-        self, owner: Optional[str] = None, limit: Optional[int] = None, offset: int = 0
+        self, owner: Optional[str] = None, limit: Optional[int] = None, offset: int = 0,
+        origin: Optional[str] = None, state: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         """List-view rows, newest first; ``owner`` restricts to one user's candidates."""
         columns = [getattr(Candidate, name) for name in CANDIDATE_LIST_COLUMNS]
-        stmt = select(*columns).order_by(Candidate.timestamp.desc(), Candidate.id.desc())
-        if owner:
-            stmt = stmt.where(func.lower(Candidate.created_by) == owner.lower())
+        stmt = select(*columns, _has_resume()).order_by(
+            func.coalesce(Candidate.mail_received_at, Candidate.timestamp).desc(), Candidate.id.desc()
+        )
+        stmt = self._scope(stmt, owner, origin, state)
         if limit is not None:
             stmt = stmt.limit(limit).offset(offset)
         return [row_to_dict(r) for r in self.session.execute(stmt)]
 
-    def count(self, owner: Optional[str] = None) -> int:
-        stmt = select(func.count()).select_from(Candidate)
-        if owner:
-            stmt = stmt.where(func.lower(Candidate.created_by) == owner.lower())
+    def count(self, owner: Optional[str] = None, origin: Optional[str] = None, state: Optional[str] = None) -> int:
+        stmt = self._scope(select(func.count()).select_from(Candidate), owner, origin, state)
         return int(self.session.scalar(stmt) or 0)
+
+    def summary(self, owner: Optional[str] = None) -> dict[str, Any]:
+        """Counts behind the source / state filter buttons."""
+        origin_col = func.coalesce(Candidate.origin, "resume")
+        state_col = func.coalesce(Candidate.record_state, "active")
+        base = select(origin_col, state_col, func.count()).group_by(origin_col, state_col)
+        if owner:
+            base = base.where(func.lower(Candidate.created_by) == owner.lower())
+        by_origin: dict[str, int] = {}
+        by_state: dict[str, int] = {}
+        for origin, state, total in self.session.execute(base):
+            by_state[state] = by_state.get(state, 0) + total
+            if not (state == "failed" and origin == "mail"):
+                by_origin[origin] = by_origin.get(origin, 0) + total
+        usable = sum(by_origin.values())
+        return {"usable": usable, "by_origin": by_origin, "by_state": by_state}
 
     def all_rows(self, owner: Optional[str] = None) -> list[dict[str, Any]]:
         stmt = select(self.table)
@@ -250,7 +295,7 @@ class CandidateRepository(BaseRepository):
     def list_for_job(self, job_id: int) -> list[dict[str, Any]]:
         columns = [getattr(Candidate, name) for name in CANDIDATE_LIST_COLUMNS]
         stmt = (
-            select(*columns, JobCandidate.ai_reason, JobCandidate.status.label("job_status"))
+            select(*columns, _has_resume(), JobCandidate.ai_reason, JobCandidate.status.label("job_status"))
             .join(JobCandidate, Candidate.id == JobCandidate.candidate_id)
             .where(JobCandidate.job_id == job_id)
         )

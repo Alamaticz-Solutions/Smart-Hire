@@ -13,7 +13,9 @@ from __future__ import annotations
 import os
 import secrets
 
-from sqlalchemy import Engine, func, inspect, select, text, update
+from datetime import datetime, timedelta
+
+from sqlalchemy import DateTime, Engine, func, inspect, select, text, update
 from sqlalchemy.orm import Session
 
 from app.core.config import DEBUG
@@ -45,6 +47,11 @@ _INDEXES = (
     "CREATE INDEX IF NOT EXISTS idx_job_candidates_candidate_id ON job_candidates (candidate_id)",
     "CREATE INDEX IF NOT EXISTS idx_job_shares_username_lower ON job_shares (LOWER(username))",
     "CREATE INDEX IF NOT EXISTS idx_activity_logs_timestamp ON activity_logs (timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_mail_messages_received_at ON mail_messages (received_at)",
+    "CREATE INDEX IF NOT EXISTS idx_mail_messages_outcome ON mail_messages (outcome)",
+    "CREATE INDEX IF NOT EXISTS idx_import_items_batch ON import_items (batch_id)",
+    "CREATE INDEX IF NOT EXISTS idx_candidate_metadata_origin ON candidate_metadata (origin)",
+    "CREATE INDEX IF NOT EXISTS idx_candidate_metadata_record_state ON candidate_metadata (record_state)",
 )
 
 
@@ -57,10 +64,12 @@ def init_db(engine: Engine | None = None) -> None:
     _create_indexes(engine)
     with session_scope() as session:
         _recover_interrupted_processing(session)
+        _backfill_candidate_origin(session)
         _seed_users(session)
         _seed_team_members(session)
         _seed_masked_keywords(session)
         _seed_integration_settings(session)
+    _encrypt_existing_secrets()
     logger.info("Database initialised")
 
 
@@ -100,6 +109,29 @@ def _create_indexes(engine: Engine) -> None:
             logger.debug("Index statement skipped: %s", statement, exc_info=True)
 
 
+def _encrypt_existing_secrets() -> None:
+    """Encrypt secrets that were stored as plain text (runs only when SECRETS_KEY is configured)."""
+    from sqlalchemy.orm.attributes import flag_modified
+
+    from app.core.secrets import PREFIX, encryption_enabled
+
+    if not encryption_enabled():
+        logger.warning("SECRETS_KEY is not set: mailbox / Microsoft / Drive secrets are stored UNENCRYPTED in the database")
+        return
+    columns = ("email_pass", "gmail_pass", "ms_client_secret", "gdrive_client_secret", "gdrive_refresh_token", "additional_emails")
+    with session_scope() as session:
+        raw = session.execute(text("SELECT id, " + ", ".join(columns) + " FROM integrations_settings")).all()
+        for record in raw:
+            plain = [name for name, value in zip(columns, record[1:]) if value and not str(value).startswith(PREFIX)
+                     and not (name == "additional_emails" and str(value).strip() in ("[]", ""))]
+            if not plain:
+                continue
+            row = session.get(IntegrationSettings, record[0])
+            for name in plain:
+                flag_modified(row, name)  # rewriting the value encrypts it through the column type
+            logger.info("Encrypted %d stored secret(s)", len(plain))
+
+
 # ── seeding ────────────────────────────────────────────────────────────────
 def _initial_password_hash(username: str) -> str:
     """Hash for a freshly seeded account.
@@ -125,12 +157,32 @@ def _get_user(session: Session, username: str) -> User | None:
 
 
 def _recover_interrupted_processing(session: Session) -> None:
-    """Mark placeholders left behind by an ungraceful shutdown as failed."""
+    """Mark placeholders left behind by an ungraceful shutdown as failed.
+
+    Only rows older than 30 minutes: a freshly started instance must not fail a resume that another
+    instance (or the poller) is parsing right now.
+    """
+    now = session.scalar(select(func.now(type_=DateTime)))
+    cutoff = (now.replace(tzinfo=None) if now is not None else datetime.now()) - timedelta(minutes=30)
     session.execute(
         update(Candidate)
-        .where(Candidate.full_name.like("%Processing%"))
-        .values(full_name=func.replace(Candidate.full_name, "⏳ Processing: ", "❌ Failed: "))
+        .where(Candidate.full_name.like("%Processing%"), Candidate.timestamp < cutoff)
+        .values(full_name=func.replace(Candidate.full_name, "⏳ Processing: ", "❌ Failed: "), candidate_status="Error",
+                record_state="failed", error_detail="Processing was interrupted (the server restarted). Use Retry.")
     )
+
+
+def _backfill_candidate_origin(session: Session) -> None:
+    """Give rows created before ``origin`` / ``record_state`` existed a sensible value (cheap, idempotent)."""
+    mail = func.lower(func.coalesce(Candidate.source, "")).in_(("uploaded from mail", "email", "mail"))
+    session.execute(update(Candidate).where(Candidate.origin.is_(None), mail).values(origin="mail"))
+    session.execute(update(Candidate).where(
+        Candidate.origin.is_(None), func.lower(func.coalesce(Candidate.source, "")) == "excel import").values(origin="excel"))
+    session.execute(update(Candidate).where(
+        Candidate.origin.is_(None), func.lower(func.coalesce(Candidate.source, "")) == "manual entry").values(origin="manual"))
+    session.execute(update(Candidate).where(Candidate.origin.is_(None)).values(origin="resume"))
+    session.execute(update(Candidate).where(Candidate.record_state.is_(None), Candidate.candidate_status == "Error").values(record_state="failed"))
+    session.execute(update(Candidate).where(Candidate.record_state.is_(None)).values(record_state="active"))
 
 
 def _seed_users(session: Session) -> None:
@@ -159,17 +211,13 @@ def _seed_users(session: Session) -> None:
                 full_name=name, username=username, password_hash=_initial_password_hash(username),
                 role=role, is_hr=int(lead), is_admin=int(lead), email=f"{username}@gmail.com", is_approved=1,
             ))
-        else:
-            user.is_hr, user.is_admin, user.role, user.is_approved = int(lead), int(lead), role, 1
+        # existing accounts are left alone: roles / approval changed by an admin must survive a restart
 
     session.flush()
     for username in (*DEFAULT_USERNAMES, "somasekhar9"):
         user = _get_user(session, username)
-        if user is not None:
-            if username in DEFAULT_USERNAMES:
-                user.is_approved = 1
-            if not user.email:
-                user.email = f"{username}@gmail.com"
+        if user is not None and not user.email:
+            user.email = f"{username}@gmail.com"
 
 
 def _seed_team_members(session: Session) -> None:

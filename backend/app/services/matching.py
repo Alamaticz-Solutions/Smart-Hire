@@ -129,6 +129,8 @@ def match_candidates_for_job(job_id: int) -> dict:
     _, llm = get_models()
     batches = [rows[i:i + _BATCH_SIZE] for i in range(0, len(rows), _BATCH_SIZE)]
 
+    failed_batches: list[int] = []
+
     def evaluate_batch(batch: list) -> dict[int, str]:
         lines = [
             f"ID: {r.get('id')} | Name: {r.get('full_name')} | "
@@ -166,7 +168,9 @@ Return ONLY the raw JSON block, no markdown, no other text."""
             raise_on_exhaustion=False,  # log and move on to the next batch
         )
         reasons: dict[int, str] = {}
-        if response is not None:
+        if response is None:
+            failed_batches.append(1)
+        else:
             try:
                 for item in parse_llm_json(response.content, bracket="["):
                     if item.get("id") is not None:
@@ -179,6 +183,13 @@ Return ONLY the raw JSON block, no markdown, no other text."""
     with concurrent.futures.ThreadPoolExecutor(max_workers=_BATCH_WORKERS) as executor:
         for partial in executor.map(evaluate_batch, batches):
             reason_map.update(partial)
+
+    if failed_batches:
+        # Keep the existing matches: clearing them now would lose data for nothing.
+        raise HTTPException(
+            status_code=503,
+            detail="The AI service is busy or rate-limited. Existing matches were left unchanged - please try again in a few minutes.",
+        )
 
     with session_scope() as session:
         links = JobCandidateRepository(session)

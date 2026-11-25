@@ -55,6 +55,10 @@ class Candidate(Base):
     file_url: Mapped[Optional[str]] = mapped_column(Text)
     error_detail: Mapped[Optional[str]] = mapped_column(Text)
     mail_received_at: Mapped[Optional[datetime]] = mapped_column(DateTime)  # when the source e-mail arrived (UTC)
+    origin: Mapped[Optional[str]] = mapped_column(Text)  # mail | excel | resume | manual
+    record_state: Mapped[Optional[str]] = mapped_column(Text, default="active", server_default="active")  # active | review | failed
+    import_batch_id: Mapped[Optional[int]] = mapped_column(Integer)
+    source_msg_uid: Mapped[Optional[str]] = mapped_column(Text)  # the mail this candidate came from
 
 
 #: Columns returned by list endpoints (binary / large payloads excluded).
@@ -65,6 +69,7 @@ CANDIDATE_LIST_COLUMNS: tuple[str, ...] = (
     "candidate_interview_status", "availability_in_days", "current_location", "pref_locations",
     "current_client", "domain", "tier", "certification_version",
     "sender_email", "is_qualified", "is_approved", "file_url", "error_detail", "mail_received_at",
+    "origin", "record_state", "import_batch_id", "source_msg_uid",
 )
 
 #: Editing any of these re-triggers automatic job matching.

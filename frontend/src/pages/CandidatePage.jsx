@@ -219,16 +219,9 @@ export default function CandidatePage() {
                             ) : (
                                 <div style={{ margin: 'auto', color: 'var(--text-dim)', fontSize: 'var(--fs-3)' }}>No formatted résumé available.</div>
                             )
-                        ) : hasFile && isPdf ? (
-                            <iframe title="Résumé" style={{ flex: 1, border: 'none' }} src={`${API}/static/${filename}${tokenParam()}#view=FitH`} />
                         ) : hasFile ? (
-                            <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--text-dim)', display: 'flex', flexDirection: 'column', gap: 12, padding: 32 }}>
-                                <FileText size={32} style={{ margin: '0 auto', color: 'var(--text-subtle)' }} />
-                                <div>Preview isn&rsquo;t supported for this file type.</div>
-                                <a className="btn btn-secondary" style={{ alignSelf: 'center', textDecoration: 'none' }} href={`${API}/static/${filename}${tokenParam()}`} download={filename}>
-                                    <Download size={14} /> Download résumé
-                                </a>
-                            </div>
+                            // PDFs show as they are, Word files are rendered to HTML by the server, so every résumé previews here.
+                            <iframe title="Résumé" style={{ flex: 1, border: 'none', background: '#fff' }} src={`${API}/api/candidates/${id}/resume-preview${tokenParam()}#view=FitH`} />
                         ) : (
                             <div style={{ margin: 'auto', color: 'var(--text-dim)', fontSize: 'var(--fs-3)' }}>No résumé file on record.</div>
                         )}

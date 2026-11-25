@@ -15,6 +15,7 @@ import UploadDropzone from './upload/UploadDropzone'
 import CandidatesTable from './upload/CandidatesTable'
 import FilterModal from './upload/FilterModal'
 import ResumeViewerModal from './upload/ResumeViewerModal'
+import SourceTabs, { viewParams } from './upload/SourceTabs'
 
 /* ─── Page ────────────────────────────────────────────────────────────────── */
 export default function UploadPage() {
@@ -182,6 +183,44 @@ export default function UploadPage() {
     // than PAGE_SIZE rows.
     const PAGE_SIZE = 200
     const [totalCandidates, setTotalCandidates] = useState(0)
+    // Source buttons (All / Emails / Excel / Resumes / Manual / Needs review / Failed). The server filters,
+    // so the view stays correct beyond the first page. A ref lets the polling timer see the current view.
+    const initialView = (() => { try { const v = new URLSearchParams(window.location.search).get('view'); return ['mail', 'excel', 'resume', 'manual', 'review', 'failed'].includes(v) ? v : 'all' } catch { return 'all' } })()
+    const [sourceView, setSourceView] = useState(initialView)
+    const viewRef = useRef(initialView)
+    const [summary, setSummary] = useState({ usable: 0, by_origin: {}, by_state: {} })
+    const loadSummary = () => apiClient.get('/api/candidates/summary').then(r => setSummary(r.data)).catch(() => {})
+    // First page of every source view already fetched, so switching buttons is instant: the cached list is shown
+    // at once and refreshed quietly in the background (instead of blanking the table and waiting for the server).
+    const viewCacheRef = useRef({})
+    const changeView = (view) => {
+        if (view === viewRef.current) return
+        viewRef.current = view
+        setSourceView(view)
+        setColumnFilters({})
+        const cached = viewCacheRef.current[view]
+        if (cached) {
+            lastLoadedRef.current = JSON.stringify(cached.items)
+            setCandidates(cached.items)
+            setTotalCandidates(cached.total)
+            setLoadingCandidates(false)
+            load(true)
+        } else {
+            lastLoadedRef.current = null
+            setCandidates([])
+            load()
+        }
+    }
+    // Warm the other views in the background (one at a time) so the first click on each is instant too.
+    const prefetchViews = async () => {
+        for (const view of ['mail', 'excel', 'resume', 'manual', 'review', 'failed']) {
+            if (viewCacheRef.current[view]) continue
+            try {
+                const r = await apiClient.get(`/api/candidates`, { params: { limit: PAGE_SIZE, offset: 0, ...viewParams(view) } })
+                viewCacheRef.current[view] = { items: r.data.items, total: r.data.total }
+            } catch { /* best effort: the view simply loads on first click */ }
+        }
+    }
     const [loadingMore, setLoadingMore] = useState(false)
     // lastLoadedRef holds the last JSON payload actually applied to state, so a
     // silent poll tick that gets back the exact same first page (the common
@@ -191,9 +230,14 @@ export default function UploadPage() {
     const lastLoadedRef = useRef(null)
     const load = (silent = false) => {
         if (!silent) setLoadingCandidates(true);
-        return apiClient.get(`/api/candidates`, { params: { limit: PAGE_SIZE, offset: 0 } })
+        loadSummary();
+        const requestedView = viewRef.current;
+        return apiClient.get(`/api/candidates`, { params: { limit: PAGE_SIZE, offset: 0, ...viewParams(requestedView) } })
             .then(r => {
                 const { items, total } = r.data;
+                viewCacheRef.current[requestedView] = { items, total }
+                // The user may have clicked another button while this was loading: never show an old answer.
+                if (requestedView !== viewRef.current) return;
                 const raw = JSON.stringify(items);
                 setTotalCandidates(total);
                 if (raw === lastLoadedRef.current) return;
@@ -204,7 +248,7 @@ export default function UploadPage() {
                 setCandidates(prev => {
                     const rest = prev.slice(PAGE_SIZE);
                     const merged = [...items, ...rest];
-                    sessionStorage.setItem('cached_candidates', JSON.stringify(merged));
+                    if (viewRef.current === 'all') sessionStorage.setItem('cached_candidates', JSON.stringify(merged));
                     return merged;
                 });
             })
@@ -213,14 +257,16 @@ export default function UploadPage() {
                 if (!silent) showToast("Failed to load candidates", "error");
             })
             .finally(() => {
-                if (!silent) setLoadingCandidates(false);
+                if (!silent && requestedView === viewRef.current) setLoadingCandidates(false);
             });
     }
     const loadMore = () => {
         if (loadingMore) return;
         setLoadingMore(true);
-        return apiClient.get(`/api/candidates`, { params: { limit: PAGE_SIZE, offset: candidates.length } })
+        const requestedView = viewRef.current;
+        return apiClient.get(`/api/candidates`, { params: { limit: PAGE_SIZE, offset: candidates.length, ...viewParams(requestedView) } })
             .then(r => {
+                if (requestedView !== viewRef.current) return;
                 const { items, total } = r.data;
                 setTotalCandidates(total);
                 setCandidates(prev => {
@@ -275,7 +321,7 @@ export default function UploadPage() {
 
 
     useEffect(() => {
-        load();
+        load().then(prefetchViews);
         loadCols();
 
         // Baseline silent poll for candidates added by other users/the email
@@ -400,7 +446,6 @@ export default function UploadPage() {
             'application/pdf': ['.pdf'],
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-            'application/vnd.ms-excel': ['.xls'],
             'text/csv': ['.csv']
         },
         multiple: true,
@@ -480,6 +525,10 @@ export default function UploadPage() {
                 activeFilterCount={activeFilterCount}
                 showAddCandidate={showAddCandidate}
                 setShowAddCandidate={setShowAddCandidate}
+                sourceView={sourceView}
+                changeView={changeView}
+                summary={summary}
+                isStaff={isAdmin}
                 newCandidateForm={newCandidateForm}
                 setNewCandidateForm={setNewCandidateForm}
                 handleAddCandidateSubmit={handleAddCandidateSubmit}

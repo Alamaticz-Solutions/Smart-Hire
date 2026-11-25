@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.core.config import UPLOAD_DIR
 from app.core.logging import get_logger
 from app.core.responses import EnvelopeRoute
+from app.core.secrets import encryption_enabled
 from app.db.engine import get_session
 from app.models import IntegrationSettings
 from app.repositories import (
@@ -80,6 +81,10 @@ class IntegrationSettingsRequest(BaseModel):
     mail_import_from: Optional[str] = None   # YYYY-MM-DD (inclusive)
     mail_import_to: Optional[str] = None     # YYYY-MM-DD (inclusive)
     skip_automated_senders: Optional[int] = 1
+    reply_max_age_days: Optional[int] = 7   # never auto-reply to mail older than this (0 = no limit)
+    ai_answers_mode: Optional[str] = "draft"       # off | draft (a person approves) | auto (confident answers go out when auto-reply is on)
+    company_faq: Optional[str] = None               # facts the AI may answer from
+    skip_if_emailed_days: Optional[int] = 180       # never write again to anyone already e-mailed from Sent Items (0 = no check)
 
 
 class GDriveExchangeRequest(BaseModel):
@@ -162,7 +167,7 @@ def get_integrations_settings(request: Request, session: Session = Depends(get_s
             "gmail_enabled": 0, "gmail_email": "", "gmail_pass": "",
             "outlook_enabled": 0, "outlook_email": "",
             "default_resume_template": "alamaticz", "additional_emails": "[]", "theme_usage_counts": "{}",
-            "auto_reply_enabled": 0, "mail_import_from": "", "mail_import_to": "", "skip_automated_senders": 1,
+            "auto_reply_enabled": 0, "mail_import_from": "", "mail_import_to": "", "skip_automated_senders": 1, "reply_max_age_days": 7, "ai_answers_mode": "draft", "company_faq": "", "skip_if_emailed_days": 180,
         }
 
     subject, body_missing, body_complete = _resolve_templates(
@@ -207,6 +212,11 @@ def get_integrations_settings(request: Request, session: Session = Depends(get_s
         "mail_import_from": row.mail_import_from or "",
         "mail_import_to": row.mail_import_to or "",
         "skip_automated_senders": 0 if row.skip_automated_senders == 0 else 1,
+        "reply_max_age_days": 7 if row.reply_max_age_days is None else row.reply_max_age_days,
+        "secrets_encrypted": encryption_enabled(),
+        "ai_answers_mode": row.ai_answers_mode or "draft",
+        "company_faq": row.company_faq or "",
+        "skip_if_emailed_days": 180 if row.skip_if_emailed_days is None else row.skip_if_emailed_days,
     }
 
 
@@ -223,6 +233,14 @@ def save_integrations_settings(
         raise HTTPException(status_code=400, detail="Import 'to' date must be YYYY-MM-DD")
     if start and end and end < start:
         raise HTTPException(status_code=400, detail="Import 'to' date cannot be before the 'from' date")
+
+    if settings.ai_answers_mode not in (None, "off", "draft", "auto"):
+        raise HTTPException(status_code=400, detail="AI answers must be off, draft or auto")
+    if settings.outlook_enabled and (settings.ms_tenant_id or "common").strip().lower() in ("common", "organizations", "consumers"):
+        raise HTTPException(
+            status_code=400,
+            detail="Enter your Directory (tenant) ID for Outlook, not 'common' - Microsoft blocks the generic tenant for app sign-in.",
+        )
 
     repo = IntegrationSettingsRepository(session)
     row = repo.get_or_create()
@@ -295,7 +313,7 @@ def get_reply_log(request: Request, session: Session = Depends(get_session)):
         for r in replies.recent(25)
     ]
     return {
-        "counts": {k: counts.get(k, 0) for k in ("pending", "sent", "skipped", "failed")},
+        "counts": {k: counts.get(k, 0) for k in ("draft", "pending", "sent", "skipped", "failed")},
         "recent": recent,
         "failed": [_reply_row(r) for r in replies.failed(100)],
     }

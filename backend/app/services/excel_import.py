@@ -41,7 +41,8 @@ import openpyxl
 
 from app.core.logging import get_logger
 from app.db.engine import session_scope
-from app.repositories import CandidateRepository, CustomColumnRepository
+from app.repositories import CandidateRepository, CustomColumnRepository, ImportBatchRepository
+from app.services.completeness import derive_state
 from app.services.ai_clients import _processing_lock
 from app.services.matching import match_candidate_to_all_jobs
 
@@ -90,12 +91,28 @@ def _find_existing_match(existing_candidates: list, norm_email: str, norm_phone:
     return None
 
 
-def process_excel_file_logic(safe_name: str, path: str, username: str):
+def _load_workbook(path: str):
+    """openpyxl cannot read .csv, so build an in-memory workbook from it."""
+    if path.lower().endswith(".csv"):
+        import csv
+
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        with open(path, newline="", encoding="utf-8-sig", errors="replace") as handle:
+            for row in csv.reader(handle):
+                sheet.append(row)
+        return workbook
+    return openpyxl.load_workbook(path, data_only=True)
+
+
+def process_excel_file_logic(safe_name: str, path: str, username: str, batch_id: Optional[int] = None):
+    items: list[dict] = []          # per-row results, saved to the import batch at the end
+    outcome = {"error": None}
     with session_scope() as session:
         candidates = CandidateRepository(session)
         processed_candidate_ids = []
         try:
-            wb = openpyxl.load_workbook(path, data_only=True)
+            wb = _load_workbook(path)
 
             # Fetch custom columns.
             custom_cols = {
@@ -200,7 +217,7 @@ def process_excel_file_logic(safe_name: str, path: str, username: str):
                     if len(non_empty) >= 2:
                         is_header = False
                         for val in non_empty:
-                            val_str = str(val).strip().lower()
+                            val_str = str(val).strip().lower().replace("_", " ").replace("-", " ")
                             if val_str in column_mappings or val_str in custom_cols:
                                 is_header = True
                                 break
@@ -217,10 +234,20 @@ def process_excel_file_logic(safe_name: str, path: str, username: str):
                 mapped_cols = {}
                 for idx, h in enumerate(headers):
                     h_lower = h.lower()
+                    h_alt = h_lower.replace("_", " ").replace("-", " ")  # full_name == full name
                     if h_lower in custom_cols:
                         mapped_cols[idx] = custom_cols[h_lower]
                     elif h_lower in column_mappings:
                         mapped_cols[idx] = column_mappings[h_lower]
+                    elif h_alt in column_mappings:
+                        mapped_cols[idx] = column_mappings[h_alt]
+
+                ignored = [h for idx, h in enumerate(headers) if h and idx not in mapped_cols]
+                outcome.setdefault("ignored", set()).update(ignored)
+                if not mapped_cols:
+                    items.append({"status": "skipped", "sheet": sheet_name, "label": sheet_name,
+                                  "reason": "No recognised column headings (e.g. Name, Email, Phone, Skills)"})
+                    continue
 
                 # Process rows starting from header_row_idx + 1.
                 for row_idx in range(header_row_idx + 1, ws.max_row + 1):
@@ -253,6 +280,8 @@ def process_excel_file_logic(safe_name: str, path: str, username: str):
 
                     # Check that we have at least one identifying field.
                     if not row_data.get("full_name") and not row_data.get("email") and not row_data.get("phone"):
+                        items.append({"status": "skipped", "row_no": row_idx, "sheet": sheet_name,
+                                      "label": "(blank identity)", "reason": "Row has no name, email or phone"})
                         continue
 
                     name = row_data.get("full_name", "")
@@ -318,17 +347,26 @@ def process_excel_file_logic(safe_name: str, path: str, username: str):
                     if "source" not in db_data or not db_data["source"]:
                         db_data["source"] = "Excel Import"
 
+                    label = name or email or phone
                     if match_id:
-                        # Update existing record.
-                        candidates.update(match_id, db_data)
+                        # Update existing record - only with values the sheet really has, so a blank
+                        # cell never wipes data that is already stored.
+                        candidates.update(match_id, {k: v for k, v in db_data.items() if v not in ("", None) and k != "source"})
                         candidate_id = match_id
+                        items.append({"status": "updated", "row_no": row_idx, "sheet": sheet_name, "label": label,
+                                      "candidate_id": match_id, "reason": "Matched an existing candidate by email/phone"})
                     else:
                         # Insert new record.
+                        db_data["origin"] = "excel"
+                        db_data["import_batch_id"] = batch_id
+                        db_data["record_state"] = derive_state({**db_data, "candidate_status": "New"})
                         db_data["is_approved"] = 1
                         db_data["candidate_status"] = "New"
                         db_data["filename"] = ""
                         db_data["created_by"] = username
                         candidate_id = candidates.insert(db_data)
+                        items.append({"status": "imported", "row_no": row_idx, "sheet": sheet_name, "label": label,
+                                      "candidate_id": candidate_id})
                         existing_candidates.append(
                             {
                                 "id": candidate_id,
@@ -343,6 +381,8 @@ def process_excel_file_logic(safe_name: str, path: str, username: str):
 
         except Exception as e:
             logger.error(f"Error parsing Excel file {safe_name}: {e}")
+            outcome["error"] = str(e)[:300]
+            items.append({"status": "error", "label": safe_name, "reason": f"Sheet could not be read: {str(e)[:200]}"})
             if os.path.exists(path):
                 try:
                     os.remove(path)
@@ -354,6 +394,17 @@ def process_excel_file_logic(safe_name: str, path: str, username: str):
                 candidates.delete_excel_placeholders(safe_name)
             except Exception as db_err:
                 logger.error(f"Error clearing Excel placeholder or committing in finally: {db_err}")
+
+    if batch_id:
+        try:
+            with session_scope() as session:
+                batches = ImportBatchRepository(session)
+                for item in items:
+                    batches.add_item(batch_id, **item)
+                note = outcome["error"] or (f"Columns not imported (no matching field): {', '.join(sorted(outcome['ignored']))}"[:600] if outcome.get("ignored") else None)
+                batches.finish(batch_id, status="failed" if outcome["error"] else "done", note=note)
+        except Exception as exc:
+            logger.error(f"Could not save import batch {batch_id}: {exc}")
 
     # Match each newly-imported candidate to all active jobs (original
     # main.py lines 2472-2476) - per-candidate try/except preserved exactly
@@ -367,7 +418,7 @@ def process_excel_file_logic(safe_name: str, path: str, username: str):
         logger.info(f"Excel import processed {len(processed_candidate_ids)} candidate(s) pending job re-match: {processed_candidate_ids}")
 
 
-def process_excel_file(safe_name: str, path: str, username: str = "unknown"):
+def process_excel_file(safe_name: str, path: str, username: str = "unknown", batch_id: Optional[int] = None):
     """Serialize Excel processing behind the app's global processing lock, then clean up the temp file.
 
     Moved from main.py original lines 2478-2487. The `_processing_lock`
@@ -379,7 +430,7 @@ def process_excel_file(safe_name: str, path: str, username: str = "unknown"):
 
     try:
         with _processing_lock:
-            process_excel_file_logic(safe_name, path, username)
+            process_excel_file_logic(safe_name, path, username, batch_id)
     finally:
         try:
             if os.path.exists(path):

@@ -9,8 +9,12 @@ services:
     envVars:
       - key: ENVIRONMENT
         value: production
+      - key: EMAIL_WORKER_ENABLED
+        value: "false"        # the mailbox poller runs in the separate worker service below
       - key: SESSION_SECRET
         generateValue: true
+      - key: SECRETS_KEY
+        sync: false          # python -m scripts.generate_secrets_key - the SAME value on web and worker
       - key: STORAGE_PROVIDER
         value: google
       - key: EMBEDDINGS_PROVIDER
@@ -29,6 +33,38 @@ services:
         sync: false
       - key: SMTP_PASSWORD
         sync: false
+      - key: GDRIVE_CLIENT_ID
+        sync: false
+      - key: GDRIVE_CLIENT_SECRET
+        sync: false
+      - key: GDRIVE_REFRESH_TOKEN
+        sync: false
+      - key: GDRIVE_FOLDER_ID
+        sync: false
+
+  # Mailbox poller as its own service: a web restart or hung request cannot stop mail pulling.
+  - type: worker
+    name: hire-ai-mail-worker
+    runtime: docker
+    plan: starter
+    dockerCommand: python -m app.worker
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: SESSION_SECRET
+        sync: false          # same value as the web service
+      - key: SECRETS_KEY
+        sync: false          # same value as the web service
+      - key: POSTGRES_DATABASE_URL
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: HF_TOKEN
+        sync: false
+      - key: STORAGE_PROVIDER
+        value: google
+      - key: EMBEDDINGS_PROVIDER
+        value: api
       - key: GDRIVE_CLIENT_ID
         sync: false
       - key: GDRIVE_CLIENT_SECRET

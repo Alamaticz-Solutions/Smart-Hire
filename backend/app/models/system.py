@@ -7,6 +7,7 @@ from typing import Optional
 from sqlalchemy import DateTime, Integer, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.secrets import EncryptedText
 from app.models.base import Base
 
 
@@ -75,7 +76,7 @@ class IntegrationSettings(Base):
     smtp_host: Mapped[Optional[str]] = mapped_column(Text, default="smtp.gmail.com")
     smtp_port: Mapped[Optional[int]] = mapped_column(Integer, default=587)
     email_user: Mapped[Optional[str]] = mapped_column(Text)
-    email_pass: Mapped[Optional[str]] = mapped_column(Text)
+    email_pass: Mapped[Optional[str]] = mapped_column(EncryptedText)
     keywords: Mapped[Optional[str]] = mapped_column(Text, default="resume,alamaticz,solution,job")
     drive_enabled: Mapped[Optional[int]] = mapped_column(Integer, default=0, server_default="0")
     reply_theme: Mapped[Optional[str]] = mapped_column(Text, default="professional")
@@ -83,19 +84,19 @@ class IntegrationSettings(Base):
     reply_body_missing: Mapped[Optional[str]] = mapped_column(Text)
     reply_body_complete: Mapped[Optional[str]] = mapped_column(Text)
     gdrive_client_id: Mapped[Optional[str]] = mapped_column(Text)
-    gdrive_client_secret: Mapped[Optional[str]] = mapped_column(Text)
-    gdrive_refresh_token: Mapped[Optional[str]] = mapped_column(Text)
+    gdrive_client_secret: Mapped[Optional[str]] = mapped_column(EncryptedText)
+    gdrive_refresh_token: Mapped[Optional[str]] = mapped_column(EncryptedText)
     gdrive_folder_id: Mapped[Optional[str]] = mapped_column(Text)
     gdrive_email: Mapped[Optional[str]] = mapped_column(Text)
     ms_client_id: Mapped[Optional[str]] = mapped_column(Text)
-    ms_client_secret: Mapped[Optional[str]] = mapped_column(Text)
+    ms_client_secret: Mapped[Optional[str]] = mapped_column(EncryptedText)
     ms_tenant_id: Mapped[Optional[str]] = mapped_column(Text, default="common")
     gmail_enabled: Mapped[Optional[int]] = mapped_column(Integer, default=0, server_default="0")
     gmail_email: Mapped[Optional[str]] = mapped_column(Text)
-    gmail_pass: Mapped[Optional[str]] = mapped_column(Text)
+    gmail_pass: Mapped[Optional[str]] = mapped_column(EncryptedText)
     outlook_enabled: Mapped[Optional[int]] = mapped_column(Integer, default=0, server_default="0")
     outlook_email: Mapped[Optional[str]] = mapped_column(Text)
-    additional_emails: Mapped[Optional[str]] = mapped_column(Text, default="[]")
+    additional_emails: Mapped[Optional[str]] = mapped_column(EncryptedText, default="[]")  # JSON, holds mailbox passwords
     theme_usage_counts: Mapped[Optional[str]] = mapped_column(Text, default="{}")
     default_resume_template: Mapped[Optional[str]] = mapped_column(Text, default="alamaticz")
     # Mail import guards (UI: Connect page)
@@ -103,6 +104,12 @@ class IntegrationSettings(Base):
     mail_import_from: Mapped[Optional[str]] = mapped_column(Text)   # YYYY-MM-DD, inclusive; empty = no lower bound
     mail_import_to: Mapped[Optional[str]] = mapped_column(Text)     # YYYY-MM-DD, inclusive; empty = no upper bound
     skip_automated_senders: Mapped[Optional[int]] = mapped_column(Integer, default=1, server_default="1")
+    reply_max_age_days: Mapped[Optional[int]] = mapped_column(Integer, default=7, server_default="7")  # 0 = no limit
+    worker_heartbeat: Mapped[Optional[datetime]] = mapped_column(DateTime)  # last time the poller reached the mailbox
+    worker_last_error: Mapped[Optional[str]] = mapped_column(Text)
+    ai_answers_mode: Mapped[Optional[str]] = mapped_column(Text, default="draft", server_default="draft")  # off | draft | auto
+    company_faq: Mapped[Optional[str]] = mapped_column(Text)    # HR-written facts the AI may answer from
+    skip_if_emailed_days: Mapped[Optional[int]] = mapped_column(Integer, default=180, server_default="180")  # 0 = never check Sent Items
 
 
 class MailReply(Base):
@@ -122,3 +129,10 @@ class MailReply(Base):
     last_error: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, server_default=func.now())
     sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    # Conversation fields: what the person asked and what the AI proposes to answer
+    kind: Mapped[Optional[str]] = mapped_column(Text, default="acknowledgement", server_default="acknowledgement")  # acknowledgement | answer
+    inbound_text: Mapped[Optional[str]] = mapped_column(Text)   # the person's message (trimmed)
+    question: Mapped[Optional[str]] = mapped_column(Text)       # one-line summary of what they asked
+    ai_reply: Mapped[Optional[str]] = mapped_column(Text)       # drafted body; used instead of the template when set
+    edited_by: Mapped[Optional[str]] = mapped_column(Text)
+    sent_by: Mapped[Optional[str]] = mapped_column(Text)        # "auto" or the username who clicked Send

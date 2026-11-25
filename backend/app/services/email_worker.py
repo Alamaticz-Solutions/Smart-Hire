@@ -45,7 +45,7 @@ import os
 import re
 import smtplib
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import time
 from email import message_from_bytes
@@ -64,6 +64,7 @@ from app.repositories import (
     CandidateRepository,
     CustomColumnRepository,
     IntegrationSettingsRepository,
+    MailMessageRepository,
     MailReplyRepository,
     ProcessedEmailRepository,
 )
@@ -74,13 +75,17 @@ from app.services.mail_filters import (
     in_window,
     is_automated_sender,
     received_from_header,
+    parse_iso_utc,
     to_naive_utc,
 )
 from app.services.ai_clients import get_models
+from app.services.completeness import derive_state
+from app.services.graph_client import GraphError, GraphSession, error_text
 from app.services.json_parsing import parse_llm_json
 from app.services.retry import retry_with_backoff
 from app.services.resume_processing import (
     EXTRACT_PROMPT,
+    EXTRACTION_TEXT_LIMIT,
     SafePyMuPDFLoader,
     log_candidate,
     process_resume,
@@ -301,52 +306,27 @@ def send_email_via_graph(ms_client_id, ms_client_secret, ms_tenant_id, email_use
     and is called by both this module's auto-reply logic and by
     app.routers.integrations's test-email-template route).
     """
-    import requests
+    from app.services.graph_client import GraphError, GraphSession, error_text
+
     try:
-        token_url = f"https://login.microsoftonline.com/{ms_tenant_id}/oauth2/v2.0/token"
-        data = {
-            "client_id": ms_client_id,
-            "client_secret": ms_client_secret,
-            "scope": "https://graph.microsoft.com/.default",
-            "grant_type": "client_credentials"
-        }
-        token_res = requests.post(token_url, data=data)
-        access_token = token_res.json().get("access_token")
-        if not access_token:
-            logger.error("Failed to get Graph API token for sending email.")
-            return False
-
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json"
-        }
-
         email_data = {
             "message": {
                 "subject": subject,
-                "body": {
-                    "contentType": "Text",
-                    "content": body
-                },
-                "toRecipients": [
-                    {
-                        "emailAddress": {
-                            "address": recipient_email
-                        }
-                    }
-                ]
+                "body": {"contentType": "Text", "content": body},
+                "toRecipients": [{"emailAddress": {"address": recipient_email}}],
             },
-            "saveToSentItems": "true"
+            "saveToSentItems": "true",
         }
-
-        send_url = f"https://graph.microsoft.com/v1.0/users/{email_user}/sendMail"
-        res = requests.post(send_url, headers=headers, json=email_data)
-
+        res = GraphSession(ms_tenant_id, ms_client_id, ms_client_secret).post(
+            f"/users/{email_user}/sendMail", json=email_data
+        )
         if res.status_code == 202:
             return True
-        else:
-            logger.error(f"Graph API sendMail failed: {res.text}")
-            return False
+        logger.error(f"Graph API sendMail failed ({res.status_code}): {error_text(res)}")
+        return False
+    except GraphError as exc:
+        logger.error(f"Graph sendMail error: {exc}")
+        return False
     except Exception as e:
         logger.error(f"Exception in send_email_via_graph: {e}")
         return False
@@ -362,6 +342,33 @@ class ImportGuards:
 
 
 _guards = ImportGuards()
+
+# Pacing: the free Groq tier rate-limits quickly, and a failed parse used to be saved as an "Error"
+# candidate AND marked processed (so it never retried). Now a rate-limit pauses the importer and the
+# mail is released to be picked up again; each cycle is also capped.
+MAX_NEW_MESSAGES_PER_CYCLE = int(os.getenv("MAIL_MAX_NEW_PER_CYCLE", "40"))
+MAX_RESUMES_PER_CYCLE = int(os.getenv("MAIL_MAX_RESUMES_PER_CYCLE", "15"))
+RATE_LIMIT_COOLDOWN_SECONDS = int(os.getenv("MAIL_RATE_LIMIT_COOLDOWN_MINUTES", "15")) * 60
+_pacing = {"resumes": 0, "cooldown_until": 0.0}
+
+
+def _failed_on_rate_limit(candidate_id) -> bool:
+    """True when the resume parse for this placeholder died on an AI rate limit (HTTP 429)."""
+    try:
+        with session_scope() as session:
+            row = CandidateRepository(session).get_row(candidate_id)
+    except Exception:
+        return False
+    detail = ((row or {}).get("error_detail") or "")
+    return bool(row) and row.get("candidate_status") == "Error" and ("429" in detail or "RateLimit" in detail)
+
+
+def _release_message(msg_uid: str) -> None:
+    try:
+        with session_scope() as session:
+            ProcessedEmailRepository(session).unmark(msg_uid)
+    except Exception as exc:
+        logger.error(f"Could not release message {msg_uid} for retry: {exc}")
 
 
 def _queue_reply(msg_uid: str, candidate_id, recipient: str, original_subject: str, mailbox: str) -> None:
@@ -406,12 +413,108 @@ def _mailbox_transport(settings: dict, mailbox: str) -> Optional[dict]:
     return None
 
 
-def send_pending_replies(settings: dict, batch: int = 25) -> int:
-    """Send queued acknowledgements - only while the Connect-page switch is on.
+def build_reply_content(settings: dict, reply, candidate: Optional[dict]) -> tuple[str, str]:
+    """(subject, body) for a queued reply: the AI/edited text if there is one, otherwise the template.
 
-    Every imported message has exactly one row in ``mail_replies``. A row is
-    sent at most once, a recipient already answered for the same candidate is
-    skipped, and replies queued while the switch was off go out once it is on.
+    The template asks for whatever the candidate profile is still missing.
+    """
+    name = (candidate or {}).get("full_name") or "Candidate"
+    subj_tpl, missing_tpl, complete_tpl = _resolve_theme_templates(
+        settings.get("reply_theme") or "professional", settings.get("reply_subject"),
+        settings.get("reply_body_missing"), settings.get("reply_body_complete"),
+    )
+    ref = f"CAND-{reply.candidate_id}" if reply.candidate_id else "NEW"
+    subject = subj_tpl.replace("{subject}", reply.original_subject or "Application").replace("{ref}", ref)
+    if reply.ai_reply:
+        return subject, reply.ai_reply
+
+    missing = _get_missing_fields(candidate) if candidate else [
+        "Total years of experience", "Relevant experience for this role", "Current CTC", "Expected CTC",
+        "Notice period / Earliest joining date", "Current location", "Preferred work location(s)",
+        "LinkedIn profile URL",
+    ]
+    if missing:
+        bullets = "\n".join(f"* {field}" for field in missing)
+        return subject, missing_tpl.replace("{candidate_name}", name).replace("{missing_fields}", bullets)
+    return subject, complete_tpl.replace("{candidate_name}", name)
+
+
+def already_emailed_note(settings: dict, mailbox: str, recipient: str) -> Optional[str]:
+    """Why this person should NOT be written to again ("already emailed on ..."), else None.
+
+    Looks in the mailbox's Sent Items (Outlook only). Raises RuntimeError when Sent Items cannot be read, so a
+    caller can refuse to send rather than risk a duplicate.
+    """
+    from app.services.sent_index import emailed_within
+
+    days = settings.get("skip_if_emailed_days")
+    days = 180 if days is None else int(days)
+    transport = _mailbox_transport(settings, mailbox)
+    if days <= 0 or not transport or transport["kind"] != "graph":
+        return None
+    tenant, client, secret = transport["ms"][2], transport["ms"][0], transport["ms"][1]
+    found = emailed_within(GraphSession(tenant, client, secret), mailbox, recipient, days)
+    if found:
+        return f"already emailed on {found[0]:%d %b %Y} (\"{found[1][:50]}\")"
+    return None
+
+
+def deliver_reply(settings: dict, mailbox: str, recipient: str, subject: str, body: str) -> None:
+    """Send one message through the mailbox's transport (Graph or SMTP). Raises on any failure."""
+    from app.services.sent_index import remember_sent
+
+    transport = _mailbox_transport(settings, mailbox)
+    if transport is None:
+        raise RuntimeError("No sending credentials / permission for this mailbox")
+    if transport["kind"] == "graph":
+        if not send_email_via_graph(*transport["ms"], mailbox, recipient, subject, body):
+            raise RuntimeError("Microsoft Graph sendMail failed (the app needs the Mail.Send permission)")
+    else:
+        message = MIMEMultipart()
+        message["From"], message["To"], message["Subject"] = mailbox, recipient, subject
+        message.attach(MIMEText(body, "plain"))
+        server = smtplib.SMTP(transport["host"], transport["port"], timeout=10.0)
+        try:
+            server.starttls()
+            server.login(transport["user"], transport["password"])
+            server.sendmail(mailbox, recipient, message.as_string())
+        finally:
+            server.quit()
+    remember_sent(mailbox, recipient, subject)
+
+
+def send_one_reply(session, settings: dict, reply, sent_by: str, force: bool = False) -> tuple[bool, str]:
+    """Send one queued reply now. Returns (ok, message). Commits nothing - the caller commits.
+
+    Unless ``force`` is set, a person already emailed within ``skip_if_emailed_days`` is not written to again.
+    """
+    if not force and (reply.kind or "acknowledgement") != "answer":   # a direct answer to a question is always allowed
+        try:
+            note = already_emailed_note(settings, reply.mailbox_email, reply.recipient)
+        except Exception as exc:
+            return False, f"Could not check Sent Items, so nothing was sent: {exc}"
+        if note:
+            return False, note
+    candidate = CandidateRepository(session).get_row(reply.candidate_id) if reply.candidate_id else None
+    subject, body = build_reply_content(settings, reply, candidate)
+    reply.attempts = (reply.attempts or 0) + 1
+    try:
+        deliver_reply(settings, reply.mailbox_email, reply.recipient, subject, body)
+    except Exception as exc:
+        reply.last_error = str(exc)[:300]
+        return False, reply.last_error
+    reply.status, reply.sent_at, reply.last_error = "sent", datetime.now(timezone.utc).replace(tzinfo=None), None
+    reply.sent_by = sent_by
+    logger.info(f"Sent {reply.kind or 'acknowledgement'} to {reply.recipient} ({sent_by})")
+    return True, "sent"
+
+
+def send_pending_replies(settings: dict, batch: int = 25) -> int:
+    """Send queued replies automatically - only while the Connect-page switch is on.
+
+    Every imported message has one row in ``mail_replies``. A row is sent at most once; a recipient already
+    answered for the same candidate, anyone already e-mailed from this mailbox recently (Sent Items), mail older
+    than the age limit, and rows waiting for a human to approve an AI draft are never sent here.
     """
     if not settings.get("auto_reply_enabled"):
         return 0
@@ -419,12 +522,18 @@ def send_pending_replies(settings: dict, batch: int = 25) -> int:
     with session_scope() as session:
         replies = MailReplyRepository(session)
         candidates = CandidateRepository(session)
+        max_age = settings.get("reply_max_age_days")
+        max_age = 7 if max_age is None else int(max_age)
+        cutoff = replies.db_now() - timedelta(days=max_age) if max_age > 0 else None
         for reply in replies.pending(batch):
+            if cutoff and reply.created_at and reply.created_at < cutoff:
+                reply.status, reply.last_error = "skipped", f"mail is older than {max_age} days"
+                session.commit()
+                continue
             if replies.already_replied(reply.recipient, reply.candidate_id):
                 reply.status, reply.last_error = "skipped", "recipient already acknowledged"
                 session.commit()
                 continue
-
             candidate = candidates.get_row(reply.candidate_id) if reply.candidate_id else None
             if candidate and (
                 candidate.get("candidate_status") == "Error" or "Processing" in (candidate.get("full_name") or "")
@@ -432,63 +541,95 @@ def send_pending_replies(settings: dict, batch: int = 25) -> int:
                 reply.status, reply.last_error = "skipped", "candidate processing failed"
                 session.commit()
                 continue
-
-            transport = _mailbox_transport(settings, reply.mailbox_email)
-            reply.attempts = (reply.attempts or 0) + 1
-            if transport is None:
+            if _mailbox_transport(settings, reply.mailbox_email) is None:
+                reply.attempts = (reply.attempts or 0) + 1
                 reply.last_error = "No sending credentials / permission for this mailbox"
                 if reply.attempts >= MailReplyRepository.MAX_ATTEMPTS:
                     reply.status = "failed"
                 session.commit()
                 continue
 
-            name = (candidate or {}).get("full_name") or "Candidate"
-            missing = _get_missing_fields(candidate) if candidate else [
-                "Total years of experience", "Relevant experience for this role", "Current CTC", "Expected CTC",
-                "Notice period / Earliest joining date", "Current location", "Preferred work location(s)",
-                "LinkedIn profile URL",
-            ]
-            subj_tpl, missing_tpl, complete_tpl = _resolve_theme_templates(
-                settings.get("reply_theme") or "professional", settings.get("reply_subject"),
-                settings.get("reply_body_missing"), settings.get("reply_body_complete"),
-            )
-            if missing:
-                bullets = "\n".join(f"* {field}" for field in missing)
-                body = missing_tpl.replace("{candidate_name}", name).replace("{missing_fields}", bullets)
-            else:
-                body = complete_tpl.replace("{candidate_name}", name)
-            ref = f"CAND-{reply.candidate_id}" if reply.candidate_id else "NEW"
-            subject = subj_tpl.replace("{subject}", reply.original_subject or "Application").replace("{ref}", ref)
-
-            try:
-                if transport["kind"] == "graph":
-                    ok = send_email_via_graph(*transport["ms"], reply.mailbox_email, reply.recipient, subject, body)
-                    if not ok:
-                        raise RuntimeError("Microsoft Graph sendMail failed (the app needs the Mail.Send permission)")
-                else:
-                    message = MIMEMultipart()
-                    message["From"], message["To"], message["Subject"] = reply.mailbox_email, reply.recipient, subject
-                    message.attach(MIMEText(body, "plain"))
-                    server = smtplib.SMTP(transport["host"], transport["port"], timeout=10.0)
-                    try:
-                        server.starttls()
-                        server.login(transport["user"], transport["password"])
-                        server.sendmail(reply.mailbox_email, reply.recipient, message.as_string())
-                    finally:
-                        server.quit()
-                reply.status, reply.sent_at, reply.last_error = "sent", datetime.utcnow(), None
+            ok, message = send_one_reply(session, settings, reply, "auto")
+            if ok:
                 sent += 1
-                logger.info(f"Sent acknowledgement to {reply.recipient}")
-            except Exception as exc:
-                reply.last_error = str(exc)[:300]
-                if reply.attempts >= MailReplyRepository.MAX_ATTEMPTS:
+            elif message.startswith("Could not check Sent Items"):
+                reply.attempts = max(0, (reply.attempts or 1) - 1)
+                logger.warning(f"Auto-reply paused: {message}")
+                session.commit()
+                break  # leave everything pending; try again next cycle
+            elif message.startswith("already emailed"):
+                reply.status, reply.last_error = "skipped", message
+            else:
+                if (reply.attempts or 0) >= MailReplyRepository.MAX_ATTEMPTS:
                     reply.status = "failed"
-                logger.error(f"Acknowledgement to {reply.recipient} failed: {exc}")
+                logger.error(f"Reply to {reply.recipient} failed: {message}")
             session.commit()  # persist every outcome immediately: never risk a duplicate send
     return sent
 
 
+def _attach_answer(msg_id: str, mailbox: str, sender_email: str, subject: str, body_text: str, candidate_id) -> None:
+    """If the person asked something, draft an answer and show it in Conversations (waiting for approval by default)."""
+    from app.services.answers import compose_email, draft_answer, looks_like_question
+
+    try:
+        if not sender_email or sender_email.lower() == (mailbox or "").lower() or is_automated_sender(sender_email):
+            return
+        if not looks_like_question(body_text):
+            return
+        with session_scope() as session:
+            settings = IntegrationSettingsRepository(session).get()
+            mode = (getattr(settings, "ai_answers_mode", None) or "draft")
+            faq = getattr(settings, "company_faq", None) or ""
+            candidate = CandidateRepository(session).get_row(candidate_id) if candidate_id else None
+        if mode == "off":
+            return
+        _, llm = get_models()
+        result = draft_answer(body_text, candidate, faq, llm)
+        if not result:
+            return
+        missing = _get_missing_fields(candidate) if candidate else []
+        name = (candidate or {}).get("full_name") or ""
+        body = compose_email(name, result["reply"] if result["confident"] else "", missing)
+        with session_scope() as session:
+            replies = MailReplyRepository(session)
+            row = replies.get_by_msg(msg_id) or replies.queue(msg_id, candidate_id, sender_email, subject, mailbox)
+            if row.status in ("sent", "skipped"):
+                return
+            row.kind, row.recipient = "answer", sender_email
+            row.question, row.inbound_text, row.ai_reply = result["question"], result["text"], body
+            # unsure answers, and everything while the mode is "draft", wait for a person to approve
+            row.status = "pending" if (mode == "auto" and result["confident"]) else "draft"
+    except Exception as exc:
+        logger.error(f"Could not draft an answer for {msg_id}: {exc}")
+
+
+def _record_mail(info: dict) -> None:
+    """Write/refresh the mail-log row for one message (never lets logging break the import)."""
+    try:
+        fields = {k: v for k, v in info.items() if k != "msg_uid"}
+        with session_scope() as session:
+            MailMessageRepository(session).upsert(info["msg_uid"], **fields)
+    except Exception as exc:
+        logger.error(f"Could not record mail {info.get('msg_uid')}: {exc}")
+
+
+def _report_poll(mailbox: str, ok: bool, error: Optional[str] = None) -> None:
+    """Remember the last poll result so the Connect page can show whether the poller is healthy."""
+    try:
+        with session_scope() as session:
+            row = IntegrationSettingsRepository(session).get()
+            if row is not None:
+                row.worker_heartbeat = datetime.now(timezone.utc).replace(tzinfo=None)
+                row.worker_last_error = None if ok else f"{mailbox}: {error}"[:400]
+    except Exception as exc:  # never let status reporting break the import
+        logger.debug(f"poll status not recorded: {exc}")
+
+
 def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_host, smtp_port, keywords_str, reply_theme, reply_subject, reply_body_missing, reply_body_complete, ms_client_id=None, ms_client_secret=None, ms_tenant_id=None):
+    if time.time() < _pacing["cooldown_until"]:
+        logger.info(f"AI rate limit cooldown active - skipping {email_user} for now.")
+        return
+    _pacing["resumes"] = 0
     logger.info(f'Starting to process mailbox for {email_user}')
 
     # Parse keywords
@@ -500,7 +641,8 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
     raw_emails_to_process = []
 
     use_graph = False
-    headers = None
+    graph = None
+    graph_creds = None
     mail = None
     if 'office365' in imap_host.lower() or 'outlook' in imap_host.lower():
         with session_scope() as session:
@@ -517,62 +659,56 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
         if effective_ms_client_id and effective_ms_client_secret and effective_ms_tenant_id:
             use_graph = True
             try:
-                import requests
-                token_url = f"https://login.microsoftonline.com/{effective_ms_tenant_id}/oauth2/v2.0/token"
-                data = {
-                    "client_id": effective_ms_client_id,
-                    "client_secret": effective_ms_client_secret,
-                    "scope": "https://graph.microsoft.com/.default",
-                    "grant_type": "client_credentials"
-                }
-                token_res = requests.post(token_url, data=data)
-                access_token = token_res.json().get("access_token")
-                if access_token:
-                    headers = {"Authorization": f"Bearer {access_token}"}
-                    _lower, _upper = day_bounds(_guards.date_from, _guards.date_to)
-                    _filters = []
-                    if _lower:
-                        _filters.append(f"receivedDateTime ge {graph_timestamp(_lower)}")
-                    if _upper:
-                        _filters.append(f"receivedDateTime le {graph_timestamp(_upper)}")
-                    msg_url = (
-                        f"https://graph.microsoft.com/v1.0/users/{email_user}/mailFolders/Inbox/messages"
-                        f"?$top=100&$select=id,internetMessageId,receivedDateTime"
-                    )
-                    if _filters:
-                        msg_url += "&$filter=" + " and ".join(_filters).replace(" ", "%20")
-                    messages = []
-                    while msg_url:
-                        msg_res = requests.get(msg_url, headers=headers)
-                        if msg_res.status_code == 200:
-                            data = msg_res.json()
-                            messages.extend(data.get('value', []))
-                            msg_url = data.get('@odata.nextLink')
+                graph_creds = (effective_ms_tenant_id, effective_ms_client_id, effective_ms_client_secret)
+                graph = GraphSession(*graph_creds)
+                _lower, _upper = day_bounds(_guards.date_from, _guards.date_to)
+                _filters = []
+                if _lower:
+                    _filters.append(f"receivedDateTime ge {graph_timestamp(_lower)}")
+                if _upper:
+                    _filters.append(f"receivedDateTime le {graph_timestamp(_upper)}")
+                msg_url = (
+                    f"/users/{email_user}/mailFolders/Inbox/messages"
+                    f"?$top=100&$select=id,internetMessageId,receivedDateTime"
+                )
+                if _filters:
+                    msg_url += "&$filter=" + " and ".join(_filters).replace(" ", "%20")
+                messages = []
+                while msg_url:
+                    msg_res = graph.get(msg_url)
+                    if msg_res.status_code != 200:
+                        raise GraphError(f"Inbox list failed ({msg_res.status_code}): {error_text(msg_res)}")
+                    data = msg_res.json()
+                    messages.extend(data.get('value', []))
+                    msg_url = data.get('@odata.nextLink')
+                _report_poll(email_user, ok=True)
+
+                if messages:
+                    messages.sort(key=lambda m: m.get('receivedDateTime') or '')  # oldest first
+
+                    def _uid(m):
+                        internet = m.get('internetMessageId', "") or ""
+                        found = re.search(r'<([^>]+)>', internet)
+                        return found.group(1) if found else (internet or m['id'])
+
+                    with session_scope() as session:
+                        already = ProcessedEmailRepository(session).existing([_uid(m) for m in messages])
+
+                    for m in messages:
+                        effective_msg_id = _uid(m)
+                        if effective_msg_id in already:
+                            continue
+                        if len(raw_emails_to_process) >= MAX_NEW_MESSAGES_PER_CYCLE:
+                            break  # the rest are picked up on the next cycles
+
+                        mime_res = graph.get(f"/users/{email_user}/messages/{m['id']}/$value")
+                        if mime_res.status_code == 200:
+                            raw_emails_to_process.append((mime_res.content, effective_msg_id, m['id'], m.get('receivedDateTime')))
                         else:
-                            break
-                    if messages:
-                        messages.sort(key=lambda m: m.get('receivedDateTime') or '')  # oldest first
-
-
-                        for m in messages:
-                            m_id = m['id']
-                            internet_msg_id = m.get('internetMessageId', "")
-                            if internet_msg_id:
-                                match = re.search(r'<([^>]+)>', internet_msg_id)
-                                if match:
-                                    internet_msg_id = match.group(1)
-
-                            effective_msg_id = internet_msg_id if internet_msg_id else m_id
-                            exists = _is_processed(effective_msg_id)
-                            if exists:
-                                continue
-
-                            mime_url = f"https://graph.microsoft.com/v1.0/users/{email_user}/messages/{m_id}/$value"
-                            mime_res = requests.get(mime_url, headers=headers)
-                            if mime_res.status_code == 200:
-                                raw_emails_to_process.append((mime_res.content, effective_msg_id, m_id))
+                            logger.error(f"Could not download mail {effective_msg_id} ({mime_res.status_code}): {error_text(mime_res)}")
             except Exception as e:
-                logger.error(f"Graph API Error: {e}")
+                logger.error(f"Graph API Error for {email_user}: {e}")
+                _report_poll(email_user, ok=False, error=str(e))
 
     if not use_graph:
         mail = None
@@ -622,6 +758,8 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
 
                         if _is_processed(msg_id):
                             continue
+                        if len(raw_emails_to_process) >= MAX_NEW_MESSAGES_PER_CYCLE:
+                            break
 
                         status_full, msg_data_full = mail.fetch(num, '(BODY.PEEK[])')
                         if status_full == "OK" and msg_data_full[0]:
@@ -639,9 +777,15 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
 
     # Process all fetched emails
     for item in raw_emails_to_process:
+        mail_log = None
+        graph_received = None
+        if time.time() < _pacing["cooldown_until"] or _pacing["resumes"] >= MAX_RESUMES_PER_CYCLE:
+            break  # unprocessed mail stays unclaimed and is retried next cycle
         try:
             if isinstance(item, tuple):
-                if len(item) == 3:
+                if len(item) == 4:
+                    raw_email, effective_msg_id, graph_m_id, graph_received = item
+                elif len(item) == 3:
                     raw_email, effective_msg_id, graph_m_id = item
                 else:
                     raw_email, effective_msg_id = item
@@ -652,6 +796,7 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                 graph_m_id = None
 
             msg = message_from_bytes(raw_email)
+            mail_received_at = parse_iso_utc(graph_received) or to_naive_utc(received_from_header(msg.get('Date')))
 
             # Extract Message-ID
             if effective_msg_id:
@@ -681,6 +826,10 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
             # and to prevent infinite retry loops if an exception occurs later
             if not _claim_message(msg_id):
                 continue  # another worker already took this message
+            mail_log = {
+                "msg_uid": msg_id, "mailbox_email": email_user, "received_at": mail_received_at,
+                "outcome": "no_resume", "reason": "No resume attachment found",
+            }
 
             # Extract Subject, From, Body
             subject_header = msg.get("Subject", "")
@@ -699,6 +848,9 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                 else:
                     decoded_from += str(part)
 
+            _sender_name, _sender_addr = parseaddr(decoded_from)
+            mail_log.update(sender_email=_sender_addr, sender_name=_sender_name, subject=decoded_subject)
+
             # --- PREVENT INFINITE BOUNCE LOOPS ---
             subject_lower = decoded_subject.lower()
             from_lower = decoded_from.lower()
@@ -706,15 +858,17 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
 
             if "undeliverable:" in subject_lower or "delivery status notification" in subject_lower or "delivery failure" in subject_lower or "returned mail" in subject_lower:
                 is_bounce = True
-            if "postmaster@" in from_lower or "mailer-daemon@" in from_lower or "noreply@" in from_lower or "no-reply@" in from_lower:
-                is_bounce = True
+            if "postmaster@" in from_lower or "mailer-daemon@" in from_lower:
+                is_bounce = True  # noreply@ etc. are governed by the "skip automated senders" switch, not by this rule
 
             if _guards.skip_automated and is_automated_sender(parseaddr(decoded_from)[1]):
                 logger.info(f"Skipping automated sender {decoded_from!r} (subject {decoded_subject!r}).")
+                mail_log.update(outcome="skipped_automated", reason="Automated sender (noreply / invoice / newsletter)")
                 continue
 
             if is_bounce:
                 logger.info(f"Skipping bounce/automated message from {decoded_from} with subject '{decoded_subject}' to prevent infinite auto-reply loop.")
+                mail_log.update(outcome="skipped_automated", reason="Bounce / delivery notification")
                 continue
 
             # Extract plain text body
@@ -745,13 +899,13 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                     body_text = payload.decode(msg.get_content_charset() or "utf-8", errors="ignore")
 
             # Fetch attachments explicitly from Graph API if they were stripped from the MIME $value
-            if graph_m_id and headers:
+            if graph_m_id and graph_creds:
                 try:
                     import base64
-                    import requests
-                    attach_url = f"https://graph.microsoft.com/v1.0/users/{email_user}/messages/{graph_m_id}/attachments"
-                    attach_res = requests.get(attach_url, headers=headers)
-                    if attach_res.status_code == 200:
+                    attach_res = GraphSession(*graph_creds).get(f"/users/{email_user}/messages/{graph_m_id}/attachments")
+                    if attach_res.status_code != 200:
+                        logger.error(f"Could not list attachments for {graph_m_id} ({attach_res.status_code}): {error_text(attach_res)}")
+                    else:
                         graph_attachments = attach_res.json().get('value', [])
                         for att in graph_attachments:
                             if att.get('@odata.type') == '#microsoft.graph.fileAttachment':
@@ -769,7 +923,10 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
 
             # Check if this email is from an existing candidate (via Ref tag in Subject, or matching sender email)
             sender_name, sender_email = parseaddr(decoded_from)
-            mail_received_at = to_naive_utc(received_from_header(msg.get('Date')))
+            mail_log.update(
+                has_attachments=int(bool(attachments)),
+                attachment_names=", ".join(fname for fname, _ in attachments if fname)[:500],
+            )
             matched_candidate_row = None
 
             # 1. Search by reference ID in subject
@@ -791,6 +948,7 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
 
             if matched_candidate_row:
                 existing_candidate = dict(matched_candidate_row)
+                mail_log.update(outcome="follow_up", candidate_id=existing_candidate.get("id"), reason="Reply from an existing candidate; profile updated")
                 logger.info(f"Identified follow-up email from existing candidate ID {existing_candidate['id']} ({existing_candidate['full_name']})")
 
                 # Check if a new resume file is attached and download/index it
@@ -836,7 +994,7 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                                 break
 
                 # Use EXTRACT_PROMPT to parse the combined new resume content and/or email text
-                combined_text = resume_text[:7000] if resume_text else ""
+                combined_text = resume_text[:EXTRACTION_TEXT_LIMIT] if resume_text else ""
                 if body_text:
                     combined_text += f"\n\n=== EMAIL MESSAGE BODY ===\n{body_text}\n=========================="
 
@@ -872,6 +1030,9 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                         parsed_data = parse_llm_json(resp.content, bracket="{")
                 except Exception as llm_err:
                     logger.error(f"ERROR parsing follow-up email/resume via LLM: {llm_err}")
+                if not parsed_data and new_filename:
+                    # The resume was saved but the AI could not read it: say so, so it is not silently left half-filled.
+                    mail_log.update(reason="Follow-up saved, but the AI could not read the new resume - use 'Re-read documents' on Candidates")
 
                 # Normalization & Validation
                 # Phone: Keep only digits and +
@@ -937,7 +1098,9 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                 if updates:
                     try:
                         with session_scope() as session:
-                            CandidateRepository(session).update(existing_candidate['id'], updates)
+                            repo = CandidateRepository(session)
+                            repo.update(existing_candidate['id'], updates)
+                            repo.update(existing_candidate['id'], {'record_state': derive_state(repo.get_row(existing_candidate['id']) or {})})
                         logger.info(f"Successfully updated candidate ID {existing_candidate['id']} with follow-up details.")
                     except Exception as db_update_err:
                         logger.error(f"ERROR updating candidate from follow-up email: {db_update_err}")
@@ -976,6 +1139,12 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                         break
 
             processed_attachment = False
+            rate_limited = False
+            skipped_non_resume = False
+            skipped_legacy = [fname for fname, _ in attachments if fname and fname.lower().endswith(('.doc', '.xls'))]
+            if skipped_legacy and not has_resume_attachment:
+                logger.warning(f"Mail {msg_id} only has legacy files {skipped_legacy} (.doc/.xls cannot be parsed) - skipped.")
+                mail_log.update(outcome="legacy_file", reason=f"Only legacy files ({', '.join(skipped_legacy)}) - ask the sender for PDF/DOCX")
             if match_found and attachments:
                 # Only proceed if there is at least one resume attachment (.pdf or .docx)
                 has_resume = any(
@@ -1003,18 +1172,56 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
                                     "created_by": "email_worker",
                                     "file_bytes": content,
                                     "file_url": None,
-                                    "source": "Email"
+                                    "source": "Email",
+                                    "origin": "mail",
+                                    "source_msg_uid": msg_id,
                                 })
                                 process_resume(safe_name, fpath, is_approved=1, username="email_worker", email_message=body_text, sender_email=sender_email, file_url=None, placeholder_id=placeholder_id)
-                                if mail_received_at:
+                                if _failed_on_rate_limit(placeholder_id):
                                     with session_scope() as session:
-                                        CandidateRepository(session).update(placeholder_id, {'mail_received_at': mail_received_at})
+                                        CandidateRepository(session).delete(placeholder_id)
+                                    rate_limited = True
+                                    break
+                                with session_scope() as session:
+                                    repo = CandidateRepository(session)
+                                    saved = repo.get_row(placeholder_id)
+                                    if saved is not None:
+                                        repo.update(placeholder_id, {
+                                            'mail_received_at': mail_received_at, 'origin': 'mail', 'source_msg_uid': msg_id,
+                                        })
+                                        saved = repo.get_row(placeholder_id) or {}
+                                        state = derive_state(saved)
+                                        repo.update(placeholder_id, {'record_state': state})
+                                if saved is None:
+                                    # process_resume removed the placeholder: the attachment is not a resume
+                                    skipped_non_resume = True
+                                    mail_log.update(outcome="no_resume", candidate_id=None,
+                                                    reason="Attachment is not a resume (invoice / visa / receipt / similar)")
+                                    continue
+                                if state == "failed":
+                                    mail_log.update(outcome="failed", candidate_id=placeholder_id,
+                                                    reason=(saved.get("error_detail") or "Resume could not be processed")[:300])
+                                else:
+                                    mail_log.update(outcome="imported", candidate_id=placeholder_id,
+                                                    reason=f"Candidate created ({saved.get('full_name') or 'unnamed'})")
+                                _pacing["resumes"] += 1
                                 processed_attachment = True
                             except Exception as e_proc:
                                 logger.error(f"ERROR: Failed processing resume {safe_name} from email: {e_proc}")
 
+                if rate_limited:
+                    _release_message(msg_id)
+                    _pacing["cooldown_until"] = time.time() + RATE_LIMIT_COOLDOWN_SECONDS
+                    logger.warning(f"AI rate limit hit while parsing a resume - mail {msg_id} released for retry; pausing imports for {RATE_LIMIT_COOLDOWN_SECONDS // 60} min.")
+                    mail_log.update(outcome="pending_retry", reason="AI rate limit - released, will be retried automatically")
+                    break
+
+                if has_resume_attachment and not processed_attachment and skipped_non_resume:
+                    continue  # nothing to import and nothing failed: only non-resume attachments
+
                 if has_resume_attachment and not processed_attachment:
                     logger.warning(f"Email {msg_id} has resume attachment, but processing failed. Skipping DB log to allow retry.")
+                    mail_log.update(outcome="failed", reason="Resume attachment found but processing raised an error")
                     continue
 
                 if processed_attachment:
@@ -1053,8 +1260,16 @@ def process_single_mailbox(email_user, email_pass, imap_host, imap_port, smtp_ho
 
             # Email already marked as processed at the start of the loop
 
+            if mail_log is not None and mail_log.get("outcome") in ("imported", "follow_up", "no_resume", "failed") and body_text:
+                _attach_answer(msg_id, email_user, mail_log.get("sender_email") or "", decoded_subject, body_text, mail_log.get("candidate_id"))
+
         except Exception as msg_err:
             logger.error(f"ERROR: Failed processing single email: {msg_err}")
+            if mail_log is not None and mail_log.get("outcome") in ("no_resume", "imported"):
+                mail_log.update(outcome="failed", reason=f"Unexpected error: {str(msg_err)[:250]}")
+        finally:
+            if mail_log is not None:
+                _record_mail(mail_log)
 
 
 def poll_emails_and_process():

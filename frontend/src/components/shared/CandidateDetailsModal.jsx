@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Download, Trash2, FileText, X, Loader, Edit, Check, Eye, Plus, User, Briefcase, Mail } from 'lucide-react'
-import apiClient, { getStaticUrl } from '../../api/client'
+import apiClient, { getStaticUrl, getResumePreviewUrl } from '../../api/client'
 import alamaticzLogo from '../../assets/alamaticz-mark.png'
 import ResumePreview, { getResumeHtml } from '../ResumePreview'
 import ResumeEditor from './ResumeEditor'
@@ -137,6 +137,20 @@ export default function CandidateDetailsModal({
         }
     }, [candidate, jobStatus, onToggleStatus]);
 
+    // Re-read the saved details and rebuild the resume (drops hand edits - the user is asked first).
+    const regenerateFormatted = async () => {
+        if (!window.confirm("Rebuild this resume from the candidate's current details? Any manual edits to the formatted resume will be replaced.")) return;
+        setLoadingFormatted(true);
+        try {
+            const res = await apiClient.get(`/api/candidates/${candidate.id}/formatted-resume`, { params: { refresh: true } });
+            setFormattedData(res.data);
+        } catch (err) {
+            console.error('Failed to regenerate formatted resume', err);
+        } finally {
+            setLoadingFormatted(false);
+        }
+    };
+
     // Dashboard/Upload-style flow: fetch on demand when the toggle is switched on.
     const handleToggleFormatted = async () => {
         if (showAlamaticz) {
@@ -226,10 +240,10 @@ export default function CandidateDetailsModal({
 
     const isPdf = candidate.filename && candidate.filename.toLowerCase().endsWith('.pdf');
 
-    const hasViewableResume = candidate.filename &&
-        !candidate.filename.toLowerCase().endsWith('.xlsx') &&
-        !candidate.filename.toLowerCase().endsWith('.xls') &&
-        !candidate.filename.toLowerCase().endsWith('.csv');
+    // The list tells us whether a file is really stored (has_resume); older payloads fall back to the file name.
+    const hasViewableResume = candidate.has_resume !== undefined && candidate.has_resume !== null && candidate.has_resume !== ''
+        ? !!Number(candidate.has_resume)
+        : !!(candidate.filename && !/\.(xlsx|xls|csv)$/i.test(candidate.filename));
 
     const showRightPanel = hasViewableResume || showFormattedPanel;
 
@@ -312,7 +326,7 @@ export default function CandidateDetailsModal({
                                     <Trash2 size={14} /> Delete Candidate
                                 </button>
                             )}
-                            {candidate.filename && !candidate.filename.toLowerCase().endsWith('.xlsx') && !candidate.filename.toLowerCase().endsWith('.xls') && !candidate.filename.toLowerCase().endsWith('.csv') && (
+                            {hasViewableResume && candidate.filename && (
                                 isPdf ? (
                                     <button onClick={() => onViewPdf(candidate.filename, candidate.full_name)} className="btn btn-secondary" style={{ padding: '7px 14px', fontSize: 'var(--fs-2)' }}>
                                         <FileText size={14} /> Open in New Tab
@@ -583,10 +597,10 @@ export default function CandidateDetailsModal({
                         height: '100%',
                         display: 'flex',
                         flexDirection: 'column',
-                        background: showFormattedPanel ? 'var(--surface-sunken)' : (isPdf ? 'var(--surface-sunken)' : 'var(--navy-dark)'),
-                        justifyContent: (showFormattedPanel || isPdf) ? 'stretch' : 'center',
-                        alignItems: (showFormattedPanel || isPdf) ? 'stretch' : 'center',
-                        padding: (showFormattedPanel || isPdf) ? 0 : '40px',
+                        background: showFormattedPanel ? 'var(--surface-sunken)' : (hasViewableResume ? 'var(--surface-sunken)' : 'var(--navy-dark)'),
+                        justifyContent: (showFormattedPanel || hasViewableResume) ? 'stretch' : 'center',
+                        alignItems: (showFormattedPanel || hasViewableResume) ? 'stretch' : 'center',
+                        padding: (showFormattedPanel || hasViewableResume) ? 0 : '40px',
                         borderLeft: '1px solid var(--border)',
                         overflow: 'hidden'
                     }}>
@@ -609,6 +623,7 @@ export default function CandidateDetailsModal({
                                         <div style={{ display: 'flex', gap: '8px', marginRight: 'auto', marginLeft: '20px' }}>
                                             <button onClick={() => setResumeTemplate('alamaticz')} style={{ background: resumeTemplate === 'alamaticz' ? 'var(--gold)' : 'transparent', color: resumeTemplate === 'alamaticz' ? 'var(--action-fg)' : 'var(--gold)', border: '1px solid var(--gold)', borderRadius: '4px', padding: '4px 8px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}>Alamaticz</button>
                                             <button onClick={() => setResumeTemplate('modern')} style={{ background: resumeTemplate === 'modern' ? 'var(--gold)' : 'transparent', color: resumeTemplate === 'modern' ? 'var(--action-fg)' : 'var(--gold)', border: '1px solid var(--gold)', borderRadius: '4px', padding: '4px 8px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}>Modern</button>
+                                            <button onClick={regenerateFormatted} title="Rebuild from the candidate's current details" style={{ background: 'transparent', color: 'var(--text-dim)', border: '1px solid var(--border)', borderRadius: '4px', padding: '4px 8px', fontSize: '0.75rem', cursor: 'pointer' }}>Regenerate</button>
                                             <button onClick={() => setResumeTemplate('classic')} style={{ background: resumeTemplate === 'classic' ? 'var(--gold)' : 'transparent', color: resumeTemplate === 'classic' ? 'var(--action-fg)' : 'var(--gold)', border: '1px solid var(--gold)', borderRadius: '4px', padding: '4px 8px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}>Classic</button>
                                         </div>
                                     )}
@@ -709,7 +724,14 @@ export default function CandidateDetailsModal({
                                 ) : isEditingFormatted ? (
                                     <ResumeEditor formData={editedFormState} setFormData={setEditedFormState} />
                                 ) : formattedData ? (
-                                    <ResumePreview data={formattedData} logoUrl={alamaticzLogo} templateId={resumeTemplate} />
+                                    <>
+                                        {formattedData.limited && (
+                                            <div role="note" style={{ margin: '0 0 10px', padding: '8px 12px', borderRadius: 8, fontSize: '0.78rem', background: 'rgba(250,204,21,0.12)', color: '#facc15', border: '1px solid rgba(250,204,21,0.35)' }}>
+                                                Only the details on file are shown - there is no resume document to read, so nothing has been guessed. Empty sections mean "not provided".
+                                            </div>
+                                        )}
+                                        <ResumePreview data={formattedData} logoUrl={alamaticzLogo} templateId={resumeTemplate} />
+                                    </>
                                 ) : (
                                     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: 'var(--text-dim)' }}>
                                         Failed to load Alamaticz Format.
@@ -717,64 +739,19 @@ export default function CandidateDetailsModal({
                                 )}
                             </>
                         ) : (
-                            isPdf ? (
+                            hasViewableResume ? (
                                 <iframe
-                                    src={`${getStaticUrl(candidate.filename)}#view=FitH`}
-                                    style={{ width: '100%', height: '100%', border: 'none', background: 'var(--surface-sunken)' }}
+                                    src={`${getResumePreviewUrl(candidate.id)}#view=FitH`}
+                                    style={{ width: '100%', height: '100%', border: 'none', background: '#fff' }}
                                     title="Candidate Resume"
                                 />
                             ) : (
-                                <div style={{
-                                    textAlign: 'center',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    alignItems: 'center',
-                                    gap: '20px',
-                                    color: 'var(--text)',
-                                    maxWidth: '400px',
-                                    margin: '0 auto'
-                                }}>
-                                    <div style={{
-                                        width: '80px',
-                                        height: '80px',
-                                        borderRadius: '50%',
-                                        background: 'rgba(var(--gold-rgb), 0.1)',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        border: '1px solid rgba(var(--gold-rgb), 0.25)',
-                                        marginBottom: '10px'
-                                    }}>
-                                        <FileText size={40} color="var(--gold)" />
-                                    </div>
-                                    <h4 style={{ margin: 0, color: 'var(--gold)', fontFamily: 'var(--fh)', fontSize: '1.2rem', fontWeight: 700 }}>
-                                        Word Document (.docx/.doc)
-                                    </h4>
-                                    <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-dim)', lineHeight: 1.5 }}>
-                                        Preview is not supported directly in the browser. Please download the file to view the candidate's resume.
+                                <div style={{ textAlign: 'center', color: 'var(--text-dim)', maxWidth: 360, margin: '0 auto', lineHeight: 1.5 }}>
+                                    <FileText size={36} color="var(--gold)" />
+                                    <h4 style={{ margin: '10px 0 4px', color: 'var(--gold)' }}>No resume on file</h4>
+                                    <p style={{ margin: 0, fontSize: '0.85rem' }}>
+                                        This candidate has no resume document (for example an Excel row, a manual entry, or an e-mail without an attachment).
                                     </p>
-                                    <a
-                                        href={getStaticUrl(candidate.filename)}
-                                        download={candidate.filename}
-                                        style={{
-                                            background: 'var(--gold)',
-                                            color: 'var(--action-fg)',
-                                            textDecoration: 'none',
-                                            fontSize: '0.85rem',
-                                            fontFamily: 'var(--fh)',
-                                            fontWeight: 700,
-                                            cursor: 'pointer',
-                                            padding: '10px 24px',
-                                            borderRadius: '8px',
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: '8px',
-                                            transition: 'all 0.2s',
-                                            boxShadow: '0 4px 12px rgba(var(--gold-rgb), 0.2)'
-                                        }}
-                                    >
-                                        <Download size={16} /> Download Resume
-                                    </a>
                                 </div>
                             )
                         )}

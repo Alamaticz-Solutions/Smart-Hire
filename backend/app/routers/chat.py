@@ -100,6 +100,7 @@ def _rows_for_names(rows: list, names: list) -> list:
         ]
     return [
         {
+            "full_name": r.get("full_name", ""),
             "name": r.get("full_name", ""),
             "total_experience": r.get("total_experience", 0),
             "pega_experience": r.get("pega_experience", 0),
@@ -107,6 +108,7 @@ def _rows_for_names(rows: list, names: list) -> list:
             "certifications": r.get("certifications", ""),
             "ctc": r.get("ctc", ""),
             "notice_period": r.get("notice_period", ""),
+            "current_organization": r.get("current_organization", ""),
             "organization": r.get("current_organization", ""),
             "email": r.get("email", ""),
             "phone": r.get("phone", ""),

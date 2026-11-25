@@ -83,10 +83,22 @@ def _env_flag(name: str, default: str = "false") -> bool:
 # flow locally sets this explicitly rather than getting it for free.
 ALLOW_OTP_IN_RESPONSE = _env_flag("ALLOW_OTP_IN_RESPONSE")
 
+# Powerful endpoints the web UI does not use are closed in production unless explicitly enabled.
+ALLOW_LOCAL_REGISTRATION = _env_flag("ALLOW_LOCAL_REGISTRATION", "true" if DEBUG else "false")   # POST /api/auth/register
+ALLOW_DATA_RESET = _env_flag("ALLOW_DATA_RESET", "true" if DEBUG else "false")                      # POST /api/reset
+
+
 # SHOW_ERROR_DETAIL: whether an unhandled exception's message reaches the
 # client (main.py's catch-all handler) instead of a generic "Internal server
 # error". Off by default for the same reason.
 SHOW_ERROR_DETAIL = _env_flag("SHOW_ERROR_DETAIL")
+
+# EMAIL_WORKER_ENABLED: set to false to start the API without the background mailbox poller
+# (e.g. a local run pointed at a shared database must not import mail or mark messages as read).
+EMAIL_WORKER_ENABLED = _env_flag("EMAIL_WORKER_ENABLED", "true")
+
+# Public Firebase web API key (the same value the frontend ships); used only to ask Google to verify an ID token.
+FIREBASE_API_KEY = os.getenv("FIREBASE_API_KEY", "AIzaSyD4IXrgb5NXLnNx3aJYs7f5_8FS-_kmRWY")
 
 # ── AI / LLM ─────────────────────────────────────────────────────────────────
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
